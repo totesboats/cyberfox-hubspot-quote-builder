@@ -1,0 +1,35 @@
+{
+  "uid": "cyberfox_quote_builder_app",
+  "type": "app",
+  "config": {
+    "name": "CyberFOX Quote Builder",
+    "description": "Deal-record quote builder for AutoElevate, Password Manager, DNS Filtering, Timus SASE and Optimize365: SKU selection, ramps, approval preview and CPQ quote creation.",
+    "distribution": "private",
+    "auth": {
+      "type": "static",
+      "requiredScopes": [
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "crm.objects.companies.read",
+        "crm.objects.contacts.read",
+        "crm.objects.line_items.read",
+        "crm.objects.line_items.write",
+        "crm.objects.quotes.read",
+        "crm.objects.quotes.write",
+        "crm.objects.products.read",
+        "e-commerce",
+        "hubdb"
+      ],
+      "optionalScopes": [],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": [],
+      "iframe": [],
+      "img": []
+    },
+    "support": {
+      "supportEmail": "tbrown@cyberfox.com"
+    }
+  }
+}

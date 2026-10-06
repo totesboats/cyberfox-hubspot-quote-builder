@@ -1,0 +1,8 @@
+{
+  "name": "cyberfox-quote-builder-functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App functions for the CyberFOX Quote Builder card. Uses Node's built-in fetch; no runtime dependencies.",
+  "type": "commonjs",
+  "dependencies": {}
+}

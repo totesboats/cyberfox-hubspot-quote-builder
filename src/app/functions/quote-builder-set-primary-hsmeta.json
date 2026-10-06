@@ -1,0 +1,8 @@
+{
+  "uid": "quote_builder_set_primary",
+  "type": "app-function",
+  "config": {
+    "entrypoint": "/app/functions/quote-builder-set-primary.js",
+    "secretKeys": []
+  }
+}

@@ -1,0 +1,39 @@
+# One-time setup scripts, run by hand from the Actions tab (no Node needed on your laptop).
+# Needs repository secret HUBSPOT_SETUP_TOKEN (the "Quote Builder setup" private app token).
+# Each run uploads its review CSV as an artifact you can download from the run page.
+name: Setup scripts
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: Which setup step
+        type: choice
+        options:
+          - properties
+          - tag-products
+          - timus-hubdb
+      apply:
+        description: Apply changes (leave unticked for a dry run)
+        type: boolean
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_SETUP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run setup:${{ inputs.script }}
+        run: node scripts/${{ inputs.script == 'properties' && 'create-properties' || inputs.script == 'tag-products' && 'tag-products' || 'create-timus-hubdb' }}.mjs ${{ inputs.apply && '--apply' || '' }}
+      - name: Upload review CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.script }}-review
+          path: '*.csv'
+          if-no-files-found: ignore

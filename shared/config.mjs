@@ -1,0 +1,220 @@
+// Quote Builder business configuration.
+// Source of truth lives in /shared. `npm run sync` copies it into the card bundle (ESM)
+// and the app functions (CommonJS). Edit here, never in the copies.
+
+// Product families the builder sells. Keys match the `qb_family` product property.
+export const FAMILIES = {
+  autoelevate: {
+    label: 'AutoElevate',
+    unit: 'agents',
+    unitSingular: 'Agent',
+    editions: [
+      { value: 'standard', label: 'Standard' },
+      { value: 'advanced', label: 'Advanced' },
+    ],
+  },
+  password: {
+    label: 'Password Manager',
+    unit: 'users',
+    unitSingular: 'User',
+    editions: [
+      { value: 'pack', label: 'User Packs (2026)' },
+      { value: 'commit', label: 'User Commit (PB6)' },
+    ],
+  },
+  dns: {
+    label: 'DNS Filtering',
+    unit: 'devices',
+    unitSingular: 'Device',
+    editions: [{ value: 'standard', label: 'Standard' }],
+  },
+  timus: {
+    label: 'Timus SASE',
+    unit: 'users',
+    unitSingular: 'User',
+    editions: [{ value: 'advanced', label: 'Advanced' }],
+  },
+  optimize365: {
+    label: 'Optimize365',
+    unit: 'users',
+    unitSingular: 'User',
+    editions: [{ value: 'standard', label: 'Standard' }],
+  },
+  bundle: {
+    label: 'CyberFOX Bundle',
+    unit: 'users',
+    unitSingular: 'User',
+    editions: [{ value: 'standard', label: 'Standard' }],
+  },
+};
+
+export const FAMILY_ORDER = ['autoelevate', 'password', 'dns', 'timus', 'optimize365', 'bundle'];
+
+export const SEGMENTS = [
+  { value: 'MSP', label: 'MSP' },
+  { value: 'ENT', label: 'Enterprise' },
+];
+
+export const BILLING = {
+  monthly: { label: 'Monthly', frequency: 'monthly', periodsPerYear: 12 },
+  annual: { label: 'Annual (billed yearly)', frequency: 'annually', periodsPerYear: 1 },
+  m2m: { label: 'Month-to-month', frequency: 'monthly', periodsPerYear: 12 },
+};
+
+export const MAX_RAMP_MONTHS = 6;
+
+// Approval policy (mirrors the Commerce Hub approval workflow; keep them in sync).
+export const APPROVAL = {
+  discountThresholdPct: 30, // discounts at or above this need a sales manager
+  rampMonthsThreshold: 3, // ramps this long or longer need approval
+  approversByTeam: {
+    MSP: 'Tina Kalke (MSP Sales Manager)',
+    ENT: 'Adam Friedman (ENT Sales Manager)',
+    AM: 'Julie Webb (AM Sales Manager)',
+  },
+  fallbackApprover: 'Operations team',
+};
+
+// Timus: the commit is a single "Monthly Minimum" line priced at the price list's minimum.
+// Satisfaction-guarantee agreements use the SATGAT SKUs instead (keyed by minimum).
+export const TIMUS = {
+  minimumSku: 'Timus SASE - Monthly Minimum',
+  satgatSkuByMinimum: {
+    250: 'Timus SASE - SATGAT',
+    500: 'Timus SASE - SATGAT II',
+    1000: 'Timus SASE - SATGAT III',
+  },
+};
+
+// Line item bookkeeping so the builder only ever replaces lines it created.
+export const LINE_SOURCE_PROPERTY = 'qb_source';
+export const LINE_SOURCE_VALUE = 'quote_builder';
+export const LINE_SESSION_PROPERTY = 'qb_session_id';
+
+// Multiple quotes per deal ("options"). Each builder quote stores its run id and the builder
+// state so a rep can start a new option from it or make it the primary option later.
+export const QUOTE_SESSION_PROPERTY = 'qb_session_id';
+export const QUOTE_STATE_PROPERTY = 'qb_builder_state';
+// HubSpot freezes the deal-property tokens on a quote once it is published (or out for
+// signature). Quotes still in these progression statuses read the deal's current values,
+// so writing new printed values would change them too.
+export const QUOTE_OPEN_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'CHANGES_REQUESTED'];
+export const QUOTE_IGNORED_STATUSES = ['VOID'];
+
+// When true, post-ramp lines get "Delayed billing start by months" = ramp length.
+// Off by default to match how ramps are entered today (Sale Review groups ramp segments).
+export const SET_BILLING_DELAY_AFTER_RAMP = false;
+
+// Quote templates: suggest templates whose names match the products on the quote.
+export const TEMPLATE_HINTS = {
+  autoelevate: 'autoelevate',
+  password: 'password|pb',
+  dns: 'dns',
+  timus: 'timus',
+  optimize365: 'optimize',
+  bundle: 'bundle',
+};
+// Template names containing any of these are hidden from reps (one-off / internal templates).
+export const TEMPLATE_HIDE = ['one off', 'one-off', 'clone of', 'sponsorship', 'default '];
+
+// HubDB table holding Timus price lists (see scripts/create-timus-hubdb.mjs).
+export const TIMUS_HUBDB_TABLE = 'quote_builder_timus_price_lists';
+
+// Deal properties the card reads.
+export const DEAL_PROPERTIES = [
+  'dealname',
+  'sales_team',
+  'promo',
+  'payment_method',
+  'invoice_terms',
+  'payment_terms',
+  'agreement_length',
+  'sku_type',
+  'timus_price_list',
+  'timus_price_per_user',
+  'timus_price_per_gateway',
+  'new_minimum_commitment_amount',
+  'ae_feature_type_details',
+  'deal_currency_code',
+];
+// Printed deal properties compared against open quotes before they are overwritten.
+export const PRINTED_DEAL_PROPERTIES = [
+  'agreement_length',
+  'payment_terms',
+  'payment_method',
+  'invoice_terms',
+  'promo',
+  'sku_type',
+  'ae_feature_type_details',
+  'timus_price_list',
+  'timus_price_per_user',
+  'timus_price_per_gateway',
+  'new_minimum_commitment_amount',
+];
+
+// Deal properties that print on quote templates as tokens. Their dropdown options are read
+// live from HubSpot so the card can never write a value the property doesn't accept.
+export const QUOTE_TOKEN_PROPERTIES = {
+  agreementLength: 'agreement_length', // "15 Months", "12 Months - Month-to-Month"
+  paymentFrequency: 'payment_terms', // label "Payment Frequency"
+  paymentMethod: 'payment_method',
+  invoiceTerms: 'invoice_terms',
+  promo: 'promo',
+  aeFeatureType: 'sku_type', // label "AE Feature Type"
+  aeFeatureTypeDetails: 'ae_feature_type_details',
+};
+export const ENUM_PROPERTIES = ['agreement_length', 'payment_terms', 'payment_method', 'invoice_terms', 'promo', 'sku_type'];
+
+// Agreement Length value for month-to-month quotes (the option HubSpot labels "Month-to-Month").
+export const AGREEMENT_LENGTH_M2M = '12 Months - Month-to-Month';
+export const AGREEMENT_LENGTH_DEFAULT = '12 Months';
+// Contract Term (contract_term) is not shown or written: Agreement Length is what quotes print.
+// Turn on only if something downstream (e.g. Sale Review) still reads contract_term.
+export const WRITE_CONTRACT_TERM = false;
+// Payment Frequency default per billing choice; the rep can override (e.g. Quarterly).
+export const PAYMENT_FREQUENCY_DEFAULT = { monthly: 'Month-to-Month', m2m: 'Month-to-Month', annual: 'Annual Payments' };
+export const PAYMENT_FREQUENCY_HIDDEN = ['One Time'];
+
+// Used only if the live property options can't be read.
+export const FALLBACK_OPTIONS = {
+  payment_terms: [
+    { value: 'Month-to-Month', label: 'Monthly' },
+    { value: 'Quarterly', label: 'Quarterly' },
+    { value: 'Annual Payments', label: 'Annual Payments' },
+  ],
+  payment_method: [
+    { value: 'Credit Card', label: 'Credit Card' },
+    { value: 'ACH', label: 'ACH' },
+    { value: 'Check', label: 'Check' },
+  ],
+  invoice_terms: ['Due Upon Receipt', 'Net-30', 'Net-45', 'Net-60', 'Net-90'].map((v) => ({ value: v, label: v })),
+  promo: [],
+  agreement_length: [],
+  sku_type: [],
+};
+
+// AutoElevate feature type → which SKU edition prices it, and the AE Feature Type Details text
+// the AutoElevate quote template prints. {tier} is replaced with the commit tier.
+export const AE_FEATURE_TYPES = [
+  {
+    value: 'Standard',
+    edition: 'standard',
+    details:
+      'Elevation. Additional agents over the minimum commitment of this plan will be billed at the same price per agent. Usage of Advanced features Blocker and Just-in-Time Admin Login will result in additional charges. Unlimited User (Technician) & Company licenses included',
+  },
+  {
+    value: 'Advanced',
+    edition: 'advanced',
+    details:
+      'Elevation, Blocker, and Just-In-Time Admin Login. Additional agents over the minimum commitment of this plan will be billed at the same price per agent. Unlimited User (Technician) & Company licenses included',
+  },
+  {
+    value: 'Advanced (GrandFathered)',
+    edition: 'standard',
+    details:
+      '{tier} agents include advanced features Just-In-Time Admin Login and Blocker. All additional agents include standard elevation. Additional agents over the minimum commitment will be billed at an additional cost.',
+  },
+];
+
+export const RAMP_NAME_PREFIX = 'RAMP ';
+export const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30 };

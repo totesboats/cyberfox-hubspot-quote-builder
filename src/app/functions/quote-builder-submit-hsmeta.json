@@ -1,0 +1,8 @@
+{
+  "uid": "quote_builder_submit",
+  "type": "app-function",
+  "config": {
+    "entrypoint": "/app/functions/quote-builder-submit.js",
+    "secretKeys": []
+  }
+}

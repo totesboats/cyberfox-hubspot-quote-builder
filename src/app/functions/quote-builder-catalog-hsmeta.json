@@ -1,0 +1,8 @@
+{
+  "uid": "quote_builder_catalog",
+  "type": "app-function",
+  "config": {
+    "entrypoint": "/app/functions/quote-builder-catalog.js",
+    "secretKeys": []
+  }
+}

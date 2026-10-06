@@ -1,0 +1,11 @@
+{
+  "uid": "cyberfox_quote_builder_card",
+  "type": "card",
+  "config": {
+    "name": "Quote Builder",
+    "description": "Build a multi-product CyberFOX quote with ramps and approval preview, then create it as a draft HubSpot quote.",
+    "location": "crm.record.tab",
+    "entrypoint": "/app/cards/QuoteBuilder.jsx",
+    "objectTypes": ["deals"]
+  }
+}
