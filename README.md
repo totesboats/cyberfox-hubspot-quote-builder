@@ -37,7 +37,7 @@ tests/                                 unit, function (fake HubSpot API) and car
 |---|---|
 | Deal line items | One per line, associated to the deal (type 20), `hs_product_id` linked, price/qty/discount/term/frequency, `ramp`, `approval_discount` (0 on RAMP lines), `approval_ramp_months`, `qb_source = quote_builder`, `qb_session_id` |
 | Quote line items | A separate copy of each (CPQ requires quote lines distinct from deal lines) |
-| Quote | `hs_title`, `hs_expiration_date`, `hs_template_type`, language, currency; associations: deal 64, line items 67, template 286, contact 69, signer 702 (CPQ + e-sign). CPQ: `hs_acceptance_method`. Legacy: `hs_status = DRAFT` |
+| Quote | `hs_title`, `hs_expiration_date`, `hs_template_type`, language, currency; seller contact = the deal owner (`hubspot_owner_id`, `hs_sender_firstname/lastname/email`; no deal owner → no quote); associations: deal 64, line items 67, template 286, contact 69, signer 702 (CPQ + e-sign). CPQ: `hs_acceptance_method`. Legacy: `hs_status = DRAFT` |
 | Deal (quote tokens) | `agreement_length` (as chosen on Setup), `payment_terms` (Payment Frequency: follows billing unless the rep picks one), `payment_method`, `invoice_terms`, `promo`; for AutoElevate `sku_type` (AE Feature Type) and `ae_feature_type_details`; for Timus `timus_price_per_user`, `timus_price_per_gateway` (both entered by the rep) and `new_minimum_commitment_amount`. `timus_price_list` is being retired and is never written. Also `hubspot_quote_notes`. `contract_term` is **not** written (set `WRITE_CONTRACT_TERM` in `shared/config.mjs` if something downstream still reads it) |
 | Cleanup | For the primary option, archives the line items the previous primary option left on the deal (matched by `qb_source`); it never touches lines created any other way |
 
@@ -109,4 +109,4 @@ These won't be tagged until fixed, so they won't appear in the builder:
 
 ## Tests
 
-`npm run check` runs 55 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and four card flows rendered with HubSpot's test renderer. Fixtures are synthetic.
+`npm run check` runs 57 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and four card flows rendered with HubSpot's test renderer. Fixtures are synthetic.

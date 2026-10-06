@@ -103,6 +103,7 @@ var require_config = __commonJS({
     var TEMPLATE_HIDE = ["one off", "one-off", "clone of", "sponsorship", "default "];
     var DEAL_PROPERTIES = [
       "dealname",
+      "hubspot_owner_id",
       "sales_team",
       "promo",
       "payment_method",
@@ -843,13 +844,23 @@ var require_hubspot = __commonJS({
         return { options: Object.assign({}, FALLBACK_OPTIONS), issue: `Couldn't read deal property options (${err.message}); using defaults.` };
       }
     }
+    async function loadOwner(ownerId) {
+      if (!ownerId) return null;
+      try {
+        const o = await hs2(`/crm/v3/owners/${encodeURIComponent(ownerId)}`);
+        return { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(" "), firstName: o.firstName || "", lastName: o.lastName || "", email: o.email || "" };
+      } catch (err) {
+        if (err.status === 404) return null;
+        throw err;
+      }
+    }
     async function loadDeal2(dealId) {
       const deal = await hs2(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(",")}&associations=companies,contacts,quotes`);
       const assoc = (type) => (deal.associations && deal.associations[type] && deal.associations[type].results || []).map((r) => String(r.id));
       const companyIds = assoc("companies");
       const contactIds = assoc("contacts").slice(0, 25);
       const quoteIds = assoc("quotes").slice(0, 50);
-      const [companies, contacts, quotes, builderLines] = await Promise.all([
+      const [companies, contacts, quotes, builderLines, owner] = await Promise.all([
         companyIds.length ? hs2("/crm/v3/objects/companies/batch/read", { method: "POST", body: { inputs: [{ id: companyIds[0] }], properties: ["name"] } }) : { results: [] },
         contactIds.length ? hs2("/crm/v3/objects/contacts/batch/read", { method: "POST", body: { inputs: contactIds.map((id) => ({ id })), properties: ["firstname", "lastname", "jobtitle"] } }) : { results: [] },
         quoteIds.length ? hs2("/crm/v3/objects/quotes/batch/read", {
@@ -859,7 +870,8 @@ var require_hubspot = __commonJS({
             properties: ["hs_title", "hs_quote_progression_status", "hs_quote_amount", "hs_template_type", "hs_expiration_date", "hs_createdate", QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY2]
           }
         }) : { results: [] },
-        readBuilderLineItems(dealId)
+        readBuilderLineItems(dealId),
+        loadOwner(deal.properties.hubspot_owner_id)
       ]);
       const primarySession = builderLines.length ? builderLines[0].session : null;
       const company = companies.results[0];
@@ -867,6 +879,7 @@ var require_hubspot = __commonJS({
         id: String(deal.id),
         properties: deal.properties,
         salesTeam: deal.properties.sales_team || null,
+        owner,
         company: company ? { id: String(company.id), name: company.properties.name } : null,
         // Name + title only: enough to pick a signer, nothing more.
         contacts: contacts.results.map((c) => ({
@@ -938,6 +951,7 @@ exports.main = async (context) => {
     console.error("quote-builder-submit load failed", err.message);
     return { ok: false, errors: [err.message] };
   }
+  if (!deal.owner) return { ok: false, errors: ["Assign a deal owner first. The quote's seller contact is always the deal owner."] };
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ["The selected quote template no longer exists."] };
   const setup = Object.assign({}, payload.setup, { salesTeam: deal.salesTeam, templateType: template.templateType });
@@ -966,6 +980,11 @@ exports.main = async (context) => {
       hs_template_type: template.templateType,
       hs_language: QUOTE_DEFAULTS.language,
       hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
+      // Seller contact = deal owner, always.
+      hubspot_owner_id: deal.owner.id,
+      hs_sender_firstname: deal.owner.firstName,
+      hs_sender_lastname: deal.owner.lastName,
+      hs_sender_email: deal.owner.email,
       [QUOTE_SESSION_PROPERTY]: sessionId,
       [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties)
     };

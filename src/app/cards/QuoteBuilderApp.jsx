@@ -237,6 +237,8 @@ export function QuoteBuilderApp() {
           ? 'Fix the deal property issues below.'
         : state.step === 2 && !template
           ? 'Pick a quote template on the Setup step.'
+        : state.step === 2 && !data.deal.owner
+          ? 'Assign a deal owner. The quote\'s seller contact is always the deal owner.'
           : state.step === 2 && quote.lines.length === 0
             ? 'There are no line items to write.'
             : '';
@@ -309,6 +311,7 @@ export function QuoteBuilderApp() {
           templates={data.templates}
           suggested={suggested}
           contacts={data.deal.contacts}
+          owner={data.deal.owner}
           dealOptions={data.dealOptions}
           onChange={(patch) => dispatch({ type: 'setup', patch })}
         />
@@ -357,22 +360,26 @@ export function QuoteBuilderApp() {
         />
       )}
 
-      <Flex justify="between" align="center" wrap>
-        <Button variant="secondary" disabled={state.step === 0 || submitting} onClick={() => go(state.step - 1)}>
-          Back
-        </Button>
-        <Flex gap="small" align="center">
-          {blocker && <Text variant="microcopy">{blocker}</Text>}
-          {isLast ? (
-            <Button variant="primary" disabled={!!blocker || submitting || created} onClick={submit}>
-              {submitting ? 'Creating quote…' : created ? 'Quote created' : 'Create quote'}
-            </Button>
-          ) : (
-            <Button variant="primary" disabled={!!blocker} onClick={() => go(state.step + 1)}>
-              Continue
-            </Button>
-          )}
+      {blocker && (
+        <Flex justify="end">
+          <Text variant="microcopy">{blocker}</Text>
         </Flex>
+      )}
+      <Flex justify="end" align="center" gap="small">
+        {state.step > 0 && (
+          <Button variant="secondary" disabled={submitting} onClick={() => go(state.step - 1)}>
+            Back
+          </Button>
+        )}
+        {isLast ? (
+          <Button variant="primary" disabled={!!blocker || submitting || created} onClick={submit}>
+            {submitting ? 'Creating quote…' : created ? 'Quote created' : 'Create quote'}
+          </Button>
+        ) : (
+          <Button variant="primary" disabled={!!blocker} onClick={() => go(state.step + 1)}>
+            Continue
+          </Button>
+        )}
       </Flex>
     </Flex>
   );

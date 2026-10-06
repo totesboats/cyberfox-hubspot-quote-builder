@@ -108,13 +108,25 @@ async function loadDealOptions() {
   }
 }
 
+// The deal owner is the quote's seller contact. Name + email only.
+async function loadOwner(ownerId) {
+  if (!ownerId) return null;
+  try {
+    const o = await hs(`/crm/v3/owners/${encodeURIComponent(ownerId)}`);
+    return { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(' '), firstName: o.firstName || '', lastName: o.lastName || '', email: o.email || '' };
+  } catch (err) {
+    if (err.status === 404) return null;
+    throw err;
+  }
+}
+
 async function loadDeal(dealId) {
   const deal = await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(',')}&associations=companies,contacts,quotes`);
   const assoc = (type) => ((deal.associations && deal.associations[type] && deal.associations[type].results) || []).map((r) => String(r.id));
   const companyIds = assoc('companies');
   const contactIds = assoc('contacts').slice(0, 25);
   const quoteIds = assoc('quotes').slice(0, 50);
-  const [companies, contacts, quotes, builderLines] = await Promise.all([
+  const [companies, contacts, quotes, builderLines, owner] = await Promise.all([
     companyIds.length ? hs('/crm/v3/objects/companies/batch/read', { method: 'POST', body: { inputs: [{ id: companyIds[0] }], properties: ['name'] } }) : { results: [] },
     contactIds.length ? hs('/crm/v3/objects/contacts/batch/read', { method: 'POST', body: { inputs: contactIds.map((id) => ({ id })), properties: ['firstname', 'lastname', 'jobtitle'] } }) : { results: [] },
     quoteIds.length
@@ -127,6 +139,7 @@ async function loadDeal(dealId) {
         })
       : { results: [] },
     readBuilderLineItems(dealId),
+    loadOwner(deal.properties.hubspot_owner_id),
   ]);
   // The primary option is the builder quote whose run put the current builder lines on the deal.
   const primarySession = builderLines.length ? builderLines[0].session : null;
@@ -135,6 +148,7 @@ async function loadDeal(dealId) {
     id: String(deal.id),
     properties: deal.properties,
     salesTeam: deal.properties.sales_team || null,
+    owner,
     company: company ? { id: String(company.id), name: company.properties.name } : null,
     // Name + title only: enough to pick a signer, nothing more.
     contacts: contacts.results.map((c) => ({

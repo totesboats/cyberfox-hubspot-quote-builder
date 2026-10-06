@@ -122,6 +122,7 @@ const TEMPLATE_HIDE = ['one off', 'one-off', 'clone of', 'sponsorship', 'default
 // Deal properties the card reads.
 const DEAL_PROPERTIES = [
   'dealname',
+  'hubspot_owner_id',
   'sales_team',
   'promo',
   'payment_method',

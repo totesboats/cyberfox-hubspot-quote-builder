@@ -103,6 +103,7 @@ var require_config = __commonJS({
     var TEMPLATE_HIDE = ["one off", "one-off", "clone of", "sponsorship", "default "];
     var DEAL_PROPERTIES = [
       "dealname",
+      "hubspot_owner_id",
       "sales_team",
       "promo",
       "payment_method",
@@ -843,13 +844,23 @@ var require_hubspot = __commonJS({
         return { options: Object.assign({}, FALLBACK_OPTIONS), issue: `Couldn't read deal property options (${err.message}); using defaults.` };
       }
     }
+    async function loadOwner(ownerId) {
+      if (!ownerId) return null;
+      try {
+        const o = await hs(`/crm/v3/owners/${encodeURIComponent(ownerId)}`);
+        return { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(" "), firstName: o.firstName || "", lastName: o.lastName || "", email: o.email || "" };
+      } catch (err) {
+        if (err.status === 404) return null;
+        throw err;
+      }
+    }
     async function loadDeal2(dealId) {
       const deal = await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(",")}&associations=companies,contacts,quotes`);
       const assoc = (type) => (deal.associations && deal.associations[type] && deal.associations[type].results || []).map((r) => String(r.id));
       const companyIds = assoc("companies");
       const contactIds = assoc("contacts").slice(0, 25);
       const quoteIds = assoc("quotes").slice(0, 50);
-      const [companies, contacts, quotes, builderLines] = await Promise.all([
+      const [companies, contacts, quotes, builderLines, owner] = await Promise.all([
         companyIds.length ? hs("/crm/v3/objects/companies/batch/read", { method: "POST", body: { inputs: [{ id: companyIds[0] }], properties: ["name"] } }) : { results: [] },
         contactIds.length ? hs("/crm/v3/objects/contacts/batch/read", { method: "POST", body: { inputs: contactIds.map((id) => ({ id })), properties: ["firstname", "lastname", "jobtitle"] } }) : { results: [] },
         quoteIds.length ? hs("/crm/v3/objects/quotes/batch/read", {
@@ -859,7 +870,8 @@ var require_hubspot = __commonJS({
             properties: ["hs_title", "hs_quote_progression_status", "hs_quote_amount", "hs_template_type", "hs_expiration_date", "hs_createdate", QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY]
           }
         }) : { results: [] },
-        readBuilderLineItems(dealId)
+        readBuilderLineItems(dealId),
+        loadOwner(deal.properties.hubspot_owner_id)
       ]);
       const primarySession = builderLines.length ? builderLines[0].session : null;
       const company = companies.results[0];
@@ -867,6 +879,7 @@ var require_hubspot = __commonJS({
         id: String(deal.id),
         properties: deal.properties,
         salesTeam: deal.properties.sales_team || null,
+        owner,
         company: company ? { id: String(company.id), name: company.properties.name } : null,
         // Name + title only: enough to pick a signer, nothing more.
         contacts: contacts.results.map((c) => ({

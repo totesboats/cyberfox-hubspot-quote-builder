@@ -2,7 +2,7 @@ import React from 'react';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer } from '@hubspot/ui-extensions/testing';
-import { Alert, Button, Checkbox, DescriptionListItem, NumberInput, Select, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
+import { Alert, Button, Checkbox, DescriptionListItem, Input, NumberInput, Select, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
 import { QuoteBuilderApp } from '../../src/app/cards/QuoteBuilderApp.jsx';
 
 // The platform exposes hubspot.serverless via a worker global; route it to the renderer's mock.
@@ -23,7 +23,7 @@ const CATALOG_RESPONSE = {
     prod('DNS-500-Device-Commit-Additional-Devices+2026', 0.6, 'dns', 'standard', 'MSP', 'monthly', 500, 'additional'),
   ],
   templates: [{ id: '10', name: 'AutoElevate', templateType: 'CPQ_QUOTE', families: ['autoelevate'] }, { id: '11', name: 'PB / DNS', templateType: 'CUSTOMIZABLE_QUOTE_TEMPLATE', families: ['password', 'dns'] }],
-  deal: { id: '123', properties: { promo: '' }, salesTeam: 'MSP', company: { id: '9', name: 'Example MSP' }, contacts: [{ id: '501', label: 'Sample Contact — Owner' }], quoteCount: 0 },
+  deal: { id: '123', properties: { promo: '' }, salesTeam: 'MSP', owner: { id: '77', name: 'Riley Rep', email: 'riley.rep@example.com' }, company: { id: '9', name: 'Example MSP' }, contacts: [{ id: '501', label: 'Sample Contact — Owner' }], quoteCount: 0 },
   issues: [],
   dealOptions: {
     agreement_length: ['12 Months - Month-to-Month', '12 Months', '15 Months'].map((v) => ({ value: v, label: v })),
@@ -54,6 +54,8 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   // Quote-token fields live on Setup; Contract Term is gone.
   assert.equal(r.maybeFind(Select, { name: 'term' }), null);
   assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '12 Months');
+  assert.equal(r.find(Input, { name: 'seller' }).props.value, 'Riley Rep · riley.rep@example.com');
+  assert.equal(r.find(Select, { name: 'segment' }).props.value, 'MSP');
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '15 Months');
   cont().trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));

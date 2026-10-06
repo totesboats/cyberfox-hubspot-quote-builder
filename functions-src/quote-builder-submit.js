@@ -34,6 +34,7 @@ exports.main = async (context) => {
     console.error('quote-builder-submit load failed', err.message);
     return { ok: false, errors: [err.message] };
   }
+  if (!deal.owner) return { ok: false, errors: ['Assign a deal owner first. The quote\'s seller contact is always the deal owner.'] };
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ['The selected quote template no longer exists.'] };
 
@@ -68,6 +69,11 @@ exports.main = async (context) => {
       hs_template_type: template.templateType,
       hs_language: QUOTE_DEFAULTS.language,
       hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
+      // Seller contact = deal owner, always.
+      hubspot_owner_id: deal.owner.id,
+      hs_sender_firstname: deal.owner.firstName,
+      hs_sender_lastname: deal.owner.lastName,
+      hs_sender_email: deal.owner.email,
       [QUOTE_SESSION_PROPERTY]: sessionId,
       [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties),
     };

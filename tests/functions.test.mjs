@@ -17,12 +17,13 @@ const PRODUCTS = [
   prod('Timus SASE - Monthly Minimum', 250, 'timus', 'advanced', 'MSP', 'monthly', null, 'minimum'),
 ];
 
-function fakeHubSpot({ failQuote = false, quotes = [] } = {}) {
+function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
   const log = [];
   const store = { lineItems: {}, archived: [], deletedQuotes: [], quote: null, dealPatch: null };
   store.lineItems['L-old-builder'] = { qb_source: 'quote_builder', qb_session_id: 'qb-old' };
   store.lineItems['L-manual'] = { qb_source: '', qb_session_id: '' };
   store.quotes = quotes; // [{ id, properties, lineIds }]
+  store.ownerId = ownerId;
   store.dealPatches = [];
   global.fetch = async (url, init = {}) => {
     const u = new URL(url);
@@ -45,7 +46,8 @@ function fakeHubSpot({ failQuote = false, quotes = [] } = {}) {
       });
     if (p === '/crm/v3/objects/quote_templates') return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }, { id: '11', properties: { hs_name: 'Timus SASE', hs_type: 'customizable_quote_template' } }] });
     if (p === '/crm/v3/objects/deals/123' && method === 'GET')
-      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: 'USD' }, associations: { companies: { results: [{ id: '7' }] }, contacts: { results: [{ id: '501' }] }, quotes: { results: store.quotes.map((q) => ({ id: q.id })) } } });
+      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: 'USD', hubspot_owner_id: store.ownerId },  associations: { companies: { results: [{ id: '7' }] }, contacts: { results: [{ id: '501' }] }, quotes: { results: store.quotes.map((q) => ({ id: q.id })) } } });
+    if (p.startsWith('/crm/v3/owners/')) return p.endsWith('/77') ? ok({ id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }) : { ok: false, status: 404, headers: new Map(), text: async () => '{"message":"not found"}' };
     if (p === '/crm/v3/objects/companies/batch/read') return ok({ results: [{ id: '7', properties: { name: 'Example MSP' } }] });
     if (p === '/crm/v3/objects/contacts/batch/read') return ok({ results: [{ id: '501', properties: { firstname: 'Sam', lastname: 'Sample', jobtitle: 'Owner' } }] });
     if (p === '/crm/v3/objects/line_items/batch/create') {
@@ -266,4 +268,22 @@ test('deployed function files are self-contained (HubSpot ships each as a single
   const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
   assert.deepEqual(files.sort(), ['quote-builder-catalog.js', 'quote-builder-set-primary.js', 'quote-builder-submit.js']);
   for (const f of files) assert.doesNotMatch(readFileSync(new URL(f, dir), 'utf8'), /require\(["']\.\.?\//, `${f} still requires a local file`);
+});
+
+test('seller contact on the quote is always the deal owner', async () => {
+  const { store } = fakeHubSpot();
+  const res = await submitFn().main({ parameters: payload(), accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const q = store.quote.properties;
+  assert.deepEqual([q.hubspot_owner_id, q.hs_sender_firstname, q.hs_sender_lastname, q.hs_sender_email], ['77', 'Riley', 'Rep', 'riley.rep@example.com']);
+  const cat = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
+  assert.equal(cat.deal.owner.email, 'riley.rep@example.com');
+});
+
+test('no deal owner: quote is not created', async () => {
+  const { store } = fakeHubSpot({ ownerId: '' });
+  const res = await submitFn().main({ parameters: payload(), accountId: 1 });
+  assert.equal(res.ok, false);
+  assert.match(res.errors[0], /deal owner/);
+  assert.equal(store.quote, null);
 });

@@ -12,6 +12,7 @@
         "crm.objects.deals.write",
         "crm.objects.companies.read",
         "crm.objects.contacts.read",
+        "crm.objects.owners.read",
         "crm.objects.line_items.read",
         "crm.objects.line_items.write",
         "crm.objects.quotes.read",
