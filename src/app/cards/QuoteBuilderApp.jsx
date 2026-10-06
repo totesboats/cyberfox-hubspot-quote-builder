@@ -85,7 +85,11 @@ export function reducer(state, action) {
         ramp: false,
       };
       if (action.family === 'autoelevate') row.featureType = action.defaultAeFeatureType || 'Standard';
-      if (action.family === 'timus') Object.assign(row, { priceListValue: action.defaultPriceList || '', agreement: 'standard', gateways: 1, userRateOverride: 0 });
+      if (action.family === 'timus') {
+        // Rates start from the deal's current values (if any) so an existing Timus deal re-quotes as-is.
+        const t = action.timusDefaults || {};
+        Object.assign(row, { agreement: 'standard', minimum: '', satgatTier: '', gateways: 1, userRate: t.userRate ?? '', gatewayRate: t.gatewayRate ?? '' });
+      }
       return Object.assign({}, state, { products: state.products.concat([row]), nextUid: state.nextUid + 1 });
     }
     case 'updateProduct':
@@ -177,7 +181,7 @@ export function QuoteBuilderApp() {
       salesTeam: data.deal.salesTeam,
       templateType: template ? template.templateType : 'CPQ_QUOTE',
     });
-    return buildQuote(setup, state.products, rampFor(state), data.catalog, data.timusLists);
+    return buildQuote(setup, state.products, rampFor(state), data.catalog);
   }, [data, state.setup, state.products, state.ramp, template]);
   // Deal properties the quote template prints as tokens (validated against live options).
   const writes = useMemo(() => (quote ? dealWrites(quote, { setup: state.setup, notes: state.notes }, data.dealOptions) : null), [quote, state.setup, state.notes, data]);
@@ -313,12 +317,14 @@ export function QuoteBuilderApp() {
         <ProductsStep
           quote={quote}
           setup={state.setup}
-          timusLists={data.timusLists}
           onAdd={(family) =>
             dispatch({
               type: 'addProduct',
               family,
-              defaultPriceList: data.timusLists[0] ? data.timusLists[0].value : '',
+              timusDefaults: {
+                userRate: data.deal.properties.timus_price_per_user || '',
+                gatewayRate: data.deal.properties.timus_price_per_gateway || '',
+              },
               defaultAeFeatureType: data.deal.properties.sku_type || '',
             })
           }

@@ -100,20 +100,6 @@ export function indexCatalog(records) {
   return { tiers, timus, issues };
 }
 
-export function normalizeTimusList(row) {
-  const v = row.values || row;
-  const optional = (x) => (x == null || x === '' ? null : toNum(x, null));
-  return {
-    value: String(v.price_list_value || v.value || ''),
-    label: v.label || v.name || String(v.price_list_value || ''),
-    minimum: toNum(v.min_mrr != null ? v.min_mrr : v.minimum),
-    gatewayRate: toNum(v.gateway_rate != null ? v.gateway_rate : v.gatewayRate),
-    advancedUserRate: optional(v.advanced_user_rate != null ? v.advanced_user_rate : v.advancedUserRate),
-    essentialsUserRate: optional(v.essentials_user_rate != null ? v.essentials_user_rate : v.essentialsUserRate),
-    active: v.active === undefined ? true : v.active === true || v.active === 1 || v.active === 'true',
-  };
-}
-
 // Quote templates from /crm/v3/objects/quote_templates → rep-facing list.
 export function normalizeTemplates(records) {
   const typeMap = { cpq_template: 'CPQ_QUOTE', customizable_quote_template: 'CUSTOMIZABLE_QUOTE_TEMPLATE' };
@@ -189,7 +175,7 @@ export function tierOptionsFor(tiersForKey, quantity) {
   return { options, best };
 }
 
-export function priceProduct(input, setup, catalog, timusLists) {
+export function priceProduct(input, setup, catalog) {
   const family = FAMILIES[input.family];
   const quantity = Math.max(0, Math.round(toNum(input.quantity)));
   const discountPct = clamp(round2(toNum(input.discountPct)), 0, 100);
@@ -212,7 +198,7 @@ export function priceProduct(input, setup, catalog, timusLists) {
     result.error = `Unknown product family "${input.family}".`;
     return result;
   }
-  if (input.family === 'timus') return priceTimus(input, setup, catalog, timusLists, result);
+  if (input.family === 'timus') return priceTimus(input, setup, catalog, result);
 
   const edition = effectiveEdition(input);
   const key = catalogKey(input.family, edition, setup.segment, setup.billing);
@@ -285,29 +271,36 @@ export function priceProduct(input, setup, catalog, timusLists) {
   return result;
 }
 
-function priceTimus(input, setup, catalog, timusLists, result) {
-  const lists = (timusLists || []).filter((l) => l.active !== false);
-  const list = lists.find((l) => l.value === String(input.priceListValue || ''));
+// Timus SASE: priced from the Timus SKUs in the product library. Standard agreements bill a
+// "Monthly Minimum" line at the minimum the rep sets (the SKU price by default); satisfaction-guarantee
+// agreements use a SATGAT SKU. The rep enters the per-user and per-gateway prices, which print on the
+// quote through the deal properties Timus Price Per User / Timus Price Per Gateway.
+const entered = (v) => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v));
+
+function priceTimus(input, setup, catalog, result) {
   const gateways = Math.max(0, Math.round(toNum(input.gateways)));
-  result.timus = { list: list || null, gateways, userRate: null, usage: 0, rateSource: 'price list' };
-  if (!list) {
-    result.error = 'Pick a Timus price list.';
+  const userRate = round2(toNum(input.userRate));
+  const gatewayRate = round2(toNum(input.gatewayRate));
+  const satgatTiers = Object.keys(catalog.timus.satgat).map(Number).sort((a, b) => a - b);
+  result.timus = { gateways, userRate, gatewayRate, minimum: 0, usage: 0, satgatTiers };
+
+  const missing = [];
+  if (!(userRate > 0)) missing.push('Timus Price Per User');
+  if (!entered(input.gatewayRate) || gatewayRate < 0) missing.push('Timus Price Per Gateway');
+  if (missing.length) {
+    result.error = `Enter the ${missing.join(' and ')}. ${missing.length > 1 ? 'They print' : 'It prints'} on the quote.`;
     return result;
   }
-  let userRate = list.advancedUserRate;
-  if (userRate == null) {
-    userRate = toNum(input.userRateOverride, 0);
-    result.timus.rateSource = 'entered by rep';
-  }
-  const usage = round2(result.quantity * userRate + gateways * list.gatewayRate);
-  Object.assign(result.timus, { userRate, usage });
 
+  let minimum;
   if (input.agreement === 'satgat') {
-    const product = catalog.timus.satgat[list.minimum];
+    const tier = Number(input.satgatTier) || satgatTiers[0];
+    const product = catalog.timus.satgat[tier];
     if (!product) {
-      result.error = `Satisfaction-guarantee SKUs exist for the ${Object.keys(TIMUS.satgatSkuByMinimum).map((m) => '$' + m).join(', ')} minimums only.`;
+      result.error = satgatTiers.length ? `Pick a SATGAT tier (${satgatTiers.map((t) => formatMoney(t, 0)).join(', ')}).` : 'No SATGAT SKUs are tagged for the Quote Builder.';
       return result;
     }
+    minimum = tier;
     result.lines.push(
       makeLine({ family: 'timus', kind: 'satgat', productId: product.id, name: product.name, sku: product.sku, quantity: 1, unitPrice: product.price, discountPct: result.discountPct, annual: false })
     );
@@ -317,28 +310,32 @@ function priceTimus(input, setup, catalog, timusLists, result) {
       result.error = `The "${TIMUS.minimumSku}" product is not tagged for the Quote Builder.`;
       return result;
     }
+    minimum = entered(input.minimum) && toNum(input.minimum) > 0 ? round2(toNum(input.minimum)) : product.price;
     result.lines.push(
       makeLine({
         family: 'timus',
         kind: 'minimum',
         productId: product.id,
-        name: `Timus SASE - $${formatInt(list.minimum)} Tier`,
+        name: minimum === product.price ? product.name : `${product.name} - ${formatMoney(minimum, 0)}`,
         sku: product.sku,
         quantity: 1,
-        unitPrice: list.minimum,
+        unitPrice: minimum,
         discountPct: result.discountPct,
         annual: false,
       })
     );
   }
+  const usage = round2(result.quantity * userRate + gateways * gatewayRate);
+  Object.assign(result.timus, { minimum, usage });
+
   if (setup.billing !== 'monthly') {
     result.hint = 'Timus SASE bills monthly against its minimum, whatever billing is set for the quote. ';
     result.hintLevel = 'warning';
   }
-  if (usage <= list.minimum) {
-    result.hint += `Estimated usage ${formatMoney(usage)}/mo is covered by the ${formatMoney(list.minimum, 0)} monthly minimum.`;
+  if (usage <= minimum) {
+    result.hint += `Estimated usage ${formatMoney(usage)}/mo is covered by the ${formatMoney(minimum, 0)} monthly minimum.`;
   } else {
-    result.hint += `Estimated usage ${formatMoney(usage)}/mo is ${formatMoney(usage - list.minimum)} over the ${formatMoney(list.minimum, 0)} minimum. Overage bills in the Timus portal; consider the next tier.`;
+    result.hint += `Estimated usage ${formatMoney(usage)}/mo is ${formatMoney(usage - minimum)} over the ${formatMoney(minimum, 0)} monthly minimum. Overage bills in the Timus portal; consider a higher minimum.`;
     result.hintLevel = 'warning';
   }
   return result;
@@ -407,7 +404,7 @@ export function effectiveBilling(setup) {
 // The rep picks the Agreement Length (what prints on the quote). It includes any ramp:
 // ramped products run RAMP lines for the ramp months, then the plan for the rest;
 // products not on the ramp run the plan for the whole agreement.
-export function buildQuote(setup, inputs, rampInput, catalog, timusLists) {
+export function buildQuote(setup, inputs, rampInput, catalog) {
   const ramp = normalizeRamp(rampInput);
   const billing = effectiveBilling(setup);
   const priceSetup = Object.assign({}, setup, { billing });
@@ -422,7 +419,7 @@ export function buildQuote(setup, inputs, rampInput, catalog, timusLists) {
   const rampDiscount = ramp.mode === 'free' ? 100 : ramp.percent;
 
   const rows = (inputs || []).map((input) => {
-    const priced = priceProduct(input, priceSetup, catalog, timusLists);
+    const priced = priceProduct(input, priceSetup, catalog);
     const usable = !priced.error && priced.lines.length > 0;
     const ramped = ramp.enabled && !!input.ramp && usable;
     const mainTerm = m2m ? 1 : Math.max(1, ramped ? agreement - ramp.months : agreement);
@@ -605,13 +602,13 @@ export function dealWrites(quote, { setup = {}, notes = '' } = {}, enumOptions =
   }
 
   const timusRow = quote.rows.find((r) => r.input.family === 'timus' && r.usable);
-  if (timusRow && timusRow.priced.timus && timusRow.priced.timus.list) {
+  if (timusRow && timusRow.priced.timus) {
+    // Timus Price List is being retired, so the builder leaves it untouched.
     const t = timusRow.priced.timus;
     Object.assign(properties, {
-      timus_price_list: t.list.value,
       timus_price_per_user: t.userRate.toFixed(2),
-      timus_price_per_gateway: t.list.gatewayRate.toFixed(2),
-      new_minimum_commitment_amount: String(t.list.minimum),
+      timus_price_per_gateway: t.gatewayRate.toFixed(2),
+      new_minimum_commitment_amount: String(t.minimum),
     });
   }
   return { properties, errors, warnings, agreementLength, paymentFrequency };

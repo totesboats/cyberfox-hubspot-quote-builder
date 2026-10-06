@@ -50,7 +50,6 @@ GitHub → repo → **Actions → Setup scripts → Run workflow**:
 
 1. `properties`, Apply unticked → check the log → run again with **Apply** ticked.
 2. `tag-products`, Apply unticked → download the **tag-products-review** artifact (CSV) from the run page and check it → run again with Apply ticked.
-3. `timus-hubdb`, same pattern → then fill user rates in HubDB and publish.
 
 Then HubSpot → **Development → Projects → cyberfox-quote-builder → the app → Install**, and continue with START-HERE steps 6–8.
 

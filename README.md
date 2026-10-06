@@ -4,7 +4,7 @@ A HubSpot app card on the **Deal** record (“Quote Builder” tab) that builds 
 AutoElevate, Password Manager, DNS Filtering, Timus SASE, Optimize365 and CyberFOX Bundles:
 
 1. **Setup**: template, segment, SKU pricing (monthly or annual), expiry, signer, and the deal properties the quote prints: **Agreement Length, Payment Frequency, Payment Method, Invoice Terms, Promo**. Their dropdowns are the properties' own options in HubSpot.
-2. **Products & ramp**: rep enters a total count; the builder picks the cheapest commit tier and adds the overage (“Additional”) SKU. AutoElevate rows pick an **AE Feature Type**. Timus uses a price list, monthly minimum or SATGAT SKU, and a usage-vs-minimum check. Each product has a **Ramp** box; ticking any of them shows the Ramp & schedule section (1–6 months, free or % off, plus the billing schedule) on the same page. Untick them all and the section disappears.
+2. **Products & ramp**: rep enters a total count; the builder picks the cheapest commit tier and adds the overage (“Additional”) SKU. AutoElevate rows pick an **AE Feature Type**. Timus uses the Timus SKUs (Monthly Minimum at the minimum the rep sets, or a SATGAT SKU); the rep enters **Timus Price Per User** and **Timus Price Per Gateway**, which print on the quote, and the card checks estimated usage against the minimum. Each product has a **Ramp** box; ticking any of them shows the Ramp & schedule section (1–6 months, free or % off, plus the billing schedule) on the same page. Untick them all and the section disappears.
 3. **Review & create**: exact line items, the quote-token values, notes for approvers, approval preview → creates a **draft** HubSpot quote.
 
 **Agreement Length drives the terms.** There is no separate Contract Term field. A ramped product gets RAMP lines for the ramp months and its plan for the rest (15 Months with a 3-month ramp → RAMP P3M + plan P12M); products not on the ramp run the plan for the whole agreement. Choosing the Month-to-Month agreement switches the SKUs to month-to-month.
@@ -23,7 +23,7 @@ src/app/
   functions/quote-builder-submit.js    rebuilds the quote server-side and writes it
   functions/quote-builder-set-primary.js  switches which option's line items sit on the deal
 shared/config.mjs, shared/pricing.mjs  business rules + pricing (single source of truth)
-scripts/                               one-time setup (properties, product tagging, HubDB)
+scripts/                               one-time setup (properties, product tagging)
 tests/                                 unit, function (fake HubSpot API) and card render tests
 ```
 
@@ -38,7 +38,7 @@ tests/                                 unit, function (fake HubSpot API) and car
 | Deal line items | One per line, associated to the deal (type 20), `hs_product_id` linked, price/qty/discount/term/frequency, `ramp`, `approval_discount` (0 on RAMP lines), `approval_ramp_months`, `qb_source = quote_builder`, `qb_session_id` |
 | Quote line items | A separate copy of each (CPQ requires quote lines distinct from deal lines) |
 | Quote | `hs_title`, `hs_expiration_date`, `hs_template_type`, language, currency; associations: deal 64, line items 67, template 286, contact 69, signer 702 (CPQ + e-sign). CPQ: `hs_acceptance_method`. Legacy: `hs_status = DRAFT` |
-| Deal (quote tokens) | `agreement_length` (as chosen on Setup), `payment_terms` (Payment Frequency: follows billing unless the rep picks one), `payment_method`, `invoice_terms`, `promo`; for AutoElevate `sku_type` (AE Feature Type) and `ae_feature_type_details`; for Timus `timus_price_list`, `timus_price_per_user`, `timus_price_per_gateway`, `new_minimum_commitment_amount`. Also `hubspot_quote_notes`. `contract_term` is **not** written (set `WRITE_CONTRACT_TERM` in `shared/config.mjs` if something downstream still reads it) |
+| Deal (quote tokens) | `agreement_length` (as chosen on Setup), `payment_terms` (Payment Frequency: follows billing unless the rep picks one), `payment_method`, `invoice_terms`, `promo`; for AutoElevate `sku_type` (AE Feature Type) and `ae_feature_type_details`; for Timus `timus_price_per_user`, `timus_price_per_gateway` (both entered by the rep) and `new_minimum_commitment_amount`. `timus_price_list` is being retired and is never written. Also `hubspot_quote_notes`. `contract_term` is **not** written (set `WRITE_CONTRACT_TERM` in `shared/config.mjs` if something downstream still reads it) |
 | Cleanup | For the primary option, archives the line items the previous primary option left on the deal (matched by `qb_source`); it never touches lines created any other way |
 
 If any write fails, everything that run created is archived again and the rep sees the error.
@@ -66,16 +66,13 @@ The texts are the ones already on your deals. The deal holds one AE Feature Type
 
 ## Setup (once)
 
-Needs Node 22+, the HubSpot CLI (`npm i -g @hubspot/cli`, `hs auth`) and, for the scripts, `HUBSPOT_TOKEN` = an Ops private-app token (not production-shared; store it in a password manager, not the repo) that can create product and line item properties, read/update products (`e-commerce`), read deal properties and manage HubDB (`hubdb.tables.read/write/publish`, `hubdb.rows.read/write`). HubSpot names any missing scope in the error. Every script is a dry run unless you pass `--apply`.
+Needs Node 22+, the HubSpot CLI (`npm i -g @hubspot/cli`, `hs auth`) and, for the scripts, `HUBSPOT_TOKEN` = an Ops private-app token (not production-shared; store it in a password manager, not the repo) that can create product and line item properties, read/update products (`e-commerce`), and read quote and deal property settings (`crm.schemas.quotes.read/write`, `crm.schemas.deals.read`, `crm.schemas.line_items.read`). HubSpot names any missing scope in the error. Every script is a dry run unless you pass `--apply`.
 
 ```bash
 npm install
 npm run setup:properties -- --apply      # qb_* product props; qb_source/qb_session_id line item props; qb_session_id/qb_builder_state quote props
 npm run setup:tag-products               # writes product-tagging-review.csv — review it
 npm run setup:tag-products -- --apply    # tags rows with status "ok" (365 of 372 today)
-npm run setup:timus-hubdb                # writes timus-price-lists-seed.csv — review it
-npm run setup:timus-hubdb -- --apply     # creates + publishes the HubDB table
-#   → then fill advanced_user_rate (and essentials) per price list in HubDB and publish
 npm run check                            # sync + unit/function tests + typecheck + card render tests
 hs project upload                        # build and deploy
 ```
@@ -95,7 +92,7 @@ These won't be tagged until fixed, so they won't appear in the builder:
 - One-off SKUs (`…-1off`): AE Advanced 250 annual (base + additional) and AE Advanced ENT annual 500 additional.
 - `DNS-750-Device-Commi-…-E-2026` (monthly + annual): SKU typo, still tags correctly.
 - PB6 commit tiers only have scattered “Additional User” SKUs, so PB commit is priced as whole tiers (no overage line).
-- Timus per-user rates are not in HubSpot today; the HubDB table holds them. If a list has no rate the card asks the rep for the agreed rate and records it on the deal.
+- Timus has no per-user or gateway SKUs; reps enter those prices on the Timus row and they print through the deal properties.
 
 ## Decisions to confirm
 
@@ -112,4 +109,4 @@ These won't be tagged until fixed, so they won't appear in the builder:
 
 ## Tests
 
-`npm run check` runs 53 tests: pricing/ramp/approval math, tagging (including a price book switch) and HubDB parsing, both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and three card flows rendered with HubSpot's test renderer. Fixtures are synthetic.
+`npm run check` runs 54 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and four card flows rendered with HubSpot's test renderer. Fixtures are synthetic.

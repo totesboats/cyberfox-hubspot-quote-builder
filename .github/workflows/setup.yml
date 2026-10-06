@@ -12,7 +12,6 @@ on:
         options:
           - properties
           - tag-products
-          - timus-hubdb
       apply:
         description: Apply changes (leave unticked for a dry run)
         type: boolean
@@ -29,7 +28,7 @@ jobs:
         with:
           node-version: 24
       - name: Run setup:${{ inputs.script }}
-        run: node scripts/${{ inputs.script == 'properties' && 'create-properties' || inputs.script == 'tag-products' && 'tag-products' || 'create-timus-hubdb' }}.mjs ${{ inputs.apply && '--apply' || '' }}
+        run: node scripts/${{ inputs.script == 'properties' && 'create-properties' || 'tag-products' }}.mjs ${{ inputs.apply && '--apply' || '' }}
       - name: Upload review CSV
         if: always()
         uses: actions/upload-artifact@v4

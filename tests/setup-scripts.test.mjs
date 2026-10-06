@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classify } from '../scripts/tag-products.mjs';
-import { parseLabel } from '../scripts/create-timus-hubdb.mjs';
 import { normalizeTemplates, suggestTemplate } from '../shared/pricing.mjs';
 
 const P = (name, sku, folder, freq = 'monthly') => ({ name, hs_sku: sku, hs_folder: `${folder} (auto_generated_x)`, recurringbillingfrequency: freq });
@@ -30,13 +29,6 @@ test('classify: Timus minimum and SATGAT', () => {
   const sat = classify(P('Timus SASE - SATGAT II', 'Timus SASE - SATGAT II', 'Timus - Advanced 2026'));
   assert.equal(sat.tags.qb_component, 'satgat');
   assert.equal(sat.tags.qb_tier, '500');
-});
-
-test('parseLabel reads minimum and gateway rate', () => {
-  assert.deepEqual(parseLabel('Tier 3 - $1000 (GW 50)'), { min_mrr: 1000, gateway_rate: 50 });
-  assert.deepEqual(parseLabel('Tier 4 - $10,000 (GW 50)'), { min_mrr: 10000, gateway_rate: 50 });
-  assert.deepEqual(parseLabel('Pax8 Tier - $1500'), { min_mrr: 1500, gateway_rate: null });
-  assert.deepEqual(parseLabel('PoC'), { min_mrr: null, gateway_rate: null });
 });
 
 test('templates: CPQ first, hidden one-offs, suggestion by product', () => {

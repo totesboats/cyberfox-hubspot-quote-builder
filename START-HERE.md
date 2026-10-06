@@ -33,7 +33,6 @@ HubSpot → Settings → Integrations → **Legacy Apps** → **Create a private
 - `crm.schemas.line_items.read`
 - `crm.schemas.quotes.read`, `crm.schemas.quotes.write`
 - `crm.schemas.deals.read`
-- `hubdb.tables.read`, `hubdb.tables.write`, `hubdb.tables.publish`, `hubdb.rows.read`, `hubdb.rows.write`
 
 Copy the token **into PowerShell only** (never into chat, email or a file):
 
@@ -52,7 +51,7 @@ npm run setup:properties -- --apply
 
 Adds a "Quote Builder" group of properties on Products, Line items and Quotes. Nothing existing changes.
 
-## 4. Tag products, seed Timus price lists
+## 4. Tag products
 
 ```powershell
 npm run setup:tag-products            # writes product-tagging-review.csv
@@ -62,11 +61,7 @@ Open the CSV in Excel: expect ~365 `ok` and 7 `skip`. Then:
 
 ```powershell
 npm run setup:tag-products -- --apply
-npm run setup:timus-hubdb             # writes timus-price-lists-seed.csv
-npm run setup:timus-hubdb -- --apply
 ```
-
-HubSpot → Marketing → Files and Templates → **HubDB** → "Quote Builder – Timus price lists": fill **advanced_user_rate** for the lists you'll test → **Publish**.
 
 ## 5. Upload and install the app
 
@@ -94,7 +89,7 @@ Create company **TEST – Quote Builder**, a contact with a job title, and a dea
 | 3 | Discount 35% | Approval reason; Commerce Hub approval fires |
 | 4 | AE Feature Type = Advanced (GrandFathered) | Details text "1,000 agents include advanced features…" |
 | 5 | Enterprise + Annual SKUs, Password Manager + DNS | Annual SKUs; Payment Frequency Annual Payments |
-| 6 | Timus with a filled-in price list | Monthly Minimum line at tier; Timus deal fields set; check legacy Timus template too |
+| 6 | Timus: 150 users, 2 gateways, Price Per User 4.50, Price Per Gateway 50, minimum $1,000; then SATGAT II | Monthly Minimum line at $1,000 (SATGAT II line at $500); Timus Price Per User / Per Gateway / New Minimum Commitment set on the deal and printed; Timus Price List untouched; check the legacy Timus template too |
 | 7 | Publish #1 → New option from this → 250 agents, not primary → Make primary | #1 keeps its printed values; deal amount switches on Make primary |
 
 For each: preview the quote (tokens print correctly) and check the deal's line items and fields.

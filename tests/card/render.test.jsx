@@ -23,7 +23,6 @@ const CATALOG_RESPONSE = {
     prod('DNS-500-Device-Commit-Additional-Devices+2026', 0.6, 'dns', 'standard', 'MSP', 'monthly', 500, 'additional'),
   ],
   templates: [{ id: '10', name: 'AutoElevate', templateType: 'CPQ_QUOTE', families: ['autoelevate'] }, { id: '11', name: 'PB / DNS', templateType: 'CUSTOMIZABLE_QUOTE_TEMPLATE', families: ['password', 'dns'] }],
-  timusLists: [],
   deal: { id: '123', properties: { promo: '' }, salesTeam: 'MSP', company: { id: '9', name: 'Example MSP' }, contacts: [{ id: '501', label: 'Sample Contact — Owner' }], quoteCount: 0 },
   issues: [],
   dealOptions: {
@@ -172,4 +171,45 @@ test('catalog failure shows an error state with retry', async () => {
   r.render(<QuoteBuilderApp />);
   await r.waitFor(() => assert.match(text(r.getRootNode()), /couldn't load/));
   assert.match(text(r.getRootNode()), /403/);
+});
+
+test('Timus: rep enters per-user and per-gateway prices; they print as deal tokens', async () => {
+  const r = mk();
+  const timusCatalog = Object.assign({}, CATALOG_RESPONSE, {
+    products: CATALOG_RESPONSE.products.concat([
+      prod('Timus SASE - Monthly Minimum', 250, 'timus', 'advanced', 'MSP', 'monthly', null, 'minimum'),
+      prod('Timus SASE - SATGAT', 250, 'timus', 'advanced', 'MSP', 'monthly', 250, 'satgat'),
+      prod('Timus SASE - SATGAT II', 500, 'timus', 'advanced', 'MSP', 'monthly', 500, 'satgat'),
+    ]),
+  });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: timusCatalog }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ Timus SASE/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'rate-1' })));
+  assert.equal(r.maybeFind(Select, { name: 'pl-1' }), null); // no price list picker
+  assert.equal(r.find(NumberInput, { name: 'rate-1' }).props.label, 'Timus Price Per User');
+  assert.equal(r.find(NumberInput, { name: 'gwrate-1' }).props.label, 'Timus Price Per Gateway');
+  await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: "Can't price this product" })));
+
+  r.find(NumberInput, { name: 'rate-1' }).trigger('onChange', 4.5);
+  r.find(NumberInput, { name: 'gwrate-1' }).trigger('onChange', 50);
+  r.find(NumberInput, { name: 'min-1' }).trigger('onChange', 500);
+  await r.waitFor(() => assert.equal(r.maybeFind(Alert, { title: "Can't price this product" }), null));
+  assert.match(text(r.getRootNode()), /\$500\.00\/mo/);
+
+  r.find(Select, { name: 'ag-1' }).trigger('onChange', 'satgat');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'sat-1' })));
+  assert.deepEqual(r.find(Select, { name: 'sat-1' }).props.options.map((o) => o.value), [250, 500]);
+  r.find(Select, { name: 'sat-1' }).trigger('onChange', 500);
+
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
+  const token = (label) => r.find(DescriptionListItem, { label }).text;
+  assert.equal(token('Timus Price Per User'), '4.50');
+  assert.equal(token('Timus Price Per Gateway'), '50.00');
+  assert.equal(token('Timus New Minimum Commitment Amount'), '500');
+  assert.equal(r.maybeFind(DescriptionListItem, { label: 'Timus Price List' }), null);
 });

@@ -44,50 +44,69 @@ function StandardFields({ input, priced, family, onUpdate }) {
   );
 }
 
-function TimusFields({ input, priced, timusLists, onUpdate }) {
-  const list = priced.timus && priced.timus.list;
-  const needsRate = list && list.advancedUserRate == null;
+function TimusFields({ input, priced, onUpdate }) {
+  const t = priced.timus || { satgatTiers: [] };
+  const satgat = input.agreement === 'satgat';
+  const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
   return (
     <AutoGrid columnWidth={170} gap="medium" flexible>
-      <Select
-        label="Timus price list"
-        name={`pl-${input.uid}`}
-        placeholder={timusLists.length ? 'Choose a price list' : 'No price lists in HubDB'}
-        options={timusLists.map((l) => ({ label: l.label, value: l.value }))}
-        value={input.priceListValue}
-        onChange={(v) => onUpdate({ priceListValue: String(v) })}
-      />
       <Select
         label="Agreement"
         name={`ag-${input.uid}`}
         options={[
-          { label: 'Standard', value: 'standard' },
+          { label: 'Monthly minimum', value: 'standard' },
           { label: 'Satisfaction guarantee (SATGAT)', value: 'satgat' },
         ]}
         value={input.agreement || 'standard'}
         onChange={(v) => onUpdate({ agreement: String(v) })}
       />
-      <NumberInput label="Users" name={`users-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
-      <NumberInput label="Gateways" name={`gw-${input.uid}`} min={0} precision={0} value={Number(input.gateways) || 0} onChange={(v) => onUpdate({ gateways: v })} />
-      {needsRate ? (
-        <NumberInput
-          label="Advanced user rate"
-          name={`rate-${input.uid}`}
-          description="Not set on this price list; enter the agreed rate."
-          min={0}
-          precision={2}
-          value={Number(input.userRateOverride) || 0}
-          onChange={(v) => onUpdate({ userRateOverride: v })}
+      {satgat ? (
+        <Select
+          label="SATGAT tier"
+          name={`sat-${input.uid}`}
+          options={t.satgatTiers.map((tier) => ({ label: `${formatMoney(tier, 0)} minimum`, value: tier }))}
+          value={Number(input.satgatTier) || t.satgatTiers[0]}
+          onChange={(v) => onUpdate({ satgatTier: Number(v) })}
         />
       ) : (
-        <NumberInput label="Advanced user rate" name={`rate-${input.uid}`} readOnly precision={2} value={list ? list.advancedUserRate : 0} description="From the price list" />
+        <NumberInput
+          label="Monthly minimum"
+          name={`min-${input.uid}`}
+          description="Leave blank for the Monthly Minimum SKU price."
+          min={0}
+          precision={2}
+          value={num(input.minimum)}
+          onChange={(v) => onUpdate({ minimum: v })}
+        />
       )}
+      <NumberInput label="Users" name={`users-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
+      <NumberInput label="Gateways" name={`gw-${input.uid}`} min={0} precision={0} value={Number(input.gateways) || 0} onChange={(v) => onUpdate({ gateways: v })} />
+      <NumberInput
+        label="Timus Price Per User"
+        name={`rate-${input.uid}`}
+        required
+        min={0}
+        precision={2}
+        description="Prints on the quote."
+        value={num(input.userRate)}
+        onChange={(v) => onUpdate({ userRate: v })}
+      />
+      <NumberInput
+        label="Timus Price Per Gateway"
+        name={`gwrate-${input.uid}`}
+        required
+        min={0}
+        precision={2}
+        description="Prints on the quote."
+        value={num(input.gatewayRate)}
+        onChange={(v) => onUpdate({ gatewayRate: v })}
+      />
       <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
     </AutoGrid>
   );
 }
 
-function ProductTile({ row, timusLists, onUpdate, onRemove }) {
+function ProductTile({ row, onUpdate, onRemove }) {
   const { input, priced } = row;
   const family = FAMILIES[input.family];
   const edition =
@@ -114,7 +133,7 @@ function ProductTile({ row, timusLists, onUpdate, onRemove }) {
         </Flex>
 
         {input.family === 'timus' ? (
-          <TimusFields input={input} priced={priced} timusLists={timusLists} onUpdate={update} />
+          <TimusFields input={input} priced={priced} onUpdate={update} />
         ) : (
           <StandardFields input={input} priced={priced} family={family} onUpdate={update} />
         )}
@@ -144,7 +163,7 @@ function ProductTile({ row, timusLists, onUpdate, onRemove }) {
   );
 }
 
-export function ProductsStep({ quote, setup, ramp, timusLists, onAdd, onUpdate, onRemove, onRamp }) {
+export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, onRamp }) {
   const segment = (SEGMENTS.find((s) => s.value === setup.segment) || SEGMENTS[0]).label;
   return (
     <Flex direction="column" gap="medium">
@@ -163,7 +182,7 @@ export function ProductsStep({ quote, setup, ramp, timusLists, onAdd, onUpdate, 
       ))}
 
       {quote.rows.map((row) => (
-        <ProductTile key={row.input.uid} row={row} timusLists={timusLists} onUpdate={onUpdate} onRemove={onRemove} />
+        <ProductTile key={row.input.uid} row={row} onUpdate={onUpdate} onRemove={onRemove} />
       ))}
 
       <Tile compact>

@@ -44,7 +44,6 @@ function fakeHubSpot({ failQuote = false, quotes = [] } = {}) {
         ],
       });
     if (p === '/crm/v3/objects/quote_templates') return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }, { id: '11', properties: { hs_name: 'Timus SASE', hs_type: 'customizable_quote_template' } }] });
-    if (p.startsWith('/cms/v3/hubdb/tables/')) return ok({ results: [{ values: { price_list_value: 'pl-1000', label: 'Tier 3 - $1000 (GW 50)', min_mrr: 1000, gateway_rate: 50, advanced_user_rate: 4.55, active: 1 } }] });
     if (p === '/crm/v3/objects/deals/123' && method === 'GET')
       return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: 'USD' }, associations: { companies: { results: [{ id: '7' }] }, contacts: { results: [{ id: '501' }] }, quotes: { results: store.quotes.map((q) => ({ id: q.id })) } } });
     if (p === '/crm/v3/objects/companies/batch/read') return ok({ results: [{ id: '7', properties: { name: 'Example MSP' } }] });
@@ -101,13 +100,12 @@ const payload = (over = {}) =>
 const catalogFn = () => require('../src/app/functions/quote-builder-catalog.js');
 const submitFn = () => require('../src/app/functions/quote-builder-submit.js');
 
-test('catalog function returns tagged products, templates, Timus lists and deal context', async () => {
+test('catalog function returns tagged products, templates and deal context', async () => {
   fakeHubSpot();
   const res = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 2585282 });
   assert.equal(res.ok, true);
   assert.equal(res.products.length, 3);
   assert.deepEqual(res.templates.map((t) => t.templateType), ['CPQ_QUOTE', 'CUSTOMIZABLE_QUOTE_TEMPLATE']);
-  assert.equal(res.timusLists[0].advancedUserRate, 4.55);
   assert.equal(res.deal.company.name, 'Example MSP');
   assert.deepEqual(res.dealOptions.promo, []); // hidden options are dropped
   assert.equal(res.dealOptions.payment_terms[0].label, 'Monthly');
@@ -188,7 +186,7 @@ test('legacy template: DRAFT status, no acceptance method; Timus writes deal fie
   const res = await submitFn().main({
     parameters: payload({
       setup: Object.assign(payload().setup, { templateId: '11' }),
-      products: [{ uid: 2, family: 'timus', quantity: 150, gateways: 2, discountPct: 0, priceListValue: 'pl-1000', agreement: 'standard', ramp: false }],
+      products: [{ uid: 2, family: 'timus', quantity: 150, gateways: 2, discountPct: 0, agreement: 'standard', minimum: 1000, userRate: 4.55, gatewayRate: 50, ramp: false }],
       ramp: { enabled: false },
     }),
     accountId: 1,
@@ -197,9 +195,10 @@ test('legacy template: DRAFT status, no acceptance method; Timus writes deal fie
   assert.equal(store.quote.properties.hs_status, 'DRAFT');
   assert.equal(store.quote.properties.hs_acceptance_method, undefined);
   assert.ok(!store.quote.associations.some((a) => a.types[0].associationTypeId === 702));
-  assert.equal(store.dealPatch.timus_price_list, 'pl-1000');
+  assert.equal(store.dealPatch.timus_price_list, undefined);
   assert.equal(store.dealPatch.new_minimum_commitment_amount, '1000');
   assert.equal(store.dealPatch.timus_price_per_user, '4.55');
+  assert.equal(store.dealPatch.timus_price_per_gateway, '50.00');
 });
 
 // ---------------------------------------------------------------------------

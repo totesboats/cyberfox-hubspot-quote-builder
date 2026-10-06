@@ -55,7 +55,7 @@ Not affected: existing deals, line items and quotes keep their 2026 lines and pr
 
 ## 4. The rest of the checklist
 
-- **Timus price lists (HubDB).** If per-user or gateway rates change, edit the rows in *Quote Builder – Timus price lists* and **Publish**. If the minimum or SATGAT SKUs get new names, tell Claude (they're in `TIMUS` in `shared/config.mjs`).
+- **Timus.** Reps enter the per-user and per-gateway prices on each quote, so rate changes need nothing here. If the Monthly Minimum or SATGAT SKUs get new names, tell Claude (they're in `TIMUS` in `shared/config.mjs`).
 - **AE Feature Type wording.** If the AutoElevate quote text changes, update `AE_FEATURE_TYPES` in `shared/config.mjs`.
 - **Quote templates.** If 2027 templates get new names, check that the Setup step still suggests the right one (`TEMPLATE_HINTS`).
 - **Smoke test.** On the test deal, build one quote per product family and compare prices to the 2027 price sheet.

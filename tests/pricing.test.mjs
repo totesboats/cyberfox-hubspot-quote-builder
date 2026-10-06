@@ -30,10 +30,6 @@ const RECORDS = [
   prod('Timus SASE - SATGAT III', 1000, 'timus', 'advanced', 'MSP', 'monthly', 1000, 'satgat'),
 ];
 const CATALOG = P.indexCatalog(RECORDS);
-const TIMUS_LISTS = [
-  P.normalizeTimusList({ values: { price_list_value: 'pl-1000', label: 'Tier 3 - $1000 (GW 50)', min_mrr: 1000, gateway_rate: 50, advanced_user_rate: 4.55 } }),
-  P.normalizeTimusList({ values: { price_list_value: 'pl-750', label: 'Tier 2 - $750 (GW 50)', min_mrr: 750, gateway_rate: 50, advanced_user_rate: null } }),
-];
 const MSP = { segment: 'MSP', billing: 'monthly', agreementLength: '15 Months', salesTeam: 'MSP', templateType: 'CPQ_QUOTE' };
 const ae = (over = {}) => Object.assign({ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, discountPct: 10, ramp: true }, over);
 
@@ -51,7 +47,7 @@ test('catalog reports duplicate SKUs for the same slot', () => {
 });
 
 test('picks the cheapest tier: 1,250 agents = 1,000 commit + 250 additional', () => {
-  const r = P.priceProduct(ae(), MSP, CATALOG, TIMUS_LISTS);
+  const r = P.priceProduct(ae(), MSP, CATALOG);
   assert.equal(r.error, '');
   assert.equal(r.chosenTier, 1000);
   assert.equal(r.lines.length, 2);
@@ -61,7 +57,7 @@ test('picks the cheapest tier: 1,250 agents = 1,000 commit + 250 additional', ()
 });
 
 test('warns when the rep forces a pricier tier', () => {
-  const r = P.priceProduct(ae({ tier: 1500 }), MSP, CATALOG, TIMUS_LISTS);
+  const r = P.priceProduct(ae({ tier: 1500 }), MSP, CATALOG);
   assert.equal(r.chosenTier, 1500);
   assert.equal(r.lines.length, 1);
   assert.equal(r.hintLevel, 'warning');
@@ -69,27 +65,27 @@ test('warns when the rep forces a pricier tier', () => {
 });
 
 test('pack SKUs buy enough packs: 300 users = one 500-user pack', () => {
-  const r = P.priceProduct({ uid: 2, family: 'password', edition: 'pack', quantity: 300, discountPct: 0 }, MSP, CATALOG, TIMUS_LISTS);
+  const r = P.priceProduct({ uid: 2, family: 'password', edition: 'pack', quantity: 300, discountPct: 0 }, MSP, CATALOG);
   assert.equal(r.chosenTier, 500);
   assert.equal(r.lines[0].quantity, 1);
   assert.equal(r.lines[0].net, 379);
 });
 
 test('missing segment/billing combination is a blocking error', () => {
-  const q = P.buildQuote(Object.assign({}, MSP, { billing: 'annual' }), [ae()], {}, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(Object.assign({}, MSP, { billing: 'annual' }), [ae()], {}, CATALOG);
   assert.equal(q.lines.length, 0);
   assert.equal(q.blocking.length, 1);
   assert.match(q.blocking[0].error, /No MSP annual/);
 });
 
 test('enterprise annual SKUs are valued per month', () => {
-  const r = P.priceProduct(ae({ quantity: 500, discountPct: 0 }), Object.assign({}, MSP, { segment: 'ENT', billing: 'annual' }), CATALOG, TIMUS_LISTS);
+  const r = P.priceProduct(ae({ quantity: 500, discountPct: 0 }), Object.assign({}, MSP, { segment: 'ENT', billing: 'annual' }), CATALOG);
   assert.equal(r.annual, true);
   assert.equal(r.lines[0].mrr, 860);
 });
 
 test('3-month free ramp: RAMP lines, totals and approval', () => {
-  const q = P.buildQuote(MSP, [ae()], { enabled: true, months: 3, mode: 'free' }, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(MSP, [ae()], { enabled: true, months: 3, mode: 'free' }, CATALOG);
   assert.equal(q.lines.length, 4);
   const rampLines = q.lines.filter((l) => l.ramp);
   assert.equal(rampLines.length, 2);
@@ -106,7 +102,7 @@ test('3-month free ramp: RAMP lines, totals and approval', () => {
 });
 
 test('percent ramp uses the ramp discount, not the plan discount', () => {
-  const q = P.buildQuote(MSP, [ae()], { enabled: true, months: 2, mode: 'percent', percent: 50 }, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(MSP, [ae()], { enabled: true, months: 2, mode: 'percent', percent: 50 }, CATALOG);
   const r = q.lines.find((l) => l.ramp && l.kind === 'base');
   assert.equal(r.discountPct, 50);
   assert.equal(r.net, 525);
@@ -114,14 +110,14 @@ test('percent ramp uses the ramp discount, not the plan discount', () => {
 });
 
 test('discount threshold is inclusive at 30%', () => {
-  assert.equal(P.buildQuote(MSP, [ae({ discountPct: 29.99, ramp: false })], {}, CATALOG, TIMUS_LISTS).approval.required, false);
-  const q = P.buildQuote(MSP, [ae({ discountPct: 30, ramp: false })], {}, CATALOG, TIMUS_LISTS);
+  assert.equal(P.buildQuote(MSP, [ae({ discountPct: 29.99, ramp: false })], {}, CATALOG).approval.required, false);
+  const q = P.buildQuote(MSP, [ae({ discountPct: 30, ramp: false })], {}, CATALOG);
   assert.equal(q.approval.required, true);
   assert.match(q.approval.reasons[0], /30% discount on AutoElevate/);
 });
 
 test('legacy templates flag approvals as manual', () => {
-  const q = P.buildQuote(Object.assign({}, MSP, { templateType: 'CUSTOMIZABLE_QUOTE_TEMPLATE' }), [ae({ discountPct: 40 })], {}, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(Object.assign({}, MSP, { templateType: 'CUSTOMIZABLE_QUOTE_TEMPLATE' }), [ae({ discountPct: 40 })], {}, CATALOG);
   assert.equal(q.approval.manual, true);
 });
 
@@ -129,25 +125,40 @@ test('approver falls back to Operations for unknown teams', () => {
   assert.equal(P.evaluateApproval({ maxDiscountPct: 50, rampMonths: 0, salesTeam: 'Events' }).approver, 'Operations team');
 });
 
-test('Timus: minimum line at the price list minimum, usage check', () => {
-  const r = P.priceProduct({ uid: 3, family: 'timus', quantity: 150, gateways: 2, discountPct: 0, priceListValue: 'pl-1000', agreement: 'standard' }, MSP, CATALOG, TIMUS_LISTS);
+const timus = (o = {}) => Object.assign({ uid: 3, family: 'timus', quantity: 150, gateways: 2, discountPct: 0, agreement: 'standard', minimum: 1000, userRate: 4.55, gatewayRate: 50 }, o);
+
+test('Timus: Monthly Minimum line at the minimum the rep sets, usage check', () => {
+  const r = P.priceProduct(timus(), MSP, CATALOG);
   assert.equal(r.error, '');
   assert.equal(r.lines[0].unitPrice, 1000);
   assert.equal(r.lines[0].sku, 'Timus SASE - Monthly Minimum');
+  assert.equal(r.lines[0].name, `${CATALOG.timus.minimum.name} - $1,000`);
   assert.equal(r.timus.usage, 782.5);
   assert.equal(r.hintLevel, 'info');
+  const dflt = P.priceProduct(timus({ minimum: '' }), MSP, CATALOG);
+  assert.equal(dflt.lines[0].unitPrice, 250); // SKU price when left blank
+  assert.equal(dflt.lines[0].name, CATALOG.timus.minimum.name);
+  assert.equal(dflt.hintLevel, 'warning'); // usage over the minimum
 });
 
-test('Timus: SATGAT only for tiers with a SATGAT SKU; rate falls back to rep entry', () => {
-  const sat = P.priceProduct({ uid: 3, family: 'timus', quantity: 10, discountPct: 0, priceListValue: 'pl-1000', agreement: 'satgat' }, MSP, CATALOG, TIMUS_LISTS);
+test('Timus: SATGAT tiers come from the tagged SATGAT SKUs', () => {
+  const sat = P.priceProduct(timus({ agreement: 'satgat', satgatTier: 1000 }), MSP, CATALOG);
   assert.equal(sat.lines[0].sku, 'Timus SASE - SATGAT III');
-  const bad = P.priceProduct({ uid: 3, family: 'timus', quantity: 10, discountPct: 0, priceListValue: 'pl-750', agreement: 'satgat', userRateOverride: 5 }, MSP, CATALOG, TIMUS_LISTS);
-  assert.match(bad.error, /Satisfaction-guarantee/);
-  assert.equal(bad.timus.rateSource, 'entered by rep');
+  assert.equal(sat.timus.minimum, 1000);
+  assert.deepEqual(sat.timus.satgatTiers, [250, 1000]);
+  assert.equal(P.priceProduct(timus({ agreement: 'satgat', satgatTier: '' }), MSP, CATALOG).lines[0].sku, 'Timus SASE - SATGAT');
+  assert.match(P.priceProduct(timus({ agreement: 'satgat', satgatTier: 500 }), MSP, CATALOG).error, /Pick a SATGAT tier/);
+});
+
+test('Timus: rep must enter the per-user and per-gateway prices', () => {
+  assert.match(P.priceProduct(timus({ userRate: '' }), MSP, CATALOG).error, /Timus Price Per User/);
+  assert.match(P.priceProduct(timus({ gatewayRate: '' }), MSP, CATALOG).error, /Timus Price Per Gateway/);
+  assert.match(P.priceProduct(timus({ userRate: 0, gatewayRate: undefined }), MSP, CATALOG).error, /Per User and Timus Price Per Gateway/);
+  assert.equal(P.priceProduct(timus({ gatewayRate: 0 }), MSP, CATALOG).error, ''); // free gateways are allowed
 });
 
 test('line item properties for ramp, plan and month-to-month lines', () => {
-  const q = P.buildQuote(MSP, [ae()], { enabled: true, months: 3 }, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(MSP, [ae()], { enabled: true, months: 3 }, CATALOG);
   const ramp = P.lineItemProperties(q.lines[0], { billing: 'monthly', rampMonths: 3, sessionId: 's1' });
   assert.equal(ramp.ramp, 'true');
   assert.equal(ramp.hs_recurring_billing_period, 'P3M');
@@ -184,8 +195,8 @@ test('generated CommonJS copy behaves identically to the ESM source', async () =
   writeFileSync(join(dir, 'package.json'), '{"type":"commonjs"}');
   const C = require(join(dir, 'pricing.js'));
   const args = [MSP, [ae(), { uid: 2, family: 'password', edition: 'pack', quantity: 300, discountPct: 35 }], { enabled: true, months: 3 }];
-  const a = P.buildQuote(...args, P.indexCatalog(RECORDS), TIMUS_LISTS);
-  const b = C.buildQuote(...args, C.indexCatalog(RECORDS), TIMUS_LISTS);
+  const a = P.buildQuote(...args, P.indexCatalog(RECORDS));
+  const b = C.buildQuote(...args, C.indexCatalog(RECORDS));
   assert.deepEqual(JSON.parse(JSON.stringify(b.totals)), JSON.parse(JSON.stringify(a.totals)));
   assert.deepEqual(b.approval, a.approval);
   assert.equal(b.lines.length, a.lines.length);
@@ -204,7 +215,7 @@ const OPTIONS = {
 };
 const W = (setup, products, ramp, notes = '') => {
   const s = Object.assign({}, MSP, { paymentMethod: 'ACH', invoiceTerms: 'Net-30' }, setup);
-  const q = P.buildQuote(s, products, ramp, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(s, products, ramp, CATALOG);
   return { q, w: P.dealWrites(q, { setup: s, notes }, OPTIONS) };
 };
 
@@ -220,7 +231,7 @@ test('agreement length is the rep choice; contract term is not written; payment 
 
 test('month-to-month uses the Month-to-Month agreement length option', () => {
   const s = { agreementLength: '12 Months - Month-to-Month' };
-  const q = P.buildQuote(Object.assign({}, MSP, s), [ae({ ramp: false })], {}, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(Object.assign({}, MSP, s), [ae({ ramp: false })], {}, CATALOG);
   const w = P.dealWrites(q, { setup: Object.assign({}, MSP, s) }, OPTIONS);
   assert.equal(w.properties.agreement_length, '12 Months - Month-to-Month');
   assert.equal(q.billing, 'm2m');
@@ -265,14 +276,16 @@ test('different AE feature types on one quote are a conflict; non-AE quotes leav
 });
 
 test('Timus deal fields are written with two decimals', () => {
-  const { w } = W({}, [{ uid: 4, family: 'timus', quantity: 10, gateways: 1, discountPct: 0, priceListValue: 'pl-1000', agreement: 'standard' }], {});
-  assert.equal(w.properties.timus_price_per_user, '4.55');
+  const { w } = W({}, [timus({ uid: 4, quantity: 10, gateways: 1, userRate: 4.5, gatewayRate: 50 })], {});
+  assert.equal(w.properties.timus_price_per_user, '4.50');
   assert.equal(w.properties.timus_price_per_gateway, '50.00');
+  assert.equal(w.properties.new_minimum_commitment_amount, '1000');
+  assert.ok(!('timus_price_list' in w.properties)); // retired property is left alone
 });
 
 test('agreement length splits into ramp + plan; products off the ramp run the whole agreement', () => {
   const dns = { uid: 3, family: 'dns', edition: 'standard', quantity: 600, discountPct: 0, ramp: false };
-  const q = P.buildQuote(Object.assign({}, MSP, { agreementLength: '16 Months' }), [ae(), dns], { enabled: true, months: 4 }, CATALOG, TIMUS_LISTS);
+  const q = P.buildQuote(Object.assign({}, MSP, { agreementLength: '16 Months' }), [ae(), dns], { enabled: true, months: 4 }, CATALOG);
   const aePlan = q.lines.find((l) => !l.ramp && l.family === 'autoelevate');
   const dnsPlan = q.lines.find((l) => l.family === 'dns');
   assert.equal(aePlan.termMonths, 12);
@@ -284,8 +297,8 @@ test('agreement length splits into ramp + plan; products off the ramp run the wh
 });
 
 test('a ramp as long as the agreement is a conflict; missing agreement length is a conflict', () => {
-  assert.match(P.buildQuote(Object.assign({}, MSP, { agreementLength: '3 Months' }), [ae()], { enabled: true, months: 3 }, CATALOG, TIMUS_LISTS).conflicts[0], /as long as the 3-month Agreement Length/);
-  assert.match(P.buildQuote(Object.assign({}, MSP, { agreementLength: '' }), [ae()], {}, CATALOG, TIMUS_LISTS).conflicts[0], /Pick an Agreement Length/);
+  assert.match(P.buildQuote(Object.assign({}, MSP, { agreementLength: '3 Months' }), [ae()], { enabled: true, months: 3 }, CATALOG).conflicts[0], /as long as the 3-month Agreement Length/);
+  assert.match(P.buildQuote(Object.assign({}, MSP, { agreementLength: '' }), [ae()], {}, CATALOG).conflicts[0], /Pick an Agreement Length/);
 });
 
 test('quote lock state follows HubSpot progression status', () => {

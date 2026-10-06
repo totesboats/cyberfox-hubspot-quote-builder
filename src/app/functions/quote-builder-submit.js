@@ -6,7 +6,7 @@
 // A deal can hold several builder quotes ("options", e.g. 100 vs 250 agents). Only the
 // primary option's lines sit on the deal, so the deal amount reflects one option.
 // Anything created before a failure is archived again so a failed run leaves no debris.
-const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadTimusLists, loadDealOptions, loadDeal, findBuilderLineItems } = require('./lib/hubspot.js');
+const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems } = require('./lib/hubspot.js');
 const { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
@@ -27,9 +27,9 @@ exports.main = async (context) => {
   if (!dealId) errors.push('dealId is required');
   if (errors.length) return { ok: false, errors };
 
-  let products, templates, timus, dealOptions, deal;
+  let products, templates, dealOptions, deal;
   try {
-    [products, templates, timus, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadTimusLists(), loadDealOptions(), loadDeal(dealId)]);
+    [products, templates, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadDealOptions(), loadDeal(dealId)]);
   } catch (err) {
     console.error('quote-builder-submit load failed', err.message);
     return { ok: false, errors: [err.message] };
@@ -39,7 +39,7 @@ exports.main = async (context) => {
 
   const setup = Object.assign({}, payload.setup, { salesTeam: deal.salesTeam, templateType: template.templateType });
   const catalog = indexCatalog(products);
-  const quote = buildQuote(setup, payload.products, payload.ramp, catalog, timus.lists);
+  const quote = buildQuote(setup, payload.products, payload.ramp, catalog);
   if (quote.blocking.length) return { ok: false, errors: quote.blocking.map((b) => b.error) };
   if (quote.conflicts.length) return { ok: false, errors: quote.conflicts };
   if (!quote.lines.length) return { ok: false, errors: ['Nothing to quote.'] };

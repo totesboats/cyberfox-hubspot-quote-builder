@@ -77,7 +77,7 @@ const APPROVAL = {
   fallbackApprover: 'Operations team',
 };
 
-// Timus: the commit is a single "Monthly Minimum" line priced at the price list's minimum.
+// Timus: the commit is a single "Monthly Minimum" line at the minimum the rep sets (SKU price by default).
 // Satisfaction-guarantee agreements use the SATGAT SKUs instead (keyed by minimum).
 const TIMUS = {
   minimumSku: 'Timus SASE - Monthly Minimum',
@@ -119,9 +119,6 @@ const TEMPLATE_HINTS = {
 // Template names containing any of these are hidden from reps (one-off / internal templates).
 const TEMPLATE_HIDE = ['one off', 'one-off', 'clone of', 'sponsorship', 'default '];
 
-// HubDB table holding Timus price lists (see scripts/create-timus-hubdb.mjs).
-const TIMUS_HUBDB_TABLE = 'quote_builder_timus_price_lists';
-
 // Deal properties the card reads.
 const DEAL_PROPERTIES = [
   'dealname',
@@ -132,7 +129,6 @@ const DEAL_PROPERTIES = [
   'payment_terms',
   'agreement_length',
   'sku_type',
-  'timus_price_list',
   'timus_price_per_user',
   'timus_price_per_gateway',
   'new_minimum_commitment_amount',
@@ -148,7 +144,6 @@ const PRINTED_DEAL_PROPERTIES = [
   'promo',
   'sku_type',
   'ae_feature_type_details',
-  'timus_price_list',
   'timus_price_per_user',
   'timus_price_per_gateway',
   'new_minimum_commitment_amount',
@@ -221,4 +216,4 @@ const AE_FEATURE_TYPES = [
 const RAMP_NAME_PREFIX = 'RAMP ';
 const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30 };
 
-module.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, TIMUS_HUBDB_TABLE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
+module.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };

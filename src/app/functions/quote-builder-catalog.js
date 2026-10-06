@@ -1,7 +1,7 @@
 'use strict';
-// Loads everything the card needs in one round trip: tagged products, quote templates,
-// Timus price lists and the deal's context.
-const { loadProducts, loadTemplates, loadTimusLists, loadDealOptions, loadDeal } = require('./lib/hubspot.js');
+// Loads everything the card needs in one round trip: tagged products, quote templates
+// and the deal's context.
+const { loadProducts, loadTemplates, loadDealOptions, loadDeal } = require('./lib/hubspot.js');
 const { indexCatalog } = require('./lib/pricing.js');
 
 exports.main = async (context) => {
@@ -10,17 +10,15 @@ exports.main = async (context) => {
   if (!dealId) return { ok: false, errors: ['dealId is required'] };
 
   try {
-    const [products, templates, timus, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadTimusLists(), loadDealOptions(), loadDeal(dealId)]);
+    const [products, templates, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadDealOptions(), loadDeal(dealId)]);
     const catalog = indexCatalog(products);
     const issues = catalog.issues.slice();
-    if (timus.issue) issues.push(timus.issue);
     if (dealOptions.issue) issues.push(dealOptions.issue);
     if (!products.length) issues.push('No products are tagged for the Quote Builder (qb_family is empty on every product).');
     return {
       ok: true,
       products, // raw tagged products; the card re-indexes with the same shared code
       templates,
-      timusLists: timus.lists,
       dealOptions: dealOptions.options,
       deal,
       issues,

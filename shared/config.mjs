@@ -75,7 +75,7 @@ export const APPROVAL = {
   fallbackApprover: 'Operations team',
 };
 
-// Timus: the commit is a single "Monthly Minimum" line priced at the price list's minimum.
+// Timus: the commit is a single "Monthly Minimum" line at the minimum the rep sets (SKU price by default).
 // Satisfaction-guarantee agreements use the SATGAT SKUs instead (keyed by minimum).
 export const TIMUS = {
   minimumSku: 'Timus SASE - Monthly Minimum',
@@ -117,9 +117,6 @@ export const TEMPLATE_HINTS = {
 // Template names containing any of these are hidden from reps (one-off / internal templates).
 export const TEMPLATE_HIDE = ['one off', 'one-off', 'clone of', 'sponsorship', 'default '];
 
-// HubDB table holding Timus price lists (see scripts/create-timus-hubdb.mjs).
-export const TIMUS_HUBDB_TABLE = 'quote_builder_timus_price_lists';
-
 // Deal properties the card reads.
 export const DEAL_PROPERTIES = [
   'dealname',
@@ -130,7 +127,6 @@ export const DEAL_PROPERTIES = [
   'payment_terms',
   'agreement_length',
   'sku_type',
-  'timus_price_list',
   'timus_price_per_user',
   'timus_price_per_gateway',
   'new_minimum_commitment_amount',
@@ -146,7 +142,6 @@ export const PRINTED_DEAL_PROPERTIES = [
   'promo',
   'sku_type',
   'ae_feature_type_details',
-  'timus_price_list',
   'timus_price_per_user',
   'timus_price_per_gateway',
   'new_minimum_commitment_amount',

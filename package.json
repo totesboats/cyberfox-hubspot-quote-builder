@@ -10,14 +10,13 @@
     "check": "npm run sync && npm test && npm run typecheck && npm run test:card",
     "setup:properties": "node scripts/create-properties.mjs",
     "setup:tag-products": "node scripts/tag-products.mjs",
-    "setup:timus-hubdb": "node scripts/create-timus-hubdb.mjs",
     "upload": "npm run check && hs project upload",
     "dev": "npm run sync && hs project dev",
     "typecheck": "tsc -p tests/card/tsconfig.json",
     "test:card": "esbuild tests/card/render.test.jsx --bundle --platform=node --format=esm --jsx=automatic --outfile=tests/card/.out/render.test.mjs --log-level=warning --external:vitest && node --test tests/card/.out/render.test.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "@hubspot/ui-extensions": "0.17.0",

@@ -17,9 +17,7 @@
         "crm.objects.quotes.read",
         "crm.objects.quotes.write",
         "crm.objects.products.read",
-        "e-commerce",
-        "hubdb.tables.read",
-        "hubdb.rows.read"
+        "e-commerce"
       ],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []

@@ -12,7 +12,6 @@ const TOKEN_ROWS = [
   ['promo', 'Promo'],
   ['sku_type', 'AE Feature Type'],
   ['ae_feature_type_details', 'AE Feature Type Details'],
-  ['timus_price_list', 'Timus Price List'],
   ['timus_price_per_user', 'Timus Price Per User'],
   ['timus_price_per_gateway', 'Timus Price Per Gateway'],
   ['new_minimum_commitment_amount', 'Timus New Minimum Commitment Amount'],

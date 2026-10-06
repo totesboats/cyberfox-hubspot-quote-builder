@@ -5,14 +5,13 @@ const {
   DEAL_PROPERTIES,
   ENUM_PROPERTIES,
   FALLBACK_OPTIONS,
-  TIMUS_HUBDB_TABLE,
   LINE_SOURCE_PROPERTY,
   LINE_SOURCE_VALUE,
   LINE_SESSION_PROPERTY,
   QUOTE_SESSION_PROPERTY,
   QUOTE_STATE_PROPERTY,
 } = require('./config.js');
-const { normalizeTimusList, normalizeTemplates, quoteLockState, parseBuilderState } = require('./pricing.js');
+const { normalizeTemplates, quoteLockState, parseBuilderState } = require('./pricing.js');
 
 const BASE = 'https://api.hubapi.com';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -95,16 +94,6 @@ async function loadProducts() {
 async function loadTemplates() {
   const res = await hs('/crm/v3/objects/quote_templates?limit=100&properties=hs_name,hs_type');
   return normalizeTemplates(res.results);
-}
-
-async function loadTimusLists() {
-  try {
-    const res = await hs(`/cms/v3/hubdb/tables/${encodeURIComponent(TIMUS_HUBDB_TABLE)}/rows?limit=1000`);
-    return { lists: res.results.map(normalizeTimusList).filter((l) => l.value && l.active), issue: null };
-  } catch (err) {
-    if (err.status === 404) return { lists: [], issue: `HubDB table "${TIMUS_HUBDB_TABLE}" not found — run scripts/create-timus-hubdb.mjs.` };
-    throw err;
-  }
 }
 
 // Live dropdown options for the deal properties the quote prints as tokens.
@@ -195,4 +184,4 @@ async function findBuilderLineItems(dealId, excludeSessionId) {
   return (await readBuilderLineItems(dealId)).filter((li) => li.session !== excludeSessionId).map((li) => li.id);
 }
 
-module.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadTimusLists, loadDealOptions, loadDeal, findBuilderLineItems };
+module.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems };
