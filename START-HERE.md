@@ -29,9 +29,11 @@ If `npm run check` fails, stop and send the output.
 
 HubSpot → Settings → Integrations → **Legacy Apps** → **Create a private app**, name it **Quote Builder setup**, scopes:
 
-- `crm.schemas.products.write`, `crm.schemas.line_items.write`, `crm.schemas.quotes.write`
+- `crm.schemas.products.read`, `crm.schemas.products.write`
+- `crm.schemas.line_items.read`, `crm.schemas.line_items.write`
+- `crm.schemas.quotes.read`, `crm.schemas.quotes.write`
+- `crm.schemas.deals.read`
 - `crm.objects.products.read`, `crm.objects.products.write`, `e-commerce`
-- `crm.objects.deals.read`
 - `hubdb.tables.read`, `hubdb.tables.write`, `hubdb.tables.publish`, `hubdb.rows.read`, `hubdb.rows.write`
 
 Copy the token **into PowerShell only** (never into chat, email or a file):
