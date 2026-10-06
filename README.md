@@ -66,7 +66,7 @@ The texts are the ones already on your deals. The deal holds one AE Feature Type
 
 ## Setup (once)
 
-Needs Node 20+, the HubSpot CLI (`npm i -g @hubspot/cli`, `hs auth`) and, for the scripts, `HUBSPOT_TOKEN` = an Ops private-app token (not production-shared; store it in a password manager, not the repo) that can create product and line item properties, read/update products (`e-commerce`), read deal properties and manage HubDB (`hubdb`). HubSpot names any missing scope in the error. Every script is a dry run unless you pass `--apply`.
+Needs Node 22+, the HubSpot CLI (`npm i -g @hubspot/cli`, `hs auth`) and, for the scripts, `HUBSPOT_TOKEN` = an Ops private-app token (not production-shared; store it in a password manager, not the repo) that can create product and line item properties, read/update products (`e-commerce`), read deal properties and manage HubDB (`hubdb.tables.read/write/publish`, `hubdb.rows.read/write`). HubSpot names any missing scope in the error. Every script is a dry run unless you pass `--apply`.
 
 ```bash
 npm install

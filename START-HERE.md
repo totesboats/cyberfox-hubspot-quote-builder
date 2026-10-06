@@ -31,7 +31,8 @@ HubSpot → Settings → Integrations → **Legacy Apps** → **Create a private
 
 - `crm.schemas.products.write`, `crm.schemas.line_items.write`, `crm.schemas.quotes.write`
 - `crm.objects.products.read`, `crm.objects.products.write`, `e-commerce`
-- `crm.objects.deals.read`, `hubdb`
+- `crm.objects.deals.read`
+- `hubdb.tables.read`, `hubdb.tables.write`, `hubdb.tables.publish`, `hubdb.rows.read`, `hubdb.rows.write`
 
 Copy the token **into PowerShell only** (never into chat, email or a file):
 
