@@ -276,6 +276,7 @@ test('seller contact on the quote is always the deal owner', async () => {
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   const q = store.quote.properties;
   assert.deepEqual([q.hubspot_owner_id, q.hs_sender_firstname, q.hs_sender_lastname, q.hs_sender_email], ['77', 'Riley', 'Rep', 'riley.rep@example.com']);
+  assert.equal(q.hs_payment_enabled, 'false'); // like every CyberFOX CPQ quote; payments would block sub-$35 ramp invoices
   const cat = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
   assert.equal(cat.deal.owner.email, 'riley.rep@example.com');
 });

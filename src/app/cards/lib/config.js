@@ -214,4 +214,6 @@ export const AE_FEATURE_TYPES = [
 ];
 
 export const RAMP_NAME_PREFIX = 'RAMP ';
-export const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30 };
+// paymentEnabled: false matches every CyberFOX CPQ quote today (no online payment on the quote).
+// With payments on, HubSpot requires every invoice to be $35+, which blocks ramp months.
+export const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30, paymentEnabled: false };

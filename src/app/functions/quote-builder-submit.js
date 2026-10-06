@@ -181,7 +181,7 @@ var require_config = __commonJS({
       }
     ];
     var RAMP_NAME_PREFIX = "RAMP ";
-    var QUOTE_DEFAULTS2 = { language: "en", currency: "USD", expirationDays: 30 };
+    var QUOTE_DEFAULTS2 = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
     module2.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
   }
 });
@@ -980,6 +980,7 @@ exports.main = async (context) => {
       hs_template_type: template.templateType,
       hs_language: QUOTE_DEFAULTS.language,
       hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
+      hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
       // Seller contact = deal owner, always.
       hubspot_owner_id: deal.owner.id,
       hs_sender_firstname: deal.owner.firstName,
