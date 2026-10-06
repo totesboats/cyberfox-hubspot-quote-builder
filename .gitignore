@@ -1,0 +1,5 @@
+node_modules/
+tests/card/.out/
+product-tagging-review.csv
+timus-price-lists-seed.csv
+.env
