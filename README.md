@@ -19,9 +19,9 @@ src/app/
   cards/QuoteBuilder.jsx          entry (hubspot.extend)
   cards/QuoteBuilderApp.jsx       state + steps
   cards/components/*.jsx          Setup, Products, Ramp, Review, Summary, LineTable
-  functions/quote-builder-catalog.js   products + templates + Timus lists + deal context
-  functions/quote-builder-submit.js    rebuilds the quote server-side and writes it
-  functions/quote-builder-set-primary.js  switches which option's line items sit on the deal
+  functions/quote-builder-*.js    GENERATED single-file bundles of functions-src/ (HubSpot deploys each function as one file)
+functions-src/                         app function source: catalog (products + templates + deal context), submit
+                                       (rebuilds the quote server-side and writes it), set-primary; lib/hubspot.js
 shared/config.mjs, shared/pricing.mjs  business rules + pricing (single source of truth)
 scripts/                               one-time setup (properties, product tagging)
 tests/                                 unit, function (fake HubSpot API) and card render tests
@@ -29,7 +29,7 @@ tests/                                 unit, function (fake HubSpot API) and car
 
 - **Platform 2026.03 app functions** (HubSpot-hosted, `hubspot.serverless`). Chosen over an external backend because there is nothing to host, the token never leaves HubSpot, and both calls fit the 15-second limit. Requires an Enterprise subscription and a private, static-auth app.
 - **Pricing runs twice.** The card prices live for the preview; the submit function re-reads the product library and rebuilds every line. The card never sends prices, so a tampered request can't change them.
-- **`shared/` is the only place to edit rules.** `npm run sync` writes an ESM copy into `cards/lib` and a CommonJS copy into `functions/lib`; a test checks both behave identically.
+- **`shared/` is the only place to edit rules.** `npm run sync` writes an ESM copy into `src/app/cards/lib` and a CommonJS copy into `functions-src/lib`, then bundles each function into `src/app/functions/`; tests check the copies behave identically and the bundles are self-contained.
 
 ### What Create quote writes
 
@@ -109,4 +109,4 @@ These won't be tagged until fixed, so they won't appear in the builder:
 
 ## Tests
 
-`npm run check` runs 54 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and four card flows rendered with HubSpot's test renderer. Fixtures are synthetic.
+`npm run check` runs 55 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and four card flows rendered with HubSpot's test renderer. Fixtures are synthetic.

@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "Source for the app functions. scripts/sync-shared.mjs bundles each quote-builder-*.js into src/app/functions/ (HubSpot deploys each function as a single file).",
+  "type": "commonjs"
+}

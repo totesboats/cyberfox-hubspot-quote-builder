@@ -205,7 +205,7 @@ test('legacy template: DRAFT status, no acceptance method; Timus writes deal fie
 // Multiple quotes (options) on one deal
 // ---------------------------------------------------------------------------
 const setPrimaryFn = () => require('../src/app/functions/quote-builder-set-primary.js');
-const P = require('../src/app/functions/lib/pricing.js');
+const P = require('../functions-src/lib/pricing.js');
 
 test('alternative option: quote is created with saved inputs, deal line items untouched', async () => {
   const existing = { id: 'Q0', properties: { hs_title: 'Example MSP - AutoElevate (100)', hs_quote_progression_status: 'PUBLISHED', qb_session_id: 'qb-old', qb_builder_state: P.builderState({ setup: {}, products: [], ramp: {} }, {}) } };
@@ -258,4 +258,12 @@ test('make primary refuses quotes that were not built with the builder', async (
   const res = await setPrimaryFn().main({ parameters: { dealId: '123', quoteId: 'Q3' } });
   assert.equal(res.ok, false);
   assert.match(res.errors[0], /Only quotes made with the Quote Builder/);
+});
+
+test('deployed function files are self-contained (HubSpot ships each as a single file)', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const dir = new URL('../src/app/functions/', import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
+  assert.deepEqual(files.sort(), ['quote-builder-catalog.js', 'quote-builder-set-primary.js', 'quote-builder-submit.js']);
+  for (const f of files) assert.doesNotMatch(readFileSync(new URL(f, dir), 'utf8'), /require\(["']\.\.?\//, `${f} still requires a local file`);
 });
