@@ -82,6 +82,10 @@ hs project upload                        # build and deploy
 
 Then add the **Quote Builder** card to the Deal record tab layout (Settings › Objects › Deals › Record customization), install the app, and test on a sandbox deal first.
 
+## New price book (e.g. the 2027 SKUs)
+
+The builder sells from one price book, set by `PRICE_BOOK` in `scripts/tag-products.mjs`. Changing it and re-running `tag-products` tags the new folders and untags the old book. Full checklist: `NEW-PRICE-BOOK.md`.
+
 ## Product library findings (from the dry-run tagger)
 
 These won't be tagged until fixed, so they won't appear in the builder:
@@ -108,4 +112,4 @@ These won't be tagged until fixed, so they won't appear in the builder:
 
 ## Tests
 
-`npm run check` runs 52 tests: pricing/ramp/approval math, tagging and HubDB parsing, both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and three card flows rendered with HubSpot's test renderer. Fixtures are synthetic.
+`npm run check` runs 53 tests: pricing/ramp/approval math, tagging (including a price book switch) and HubDB parsing, both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and three card flows rendered with HubSpot's test renderer. Fixtures are synthetic.

@@ -54,3 +54,16 @@ test('templates: CPQ first, hidden one-offs, suggestion by product', () => {
   assert.equal(suggestTemplate(t, ['dns']).id, '3');
   assert.equal(suggestTemplate(t, []), null);
 });
+
+test('price book change: new folders tagged, last year untagged, untouched products ignored', async () => {
+  const { planTagging, PRICE_BOOK } = await import('../scripts/tag-products.mjs');
+  const next = String(Number(PRICE_BOOK) + 1);
+  const prod = (id, name, sku, folder, qb_family) => ({ id, properties: { name, hs_sku: sku, hs_folder: folder, qb_family } });
+  const rows = planTagging([
+    prod('1', `AutoElevate 250 Agent Plan ${PRICE_BOOK}`, 'Standard-AE-250', `AutoElevate - Standard ${PRICE_BOOK}`, 'autoelevate'),
+    prod('2', `AutoElevate 250 Agent Plan ${next}`, 'Standard-AE-250-next', `AutoElevate - Standard ${next}`, 'autoelevate'),
+    prod('3', 'Old SKU', 'OLD', 'AutoElevate - Standard 2025', ''),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.id, r.status]), [['1', 'ok'], ['2', 'untag']]);
+  assert.equal(rows[1].qb_family, '');
+});
