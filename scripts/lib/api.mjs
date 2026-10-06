@@ -23,7 +23,15 @@ export async function hs(path, { method = 'GET', body, allow = [] } = {}) {
       continue;
     }
     const text = await res.text();
-    const data = text ? JSON.parse(text) : null;
+    let data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // HubSpot answers some errors (unknown routes, auth problems at the edge) with an HTML page.
+        data = { message: `non-JSON response: ${text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)}` };
+      }
+    }
     if (!res.ok && !allow.includes(res.status)) throw new Error(`${method} ${path} → ${res.status}: ${(data && data.message) || text}`);
     return { status: res.status, data };
   }

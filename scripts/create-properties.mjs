@@ -44,8 +44,8 @@ const QUOTE_PROPS = [
 ];
 
 async function ensure(objectType, props) {
-  const group = await hs(`/crm/v3/properties/${objectType}/groups/quote_builder`, { allow: [404] });
-  if (group.status === 404) {
+  const { data: groups } = await hs(`/crm/v3/properties/${objectType}/groups`);
+  if (!groups.results.some((g) => g.name === 'quote_builder')) {
     console.log(`${objectType}: create group quote_builder`);
     if (apply) await hs(`/crm/v3/properties/${objectType}/groups`, { method: 'POST', body: { name: 'quote_builder', label: 'Quote Builder', displayOrder: -1 } });
   }
