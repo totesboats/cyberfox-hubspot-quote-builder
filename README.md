@@ -109,4 +109,4 @@ These won't be tagged until fixed, so they won't appear in the builder:
 
 ## Tests
 
-`npm run check` runs 57 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and four card flows rendered with HubSpot's test renderer. Fixtures are synthetic.
+`npm run check` runs 58 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and five card flows rendered with HubSpot's test renderer. Fixtures are synthetic.

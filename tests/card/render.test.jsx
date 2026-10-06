@@ -62,6 +62,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
 
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'qty-1' })));
+  assert.equal(r.find(Select, { name: 'tier-1' }).props.value, '__none__');
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(NumberInput, { name: 'disc-1' }).trigger('onChange', 10);
   assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
@@ -105,7 +106,10 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   r.render(<QuoteBuilderApp />);
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
   const freq = r.find(Select, { name: 'paymentFrequency' }).props.options.map((o) => o.value);
-  assert.deepEqual(freq, ['', 'Month-to-Month', 'Quarterly', 'Annual Payments']);
+  assert.deepEqual(freq, ['__none__', 'Month-to-Month', 'Quarterly', 'Annual Payments']);
+  // Blank choices show their label ("None", "Match SKU pricing"), not HubSpot's empty "Select" placeholder.
+  assert.equal(r.find(Select, { name: 'promo' }).props.value, '__none__');
+  assert.equal(r.find(Select, { name: 'paymentFrequency' }).props.value, '__none__');
   assert.deepEqual(r.find(Select, { name: 'agreementLength' }).props.options.map((o) => o.value), ['12 Months - Month-to-Month', '12 Months', '15 Months']);
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
@@ -204,8 +208,8 @@ test('Timus: rep enters per-user and per-gateway prices; they print as deal toke
 
   r.find(Select, { name: 'ag-1' }).trigger('onChange', 'satgat');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'sat-1' })));
-  assert.deepEqual(r.find(Select, { name: 'sat-1' }).props.options.map((o) => o.value), [250, 500]);
-  r.find(Select, { name: 'sat-1' }).trigger('onChange', 500);
+  assert.deepEqual(r.find(Select, { name: 'sat-1' }).props.options.map((o) => o.value), ['250', '500']);
+  r.find(Select, { name: 'sat-1' }).trigger('onChange', '500');
 
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
@@ -214,4 +218,30 @@ test('Timus: rep enters per-user and per-gateway prices; they print as deal toke
   assert.equal(token('Timus Price Per Gateway'), '50.00');
   assert.equal(token('Timus New Minimum Commitment Amount'), '500');
   assert.equal(r.maybeFind(DescriptionListItem, { label: 'Timus Price List' }), null);
+});
+
+test('remove a product, untick Ramp, Remove ramp clears every Ramp box', async () => {
+  const r = mk();
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: CATALOG_RESPONSE }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
+  r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
+  r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', true);
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths' })));
+  r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', false);
+  await r.waitFor(() => assert.equal(r.find(Checkbox, { name: 'ramp-2' }).props.checked, false));
+  r.find(Button, (n) => /"Remove ramp"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths' }), null));
+  assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.checked, false);
+  const removes = () => r.findAll(Button, (n) => /"Remove"/.test(text(n)));
+  assert.equal(removes().length, 2);
+  removes()[0].trigger('onClick');
+  await r.waitFor(() => assert.equal(removes().length, 1));
+  assert.equal(r.maybeFind(Checkbox, { name: 'ramp-1' }), null);
+  assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' }));
 });

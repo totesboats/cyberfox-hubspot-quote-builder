@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   AutoGrid,
+  Button,
   Flex,
   Heading,
   NumberInput,
@@ -41,17 +42,22 @@ export function scheduleRows(quote) {
   return rows;
 }
 
-export function RampSection({ quote, ramp, onRamp }) {
+export function RampSection({ quote, ramp, onRamp, onClear }) {
   const schedule = scheduleRows(quote);
   const length = quote.m2m ? 'month-to-month' : `${quote.term}-month agreement`;
   return (
     <Tile>
       <Flex direction="column" gap="medium">
-        <Flex direction="column" gap="extra-small">
-          <Heading>Ramp & schedule</Heading>
-          <Text variant="microcopy">
-            {`Products with Ramp ticked get RAMP line items for the first months of the ${length}; their plan bills for the rest. Untick Ramp on every product to remove this section. Ramps of ${APPROVAL.rampMonthsThreshold}+ months route for approval.`}
-          </Text>
+        <Flex justify="between" align="start" gap="medium">
+          <Flex direction="column" gap="extra-small">
+            <Heading>Ramp & schedule</Heading>
+            <Text variant="microcopy">
+              {`Products with Ramp ticked get RAMP line items for the first months of the ${length}; their plan bills for the rest. Ramps of ${APPROVAL.rampMonthsThreshold}+ months route for approval.`}
+            </Text>
+          </Flex>
+          <Button variant="secondary" size="sm" onClick={onClear}>
+            Remove ramp
+          </Button>
         </Flex>
 
         <AutoGrid columnWidth={200} gap="medium" flexible>

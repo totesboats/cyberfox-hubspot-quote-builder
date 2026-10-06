@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, AutoGrid, Button, Checkbox, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Alert, Button, Checkbox, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, SEGMENTS } from '../lib/config.js';
 import { formatMoney } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
@@ -8,15 +9,15 @@ import { RampSection } from './RampSection.jsx';
 function StandardFields({ input, priced, family, onUpdate }) {
   const per = priced.annual ? '/yr' : '/mo';
   const tierOptions = priced.tierOptions.length
-    ? [{ label: `Best price${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: '' }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: o.value })))
-    : [{ label: 'No tiers for this combination', value: '' }];
+    ? [{ label: `Best price${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
+    : [{ label: 'No tiers for this combination', value: NONE }];
   return (
-    <AutoGrid columnWidth={170} gap="medium" flexible>
+    <Row>
       {input.family === 'autoelevate' ? (
         <Select
           label="AE Feature Type"
           name={`feature-${input.uid}`}
-          description={`Priced on ${(AE_FEATURE_TYPES.find((f) => f.value === input.featureType) || AE_FEATURE_TYPES[0]).edition} SKUs; sets the quote's feature wording`}
+          tooltip={`Priced on ${(AE_FEATURE_TYPES.find((f) => f.value === input.featureType) || AE_FEATURE_TYPES[0]).edition} SKUs; sets the quote's feature wording.`}
           options={AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))}
           value={input.featureType || 'Standard'}
           onChange={(v) => onUpdate({ featureType: String(v), tier: '' })}
@@ -34,13 +35,13 @@ function StandardFields({ input, priced, family, onUpdate }) {
       <Select
         label="Commit tier"
         name={`tier-${input.uid}`}
-        description={`List price ${per}`}
+        tooltip={`Prices are list ${per}. Best price picks the cheapest tier for the count.`}
         options={tierOptions}
-        value={input.tier === '' || input.tier == null ? '' : String(input.tier)}
-        onChange={(v) => onUpdate({ tier: v === '' ? '' : Number(v) })}
+        value={toSelect(input.tier)}
+        onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
       />
       <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
-    </AutoGrid>
+    </Row>
   );
 }
 
@@ -49,7 +50,8 @@ function TimusFields({ input, priced, onUpdate }) {
   const satgat = input.agreement === 'satgat';
   const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
   return (
-    <AutoGrid columnWidth={170} gap="medium" flexible>
+    <Flex direction="column" gap="medium">
+    <Row>
       <Select
         label="Agreement"
         name={`ag-${input.uid}`}
@@ -64,21 +66,24 @@ function TimusFields({ input, priced, onUpdate }) {
         <Select
           label="SATGAT tier"
           name={`sat-${input.uid}`}
-          options={t.satgatTiers.map((tier) => ({ label: `${formatMoney(tier, 0)} minimum`, value: tier }))}
-          value={Number(input.satgatTier) || t.satgatTiers[0]}
+          options={t.satgatTiers.map((tier) => ({ label: `${formatMoney(tier, 0)} minimum`, value: String(tier) }))}
+          value={String(Number(input.satgatTier) || t.satgatTiers[0] || '')}
           onChange={(v) => onUpdate({ satgatTier: Number(v) })}
         />
       ) : (
         <NumberInput
           label="Monthly minimum"
           name={`min-${input.uid}`}
-          description="Leave blank for the Monthly Minimum SKU price."
+          tooltip="Leave blank for the Monthly Minimum SKU price."
           min={0}
           precision={2}
           value={num(input.minimum)}
           onChange={(v) => onUpdate({ minimum: v })}
         />
       )}
+      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
+    </Row>
+    <Row>
       <NumberInput label="Users" name={`users-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
       <NumberInput label="Gateways" name={`gw-${input.uid}`} min={0} precision={0} value={Number(input.gateways) || 0} onChange={(v) => onUpdate({ gateways: v })} />
       <NumberInput
@@ -87,7 +92,7 @@ function TimusFields({ input, priced, onUpdate }) {
         required
         min={0}
         precision={2}
-        description="Prints on the quote."
+        tooltip="Prints on the quote."
         value={num(input.userRate)}
         onChange={(v) => onUpdate({ userRate: v })}
       />
@@ -97,12 +102,12 @@ function TimusFields({ input, priced, onUpdate }) {
         required
         min={0}
         precision={2}
-        description="Prints on the quote."
+        tooltip="Prints on the quote."
         value={num(input.gatewayRate)}
         onChange={(v) => onUpdate({ gatewayRate: v })}
       />
-      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
-    </AutoGrid>
+    </Row>
+    </Flex>
   );
 }
 
@@ -118,15 +123,15 @@ function ProductTile({ row, onUpdate, onRemove }) {
   return (
     <Tile>
       <Flex direction="column" gap="medium">
-        <Flex justify="between" align="center" wrap>
-          <Flex gap="small" align="center" wrap>
+        <Flex justify="between" align="center" gap="medium">
+          <Flex gap="small" align="center">
             <Heading>{family.label}</Heading>
             <Tag>{edition.label}</Tag>
             {row.ramped && <Tag variant="warning">{row.rampLines[0] ? `${row.rampLines[0].termMonths}-mo ramp` : 'Ramp'}</Tag>}
           </Flex>
           <Flex gap="small" align="center">
             <Text format={{ fontWeight: 'demibold' }}>{mrr}</Text>
-            <Button variant="transparent" size="sm" onClick={() => onRemove(input.uid)}>
+            <Button variant="secondary" size="sm" onClick={() => onRemove(input.uid)}>
               Remove
             </Button>
           </Flex>
@@ -163,7 +168,7 @@ function ProductTile({ row, onUpdate, onRemove }) {
   );
 }
 
-export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, onRamp }) {
+export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, onRamp, onClearRamp }) {
   const segment = (SEGMENTS.find((s) => s.value === setup.segment) || SEGMENTS[0]).label;
   return (
     <Flex direction="column" gap="medium">
@@ -198,7 +203,7 @@ export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, on
         </Flex>
       </Tile>
 
-      {ramp.enabled && <RampSection quote={quote} ramp={ramp} onRamp={onRamp} />}
+      {ramp.enabled && <RampSection quote={quote} ramp={ramp} onRamp={onRamp} onClear={onClearRamp} />}
     </Flex>
   );
 }

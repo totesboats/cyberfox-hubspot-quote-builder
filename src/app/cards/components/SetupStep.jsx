@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, DateInput, Divider, Flex, Heading, Input, Select, Text, Tile } from '@hubspot/ui-extensions';
+import { DateInput, Divider, Flex, Heading, Input, Select, Text, Tile } from '@hubspot/ui-extensions';
+import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { BILLING, FALLBACK_OPTIONS, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, SEGMENTS } from '../lib/config.js';
 import { effectiveBilling } from '../lib/pricing.js';
 
@@ -9,17 +10,6 @@ const toDateValue = (iso) => {
 };
 const fromDateValue = (v) => (v ? `${v.year}-${String(v.month + 1).padStart(2, '0')}-${String(v.date).padStart(2, '0')}` : '');
 const kind = (t) => (t.templateType === 'CPQ_QUOTE' ? 'CPQ' : 'Legacy');
-
-// One row of equal-width fields. Help text lives in tooltips so every input lines up.
-const Row = ({ children, weights = [] }) => (
-  <Flex direction="row" gap="medium" align="end">
-    {React.Children.toArray(children).map((child, i) => (
-      <Box key={i} flex={weights[i] || 1}>
-        {child}
-      </Box>
-    ))}
-  </Flex>
-);
 
 export function SetupStep({ setup, templates, suggested, contacts, owner, dealOptions, onChange }) {
   // Dropdowns use the deal properties' live options, so whatever the rep picks is exactly
@@ -33,7 +23,7 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, dealOp
 
   const selected = templates.find((t) => t.id === setup.templateId) || suggested;
   const today = new Date();
-  const templateOptions = [{ label: suggested ? `Suggest from products — ${suggested.name} (${kind(suggested)})` : 'Suggest from products', value: '' }].concat(
+  const templateOptions = [{ label: suggested ? `Suggest from products — ${suggested.name} (${kind(suggested)})` : 'Suggest from products', value: NONE }].concat(
     templates.map((t) => ({ label: `${t.name} (${kind(t)})`, value: t.id }))
   );
   const templateHelp = !selected
@@ -52,7 +42,7 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, dealOp
 
         <Flex direction="column" gap="extra-small">
           <Row weights={[2, 1]}>
-            <Select label="Quote template" name="templateId" options={templateOptions} value={setup.templateId} onChange={(v) => onChange({ templateId: String(v) })} />
+            <Select label="Quote template" name="templateId" options={templateOptions} value={toSelect(setup.templateId)} onChange={(v) => onChange({ templateId: fromSelect(v) })} />
             <Input
               label="Quote name"
               name="quoteName"
@@ -145,13 +135,13 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, dealOp
             label="Payment Frequency"
             name="paymentFrequency"
             tooltip={`Blank matches the SKU pricing (${autoFrequencyLabel}).`}
-            options={[{ label: `Match SKU pricing — ${autoFrequencyLabel}`, value: '' }].concat(frequencyOptions)}
-            value={setup.paymentFrequency || ''}
-            onChange={(v) => onChange({ paymentFrequency: String(v) })}
+            options={[{ label: `Match SKU pricing — ${autoFrequencyLabel}`, value: NONE }].concat(frequencyOptions)}
+            value={toSelect(setup.paymentFrequency)}
+            onChange={(v) => onChange({ paymentFrequency: fromSelect(v) })}
           />
           <Select label="Payment Method" name="paymentMethod" options={opts('payment_method')} value={setup.paymentMethod} onChange={(v) => onChange({ paymentMethod: String(v) })} />
           <Select label="Invoice Terms" name="invoiceTerms" options={opts('invoice_terms')} value={setup.invoiceTerms} onChange={(v) => onChange({ invoiceTerms: String(v) })} />
-          <Select label="Promo" name="promo" options={[{ label: 'None', value: '' }].concat(opts('promo'))} value={setup.promo} onChange={(v) => onChange({ promo: String(v) })} />
+          <Select label="Promo" name="promo" options={[{ label: 'None', value: NONE }].concat(opts('promo'))} value={toSelect(setup.promo)} onChange={(v) => onChange({ promo: fromSelect(v) })} />
         </Row>
         <Text variant="microcopy">AE Feature Type is set on the AutoElevate product, because it decides which SKUs are used.</Text>
       </Flex>

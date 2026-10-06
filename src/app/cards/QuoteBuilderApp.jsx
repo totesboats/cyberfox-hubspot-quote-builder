@@ -96,6 +96,8 @@ export function reducer(state, action) {
       return Object.assign({}, state, { products: state.products.map((p) => (p.uid === action.uid ? Object.assign({}, p, action.patch) : p)) });
     case 'removeProduct':
       return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid) });
+    case 'clearRamp':
+      return Object.assign({}, state, { products: state.products.map((p) => (p.ramp ? Object.assign({}, p, { ramp: false }) : p)) });
     case 'ramp': {
       return Object.assign({}, state, { ramp: Object.assign({}, state.ramp, action.patch) });
     }
@@ -335,6 +337,7 @@ export function QuoteBuilderApp() {
           onRemove={(uid) => dispatch({ type: 'removeProduct', uid })}
           ramp={rampFor(state)}
           onRamp={(patch) => dispatch({ type: 'ramp', patch })}
+          onClearRamp={() => dispatch({ type: 'clearRamp' })}
         />
       )}
       {state.step === 2 && (
