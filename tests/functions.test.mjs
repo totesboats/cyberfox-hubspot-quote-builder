@@ -25,6 +25,8 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
   store.quotes = quotes; // [{ id, properties, lineIds }]
   store.ownerId = ownerId;
   store.dealPatches = [];
+  store.quotePatches = [];
+  store.assocCalls = [];
   global.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
@@ -74,8 +76,24 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
     }
     if (p === '/crm/v4/objects/deals/123/associations/line_items') return ok({ results: Object.keys(store.lineItems).map((id) => ({ toObjectId: id })) });
     if (p === '/crm/v3/objects/quotes/batch/read') return ok({ results: store.quotes.map((q) => ({ id: q.id, properties: q.properties })) });
-    const qa = p.match(/^\/crm\/v4\/objects\/quotes\/(\w+)\/associations\/line_items$/);
-    if (qa) return ok({ results: (store.quotes.find((q) => q.id === qa[1]).lineIds || []).map((id) => ({ toObjectId: id })) });
+    const qa = p.match(/^\/crm\/v4\/objects\/quotes\/(\w+)\/associations\/(line_items|quote_template|contacts)(?:\/(\w+))?$/);
+    if (qa) {
+      const q = store.quotes.find((x) => x.id === qa[1]);
+      const key = { line_items: 'lineIds', quote_template: 'templateIds', contacts: 'contactIds' }[qa[2]];
+      q[key] = q[key] || [];
+      if (method === 'GET') return ok({ results: q[key].map((id) => ({ toObjectId: id })) });
+      if (method === 'DELETE') q[key] = q[key].filter((id) => id !== qa[3]);
+      if (method === 'PUT') q[key].push(qa[3]);
+      store.assocCalls.push(`${method} ${qa[2]} ${qa[3]}${body ? ' ' + body.map((t) => t.associationTypeId).join('+') : ''}`);
+      return ok({});
+    }
+    const qq = p.match(/^\/crm\/v3\/objects\/quotes\/(\w+)$/);
+    if (qq && method === 'GET') return ok({ id: qq[1], properties: store.quotes.find((x) => x.id === qq[1]).properties });
+    if (qq && method === 'PATCH') {
+      store.quotePatches.push({ id: qq[1], properties: body.properties });
+      if (store.failQuotePatch) return { ok: false, status: 400, headers: new Map(), text: async () => JSON.stringify({ message: 'Quote locked' }) };
+      return ok({ id: qq[1] });
+    }
     if (p === '/crm/v3/objects/line_items/batch/read') return ok({ results: body.inputs.map((i) => ({ id: i.id, properties: store.lineItems[i.id] || {} })) });
     if (p === '/crm/v3/objects/line_items/batch/archive') {
       store.archived.push(...body.inputs.map((i) => i.id));
@@ -287,4 +305,80 @@ test('no deal owner: quote is not created', async () => {
   assert.equal(res.ok, false);
   assert.match(res.errors[0], /deal owner/);
   assert.equal(store.quote, null);
+});
+
+// ---------------------------------------------------------------------------
+// Editing an existing builder quote in place
+// ---------------------------------------------------------------------------
+const draftBuilderQuote = (over = {}) =>
+  Object.assign(
+    {
+      id: 'Q5',
+      lineIds: ['QL5a', 'QL5b'],
+      templateIds: ['10'],
+      contactIds: ['501'],
+      properties: {
+        hs_title: 'Example MSP - AutoElevate',
+        hs_quote_progression_status: 'DRAFT',
+        hs_template_type: 'CPQ_QUOTE',
+        qb_session_id: 'qb-old',
+        qb_builder_state: P.builderState({ setup: {}, products: [], ramp: {} }, {}),
+      },
+    },
+    over
+  );
+
+test('edit in place: same quote, new lines replace old ones, primary deal lines swapped', async () => {
+  const q = draftBuilderQuote();
+  const { store, log } = fakeHubSpot({ quotes: [q] });
+  store.lineItems.QL5a = { qb_source: 'quote_builder', qb_session_id: 'qb-old' };
+  const res = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5', primary: false }), accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.equal(res.edited, true);
+  assert.equal(res.quoteId, 'Q5');
+  assert.equal(res.primary, true); // it was the primary option (its run's lines are on the deal) and stays primary
+  assert.equal(store.quote, null); // no new quote
+  const creates = log.filter((l) => l.path === '/crm/v3/objects/line_items/batch/create');
+  assert.equal(creates.length, 2); // deal lines + quote lines
+  const quoteLines = creates.find((c) => c.body.inputs[0].associations[0].types[0].associationTypeId === 68);
+  assert.ok(quoteLines.body.inputs.every((i) => i.associations[0].to.id === 'Q5' && i.properties.qb_session_id === 'qb-old'));
+  assert.equal(store.quotePatches[0].properties.qb_session_id, 'qb-old');
+  assert.equal(store.quotePatches[0].properties.hs_payment_enabled, 'false');
+  assert.ok(store.archived.includes('QL5a') && store.archived.includes('QL5b')); // old quote lines
+  assert.ok(store.archived.includes('L-old-builder')); // old primary deal lines
+  assert.ok(!store.archived.includes('L-manual'));
+  assert.deepEqual(store.assocCalls, ['DELETE contacts 501', 'PUT contacts 501 69+702']); // template unchanged
+  assert.equal(store.dealPatch.agreement_length, '15 Months');
+});
+
+test('edit in place: template swap within CPQ, refused for published or pending approval', async () => {
+  const q = draftBuilderQuote({ templateIds: ['12'] });
+  const { store } = fakeHubSpot({ quotes: [q] });
+  const res = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5' }), accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.deepEqual(store.assocCalls.slice(0, 2), ['DELETE quote_template 12', 'PUT quote_template 10 286']);
+
+  for (const [status, msg] of [['PUBLISHED', /locked/], ['PENDING_APPROVAL', /Recall the approval/]]) {
+    const locked = draftBuilderQuote();
+    locked.properties = Object.assign({}, locked.properties, { hs_quote_progression_status: status });
+    const env = fakeHubSpot({ quotes: [locked] });
+    const r = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5' }), accountId: 1 });
+    assert.equal(r.ok, false);
+    assert.match(r.errors[0], msg);
+    assert.deepEqual(env.store.quotePatches, []);
+  }
+});
+
+test('edit in place: CPQ quote cannot switch to a legacy template; failures roll back', async () => {
+  fakeHubSpot({ quotes: [draftBuilderQuote()] });
+  const legacy = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5', setup: Object.assign(payload().setup, { templateId: '11' }) }), accountId: 1 });
+  assert.equal(legacy.ok, false);
+  assert.match(legacy.errors[0], /CPQ and a legacy template/);
+
+  const { store } = fakeHubSpot({ quotes: [draftBuilderQuote()] });
+  store.failQuotePatch = true;
+  const res = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5' }), accountId: 1 });
+  assert.equal(res.ok, false);
+  assert.ok(!store.archived.includes('QL5a')); // the quote's original lines survive
+  assert.ok(store.archived.length >= 2); // the new lines were archived again
 });

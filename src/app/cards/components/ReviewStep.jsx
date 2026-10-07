@@ -18,7 +18,7 @@ const TOKEN_ROWS = [
   ['hubspot_quote_notes', 'HubSpot Quote Notes'],
 ];
 
-export function ReviewStep({ quote, setup, template, deal, products, notes, onNotes, primary, firstBuilderQuote, onPrimary, affectedQuotes = [], onAnotherOption, result, writes, dealOptions }) {
+export function ReviewStep({ quote, setup, template, deal, products, notes, onNotes, primary, editing, firstBuilderQuote, onPrimary, affectedQuotes = [], onAnotherOption, result, writes, dealOptions }) {
   const labelFor = (name, value) => {
     const o = ((dealOptions && dealOptions[name]) || []).find((x) => x.value === value);
     return o && o.label !== value ? `${o.label} (${value})` : value;
@@ -35,7 +35,7 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
   return (
     <Flex direction="column" gap="medium">
       {result && result.ok && (
-        <Alert title="Draft quote created" variant="success">
+        <Alert title={result.edited ? 'Quote updated' : 'Draft quote created'} variant="success">
           <Flex direction="column" gap="extra-small">
             <Text>
               {result.title} has {result.lineCount} line items
@@ -46,6 +46,7 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
                   : `It needs approval: open it and click Request approval. It routes to ${result.approval.approver}.`
                 : 'No approval needed. Open it to review, publish and send.'}
             </Text>
+            {result.edited && quote.approval.required && <Text variant="microcopy">If it was approved or had changes requested, request approval again in HubSpot.</Text>}
             <Text variant="microcopy">Publish it before building another option, so it keeps these printed values.</Text>
             <Flex gap="small" align="center" wrap>
               <Link href={{ url: result.quoteUrl, external: true }}>Open quote in HubSpot</Link>
@@ -64,7 +65,7 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
         </Alert>
       )}
       {result && !result.ok && (
-        <Alert title="Quote not created" variant="danger">
+        <Alert title={editing ? 'Quote not updated' : 'Quote not created'} variant="danger">
           {(result.errors || []).join(' ')}
         </Alert>
       )}
@@ -105,7 +106,7 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
 
       <Tile>
         <Flex direction="column" gap="medium">
-          <Heading>What Create quote writes to HubSpot</Heading>
+          <Heading>{editing ? 'What Update quote writes to HubSpot' : 'What Create quote writes to HubSpot'}</Heading>
           <AutoGrid columnWidth={240} gap="medium" flexible>
             <DescriptionList direction="column">
               <DescriptionListItem label="Quote">{title}</DescriptionListItem>
@@ -115,7 +116,9 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
             </DescriptionList>
             <DescriptionList direction="column">
               <DescriptionListItem label="Deal line items">{primary ? `${quote.lines.length} new, replacing the previous primary option's lines` : 'Unchanged (not the primary option)'}</DescriptionListItem>
-              <DescriptionListItem label="Quote line items">A separate copy of each (CPQ keeps quote lines apart from deal lines)</DescriptionListItem>
+              <DescriptionListItem label="Quote line items">
+                {editing ? `${quote.lines.length} new, replacing this quote's current lines` : 'A separate copy of each (CPQ keeps quote lines apart from deal lines)'}
+              </DescriptionListItem>
               <DescriptionListItem label="Ramp lines">
                 {rampCount ? `${rampCount} with Ramp = Yes, Term P${quote.ramp.months}M, Approval Ramp Months = ${quote.ramp.months}` : 'None'}
               </DescriptionListItem>
@@ -131,6 +134,9 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
             value={notes}
             onChange={onNotes}
           />
+          {editing ? (
+            <Text variant="microcopy">{editing.primary ? 'This quote is the primary option and stays primary.' : 'This quote is an alternative option; use Make primary under Quotes on this deal to switch.'}</Text>
+          ) : (
           <Checkbox
             name="primary"
             checked={primary}
@@ -144,6 +150,7 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
           >
             Primary option
           </Checkbox>
+          )}
         </Flex>
       </Tile>
     </Flex>

@@ -2,7 +2,7 @@
 'use strict';
 // Pure pricing, ramp and approval logic shared by the card (live preview) and the
 // submit function (authoritative rebuild). No HubSpot calls in here.
-const { FAMILIES, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES } = require('./config.js');
+const { FAMILIES, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES } = require('./config.js');
 
 function toNum(v, fallback = 0) {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -600,6 +600,15 @@ function dealWrites(quote, { setup = {}, notes = '' } = {}, enumOptions = {}) {
 // ---------------------------------------------------------------------------
 
 // 'open' quotes still read the deal's current printed values; 'locked' ones were frozen at publish.
+// Can the builder edit this quote in place? { editable, reason }
+function quoteEditability(q) {
+  if (!q || !q.builder || !q.state) return { editable: false, reason: 'Not made with the Quote Builder.' };
+  const status = q.progressionStatus || 'DRAFT';
+  if (QUOTE_EDITABLE_STATUSES.includes(status)) return { editable: true, reason: '' };
+  if (status === 'PENDING_APPROVAL') return { editable: false, reason: 'Recall the approval request in HubSpot to edit it.' };
+  return { editable: false, reason: 'Published quotes are locked. Start a new option from it instead.' };
+}
+
 function quoteLockState(progressionStatus) {
   const s = progressionStatus || 'DRAFT';
   if (QUOTE_IGNORED_STATUSES.includes(s)) return 'void';
@@ -666,4 +675,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeRamp, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeRamp, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };

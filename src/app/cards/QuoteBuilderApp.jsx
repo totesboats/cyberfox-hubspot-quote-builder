@@ -58,6 +58,7 @@ export const initialState = {
   ramp: { months: 3, mode: 'free', percent: 50 },
   notes: '',
   primary: null, // null = automatic: primary when it's the deal's first builder quote
+  editing: null, // { id, title, primary } while editing an existing builder quote in place
 };
 
 export function rampFor(state) {
@@ -117,10 +118,29 @@ export function reducer(state, action) {
         ramp: Object.assign({}, state.ramp, saved.ramp),
         notes: saved.notes || '',
         primary: false,
+        editing: null,
       });
     }
+    case 'editQuote': {
+      // Edit an existing builder quote in place: its saved inputs, its own name and expiry.
+      const q = action.quote;
+      const saved = q.state || {};
+      const products = (saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 }));
+      return Object.assign({}, state, {
+        step: 0,
+        setup: Object.assign({}, state.setup, saved.setup, { quoteName: q.title || '', expirationDate: q.expirationDate || (saved.setup && saved.setup.expirationDate) || state.setup.expirationDate }),
+        products,
+        nextUid: products.length + 1,
+        ramp: Object.assign({}, state.ramp, saved.ramp),
+        notes: saved.notes || '',
+        primary: !!q.primary,
+        editing: { id: q.id, title: q.title, primary: !!q.primary },
+      });
+    }
+    case 'stopEditing':
+      return Object.assign({}, initialState, { setup: state.setup, editing: null });
     case 'nextOption':
-      return Object.assign({}, state, { step: 1, primary: false, setup: Object.assign({}, state.setup, { quoteName: '' }) });
+      return Object.assign({}, state, { step: 1, primary: false, editing: null, setup: Object.assign({}, state.setup, { quoteName: '' }) });
     default:
       return state;
   }
@@ -200,7 +220,7 @@ export function QuoteBuilderApp() {
 
   const quotes = data.deal.quotes || [];
   const primary = state.primary == null ? !quotes.some((q) => q.builder) : state.primary;
-  const affected = openQuoteConflicts(quotes, data.deal.properties, writes.properties).quotes;
+  const affected = openQuoteConflicts(quotes.filter((q) => !state.editing || q.id !== state.editing.id), data.deal.properties, writes.properties).quotes;
 
   const makePrimary = async (quoteId) => {
     setPendingPrimary('');
@@ -256,19 +276,24 @@ export function QuoteBuilderApp() {
         ramp: rampFor(state),
         notes: state.notes,
         primary,
+        editQuoteId: state.editing ? state.editing.id : undefined,
       };
       const res = await callFunction('quote_builder_submit', payload);
       setResult(res);
       if (res.ok) {
-        actions.addAlert({ type: 'success', title: 'Quote created', message: `${res.title} was created as a draft with ${res.lineCount} line items.` });
+        actions.addAlert({
+          type: 'success',
+          title: res.edited ? 'Quote updated' : 'Quote created',
+          message: res.edited ? `${res.title} now has ${res.lineCount} line items.` : `${res.title} was created as a draft with ${res.lineCount} line items.`,
+        });
         if (actions.refreshObjectProperties) actions.refreshObjectProperties();
         load(true); // refresh the quotes list
       } else {
-        actions.addAlert({ type: 'danger', title: 'Quote not created', message: (res.errors || []).join(' ') });
+        actions.addAlert({ type: 'danger', title: state.editing ? 'Quote not updated' : 'Quote not created', message: (res.errors || []).join(' ') });
       }
     } catch (err) {
       setResult({ ok: false, errors: [err.message] });
-      actions.addAlert({ type: 'danger', title: 'Quote not created', message: err.message });
+      actions.addAlert({ type: 'danger', title: state.editing ? 'Quote not updated' : 'Quote not created', message: err.message });
     } finally {
       setSubmitting(false);
     }
@@ -287,6 +312,24 @@ export function QuoteBuilderApp() {
         </Alert>
       )}
 
+      {state.editing && (
+        <Alert title={`Editing ${state.editing.title || 'quote'}`} variant="info">
+          <Flex justify="between" align="center" gap="medium">
+            <Text>Update quote replaces this quote's line items and settings. It keeps the same quote and link{state.editing.primary ? ', and it stays the primary option' : ''}.</Text>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setResult(null);
+                dispatch({ type: 'stopEditing' });
+              }}
+            >
+              Stop editing
+            </Button>
+          </Flex>
+        </Alert>
+      )}
+
       <SummaryPanel quote={quote} template={template} dealQuoteCount={data.deal.quoteCount} />
 
       {state.step === 0 && (
@@ -298,6 +341,11 @@ export function QuoteBuilderApp() {
           onStartFrom={(q) => {
             setResult(null);
             dispatch({ type: 'loadState', state: q.state });
+          }}
+          editingId={state.editing ? state.editing.id : ''}
+          onEdit={(q) => {
+            setResult(null);
+            dispatch({ type: 'editQuote', quote: q });
           }}
           onMakePrimary={requestPrimary}
           onConfirmPrimary={() => makePrimary(pendingPrimary)}
@@ -350,6 +398,7 @@ export function QuoteBuilderApp() {
           notes={state.notes}
           onNotes={(value) => dispatch({ type: 'notes', value })}
           primary={primary}
+          editing={state.editing}
           firstBuilderQuote={!quotes.some((q) => q.builder)}
           onPrimary={(value) => dispatch({ type: 'primary', value })}
           affectedQuotes={affected}
@@ -376,7 +425,7 @@ export function QuoteBuilderApp() {
         )}
         {isLast ? (
           <Button variant="primary" disabled={!!blocker || submitting || created} onClick={submit}>
-            {submitting ? 'Creating quote…' : created ? 'Quote created' : 'Create quote'}
+            {state.editing ? (submitting ? 'Updating quote…' : created ? 'Quote updated' : 'Update quote') : submitting ? 'Creating quote…' : created ? 'Quote created' : 'Create quote'}
           </Button>
         ) : (
           <Button variant="primary" disabled={!!blocker} onClick={() => go(state.step + 1)}>

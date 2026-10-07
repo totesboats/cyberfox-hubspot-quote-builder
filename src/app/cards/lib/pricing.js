@@ -21,6 +21,7 @@ import {
   QUOTE_OPEN_STATUSES,
   QUOTE_IGNORED_STATUSES,
   PRINTED_DEAL_PROPERTIES,
+  QUOTE_EDITABLE_STATUSES,
 } from './config.js';
 
 export function toNum(v, fallback = 0) {
@@ -619,6 +620,15 @@ export function dealWrites(quote, { setup = {}, notes = '' } = {}, enumOptions =
 // ---------------------------------------------------------------------------
 
 // 'open' quotes still read the deal's current printed values; 'locked' ones were frozen at publish.
+// Can the builder edit this quote in place? { editable, reason }
+export function quoteEditability(q) {
+  if (!q || !q.builder || !q.state) return { editable: false, reason: 'Not made with the Quote Builder.' };
+  const status = q.progressionStatus || 'DRAFT';
+  if (QUOTE_EDITABLE_STATUSES.includes(status)) return { editable: true, reason: '' };
+  if (status === 'PENDING_APPROVAL') return { editable: false, reason: 'Recall the approval request in HubSpot to edit it.' };
+  return { editable: false, reason: 'Published quotes are locked. Start a new option from it instead.' };
+}
+
 export function quoteLockState(progressionStatus) {
   const s = progressionStatus || 'DRAFT';
   if (QUOTE_IGNORED_STATUSES.includes(s)) return 'void';

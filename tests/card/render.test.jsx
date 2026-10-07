@@ -245,3 +245,50 @@ test('remove a product, untick Ramp, Remove ramp clears every Ramp box', async (
   assert.equal(r.maybeFind(Checkbox, { name: 'ramp-1' }), null);
   assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' }));
 });
+
+test('edit an existing draft quote in place; ramp goes up to 12 months', async () => {
+  const r = mk();
+  const saved = {
+    v: 1,
+    setup: { segment: 'MSP', billing: 'monthly', agreementLength: '15 Months', templateId: '10', paymentMethod: 'ACH', invoiceTerms: 'Net-30', acceptance: 'esignature', signerContactId: '501', expirationDate: '2026-11-20' },
+    products: [{ uid: 4, family: 'autoelevate', edition: 'standard', featureType: 'Standard', quantity: 100, tier: '', discountPct: 0, ramp: true }],
+    ramp: { months: 9, mode: 'free', percent: 50 },
+    notes: '',
+    dealProperties: { agreement_length: '15 Months' },
+  };
+  const deal = Object.assign({}, CATALOG_RESPONSE.deal, {
+    quotes: [
+      { id: 'Q5', title: 'Example MSP - AutoElevate + 9 Month Ramp', progressionStatus: 'DRAFT', lock: 'open', amount: 216, builder: true, primary: true, state: saved, expirationDate: '2026-11-20' },
+      { id: 'Q6', title: 'Example MSP - Published', progressionStatus: 'PUBLISHED', lock: 'locked', amount: 216, builder: true, primary: false, state: saved },
+    ],
+  });
+  const calls = [];
+  r.mocks.runServerlessFunction.willCall(async (params) => {
+    calls.push(params);
+    if (params.name === 'quote_builder_catalog') return { status: 'SUCCESS', response: Object.assign({}, CATALOG_RESPONSE, { deal }) };
+    return { status: 'SUCCESS', response: { ok: true, edited: true, quoteId: 'Q5', quoteUrl: 'u', title: 'Example MSP - AutoElevate + 9 Month Ramp', lineCount: 3, primary: true, approval: { required: true, reasons: [] } } };
+  });
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(Button, (n) => /"Edit quote"/.test(text(n)))));
+  assert.equal(r.findAll(Button, (n) => /"Edit quote"/.test(text(n))).length, 1); // only the draft
+  assert.match(text(r.getRootNode()), /Published quotes are locked/);
+  r.find(Button, (n) => /"Edit quote"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Alert, (n) => /Editing Example MSP/.test(n.props.title))));
+  assert.equal(r.find(Input, { name: 'quoteName' }).props.value, 'Example MSP - AutoElevate + 9 Month Ramp');
+  assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '15 Months');
+
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths' })));
+  assert.equal(r.find(Select, { name: 'rampMonths' }).props.options.length, 12);
+  assert.equal(r.find(Select, { name: 'rampMonths' }).props.value, 9);
+  r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Button, (n) => /"Update quote"/.test(text(n)))));
+  assert.equal(r.maybeFind(Checkbox, { name: 'primary' }), null);
+  r.find(Button, (n) => /"Update quote"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Quote updated' })));
+  const submit = calls.find((c) => c.name === 'quote_builder_submit');
+  assert.equal(submit.parameters.editQuoteId, 'Q5');
+  assert.equal(submit.parameters.products[0].quantity, 1250);
+  assert.equal(submit.parameters.ramp.months, 9);
+});

@@ -170,6 +170,7 @@ async function loadDeal(dealId) {
           templateType: p.hs_template_type,
           expirationDate: p.hs_expiration_date,
           createdAt: p.hs_createdate,
+          session,
           builder: !!session,
           primary: !!session && session === primarySession,
           state, // builder inputs, so the card can start a new option from this quote
@@ -194,8 +195,27 @@ async function readBuilderLineItems(dealId) {
 }
 
 // Line items this builder created earlier on the deal (never touches anything else).
-async function findBuilderLineItems(dealId, excludeSessionId) {
-  return (await readBuilderLineItems(dealId)).filter((li) => li.session !== excludeSessionId).map((li) => li.id);
+// excludeSessionId keeps one run's lines; keepIds keeps specific lines (used when editing in place).
+async function findBuilderLineItems(dealId, excludeSessionId, keepIds = []) {
+  const keep = new Set(keepIds.map(String));
+  return (await readBuilderLineItems(dealId))
+    .filter((li) => (excludeSessionId == null || li.session !== excludeSessionId) && !keep.has(li.id))
+    .map((li) => li.id);
 }
 
-module.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems };
+// v4 association helpers (quote ↔ line items / template / contacts).
+async function associatedIds(fromType, fromId, toType) {
+  const res = await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}?limit=500`);
+  return res.results.map((r) => String(r.toObjectId));
+}
+async function associate(fromType, fromId, toType, toId, typeIds) {
+  await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, {
+    method: 'PUT',
+    body: typeIds.map((associationTypeId) => ({ associationCategory: 'HUBSPOT_DEFINED', associationTypeId })),
+  });
+}
+async function unassociate(fromType, fromId, toType, toId) {
+  await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: 'DELETE' });
+}
+
+module.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems, associatedIds, associate, unassociate };

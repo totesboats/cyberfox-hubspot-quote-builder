@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert, Button, Flex, Heading, Link, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag, Text, Tile } from '@hubspot/ui-extensions';
-import { formatMoney } from '../lib/pricing.js';
+import { formatMoney, quoteEditability } from '../lib/pricing.js';
 
 const STATUS_LABEL = {
   DRAFT: 'Draft',
@@ -19,7 +19,7 @@ const STATUS_LABEL = {
 
 // Quotes already on the deal. Reps start a new option from one (e.g. 100 → 250 agents) or
 // switch which option is primary (whose line items sit on the deal).
-export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, onStartFrom, onMakePrimary, onConfirmPrimary, onCancelPrimary }) {
+export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, editingId, onEdit, onStartFrom, onMakePrimary, onConfirmPrimary, onCancelPrimary }) {
   if (!quotes || !quotes.length) return null;
   const open = quotes.filter((q) => q.lock === 'open');
   return (
@@ -71,6 +71,7 @@ export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, onStartF
                     <Link href={{ url: `https://app.hubspot.com/quotes/${portalId}/details/${q.id}`, external: true }}>{q.title || `Quote ${q.id}`}</Link>
                     <Flex gap="extra-small" wrap>
                       {q.primary && <Tag variant="success">Primary</Tag>}
+                      {q.id === editingId && <Tag variant="info">Editing</Tag>}
                       {!q.builder && <Tag>Not from builder</Tag>}
                     </Flex>
                   </Flex>
@@ -83,7 +84,13 @@ export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, onStartF
                 </TableCell>
                 <TableCell align="right">{q.amount == null ? '—' : formatMoney(q.amount)}</TableCell>
                 <TableCell>
+                  <Flex direction="column" gap="extra-small">
                   <Flex gap="extra-small" wrap>
+                    {quoteEditability(q).editable && q.id !== editingId && (
+                      <Button size="xs" variant="primary" onClick={() => onEdit(q)}>
+                        Edit quote
+                      </Button>
+                    )}
                     {q.state && (
                       <Button size="xs" variant="secondary" onClick={() => onStartFrom(q)}>
                         New option from this
@@ -94,6 +101,8 @@ export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, onStartF
                         {busyId === q.id ? 'Updating…' : 'Make primary'}
                       </Button>
                     )}
+                  </Flex>
+                  {q.builder && q.state && !quoteEditability(q).editable && <Text variant="microcopy">{quoteEditability(q).reason}</Text>}
                   </Flex>
                 </TableCell>
               </TableRow>

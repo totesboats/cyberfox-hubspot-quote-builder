@@ -63,7 +63,7 @@ var require_config = __commonJS({
       annual: { label: "Annual (billed yearly)", frequency: "annually", periodsPerYear: 1 },
       m2m: { label: "Month-to-month", frequency: "monthly", periodsPerYear: 12 }
     };
-    var MAX_RAMP_MONTHS = 6;
+    var MAX_RAMP_MONTHS = 12;
     var APPROVAL = {
       discountThresholdPct: 30,
       // discounts at or above this need a sales manager
@@ -91,6 +91,7 @@ var require_config = __commonJS({
     var QUOTE_STATE_PROPERTY = "qb_builder_state";
     var QUOTE_OPEN_STATUSES = ["DRAFT", "PENDING_APPROVAL", "CHANGES_REQUESTED"];
     var QUOTE_IGNORED_STATUSES = ["VOID"];
+    var QUOTE_EDITABLE_STATUSES = ["DRAFT", "CHANGES_REQUESTED"];
     var SET_BILLING_DELAY_AFTER_RAMP = false;
     var TEMPLATE_HINTS = {
       autoelevate: "autoelevate",
@@ -182,7 +183,7 @@ var require_config = __commonJS({
     ];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
+    module2.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
   }
 });
 
@@ -190,7 +191,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES } = require_config();
+    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -689,6 +690,13 @@ var require_pricing = __commonJS({
       }
       return { properties, errors, warnings, agreementLength, paymentFrequency };
     }
+    function quoteEditability(q) {
+      if (!q || !q.builder || !q.state) return { editable: false, reason: "Not made with the Quote Builder." };
+      const status = q.progressionStatus || "DRAFT";
+      if (QUOTE_EDITABLE_STATUSES.includes(status)) return { editable: true, reason: "" };
+      if (status === "PENDING_APPROVAL") return { editable: false, reason: "Recall the approval request in HubSpot to edit it." };
+      return { editable: false, reason: "Published quotes are locked. Start a new option from it instead." };
+    }
     function quoteLockState(progressionStatus) {
       const s = progressionStatus || "DRAFT";
       if (QUOTE_IGNORED_STATUSES.includes(s)) return "void";
@@ -746,7 +754,7 @@ var require_pricing = __commonJS({
       }
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeRamp, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeRamp, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 
@@ -900,6 +908,7 @@ var require_hubspot = __commonJS({
             templateType: p.hs_template_type,
             expirationDate: p.hs_expiration_date,
             createdAt: p.hs_createdate,
+            session,
             builder: !!session,
             primary: !!session && session === primarySession,
             state
@@ -918,10 +927,24 @@ var require_hubspot = __commonJS({
       });
       return read.results.filter((li) => li.properties[LINE_SOURCE_PROPERTY] === LINE_SOURCE_VALUE).map((li) => ({ id: String(li.id), session: li.properties[LINE_SESSION_PROPERTY] || null }));
     }
-    async function findBuilderLineItems(dealId, excludeSessionId) {
-      return (await readBuilderLineItems(dealId)).filter((li) => li.session !== excludeSessionId).map((li) => li.id);
+    async function findBuilderLineItems(dealId, excludeSessionId, keepIds = []) {
+      const keep = new Set(keepIds.map(String));
+      return (await readBuilderLineItems(dealId)).filter((li) => (excludeSessionId == null || li.session !== excludeSessionId) && !keep.has(li.id)).map((li) => li.id);
     }
-    module2.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findBuilderLineItems };
+    async function associatedIds(fromType, fromId, toType) {
+      const res = await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}?limit=500`);
+      return res.results.map((r) => String(r.toObjectId));
+    }
+    async function associate(fromType, fromId, toType, toId, typeIds) {
+      await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, {
+        method: "PUT",
+        body: typeIds.map((associationTypeId) => ({ associationCategory: "HUBSPOT_DEFINED", associationTypeId }))
+      });
+    }
+    async function unassociate(fromType, fromId, toType, toId) {
+      await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: "DELETE" });
+    }
+    module2.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findBuilderLineItems, associatedIds, associate, unassociate };
   }
 });
 

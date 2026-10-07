@@ -62,7 +62,7 @@ export const BILLING = {
   m2m: { label: 'Month-to-month', frequency: 'monthly', periodsPerYear: 12 },
 };
 
-export const MAX_RAMP_MONTHS = 6;
+export const MAX_RAMP_MONTHS = 12;
 
 // Approval policy (mirrors the Commerce Hub approval workflow; keep them in sync).
 export const APPROVAL = {
@@ -101,6 +101,9 @@ export const QUOTE_STATE_PROPERTY = 'qb_builder_state';
 // so writing new printed values would change them too.
 export const QUOTE_OPEN_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'CHANGES_REQUESTED'];
 export const QUOTE_IGNORED_STATUSES = ['VOID'];
+// Builder quotes reps can edit in place. Pending approval must be recalled first; published or
+// signed quotes are locked by HubSpot (start a new option instead).
+export const QUOTE_EDITABLE_STATUSES = ['DRAFT', 'CHANGES_REQUESTED'];
 
 // When true, post-ramp lines get "Delayed billing start by months" = ramp length.
 // Off by default to match how ramps are entered today (Sale Review groups ramp segments).

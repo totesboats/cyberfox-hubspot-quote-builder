@@ -63,7 +63,7 @@ var require_config = __commonJS({
       annual: { label: "Annual (billed yearly)", frequency: "annually", periodsPerYear: 1 },
       m2m: { label: "Month-to-month", frequency: "monthly", periodsPerYear: 12 }
     };
-    var MAX_RAMP_MONTHS = 6;
+    var MAX_RAMP_MONTHS = 12;
     var APPROVAL = {
       discountThresholdPct: 30,
       // discounts at or above this need a sales manager
@@ -91,6 +91,7 @@ var require_config = __commonJS({
     var QUOTE_STATE_PROPERTY2 = "qb_builder_state";
     var QUOTE_OPEN_STATUSES = ["DRAFT", "PENDING_APPROVAL", "CHANGES_REQUESTED"];
     var QUOTE_IGNORED_STATUSES = ["VOID"];
+    var QUOTE_EDITABLE_STATUSES = ["DRAFT", "CHANGES_REQUESTED"];
     var SET_BILLING_DELAY_AFTER_RAMP = false;
     var TEMPLATE_HINTS = {
       autoelevate: "autoelevate",
@@ -182,7 +183,7 @@ var require_config = __commonJS({
     ];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS2 = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
+    module2.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
   }
 });
 
@@ -190,7 +191,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES } = require_config();
+    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -689,6 +690,13 @@ var require_pricing = __commonJS({
       }
       return { properties, errors, warnings, agreementLength, paymentFrequency };
     }
+    function quoteEditability2(q) {
+      if (!q || !q.builder || !q.state) return { editable: false, reason: "Not made with the Quote Builder." };
+      const status = q.progressionStatus || "DRAFT";
+      if (QUOTE_EDITABLE_STATUSES.includes(status)) return { editable: true, reason: "" };
+      if (status === "PENDING_APPROVAL") return { editable: false, reason: "Recall the approval request in HubSpot to edit it." };
+      return { editable: false, reason: "Published quotes are locked. Start a new option from it instead." };
+    }
     function quoteLockState(progressionStatus) {
       const s = progressionStatus || "DRAFT";
       if (QUOTE_IGNORED_STATUSES.includes(s)) return "void";
@@ -746,7 +754,7 @@ var require_pricing = __commonJS({
       }
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeRamp, agreementMonths, effectiveBilling, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeRamp, agreementMonths, effectiveBilling, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
   }
 });
 
@@ -900,6 +908,7 @@ var require_hubspot = __commonJS({
             templateType: p.hs_template_type,
             expirationDate: p.hs_expiration_date,
             createdAt: p.hs_createdate,
+            session,
             builder: !!session,
             primary: !!session && session === primarySession,
             state
@@ -918,16 +927,30 @@ var require_hubspot = __commonJS({
       });
       return read.results.filter((li) => li.properties[LINE_SOURCE_PROPERTY] === LINE_SOURCE_VALUE).map((li) => ({ id: String(li.id), session: li.properties[LINE_SESSION_PROPERTY] || null }));
     }
-    async function findBuilderLineItems2(dealId, excludeSessionId) {
-      return (await readBuilderLineItems(dealId)).filter((li) => li.session !== excludeSessionId).map((li) => li.id);
+    async function findBuilderLineItems2(dealId, excludeSessionId, keepIds = []) {
+      const keep = new Set(keepIds.map(String));
+      return (await readBuilderLineItems(dealId)).filter((li) => (excludeSessionId == null || li.session !== excludeSessionId) && !keep.has(li.id)).map((li) => li.id);
     }
-    module2.exports = { hs: hs2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findBuilderLineItems: findBuilderLineItems2 };
+    async function associatedIds2(fromType, fromId, toType) {
+      const res = await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}?limit=500`);
+      return res.results.map((r) => String(r.toObjectId));
+    }
+    async function associate2(fromType, fromId, toType, toId, typeIds) {
+      await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, {
+        method: "PUT",
+        body: typeIds.map((associationTypeId) => ({ associationCategory: "HUBSPOT_DEFINED", associationTypeId }))
+      });
+    }
+    async function unassociate2(fromType, fromId, toType, toId) {
+      await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: "DELETE" });
+    }
+    module2.exports = { hs: hs2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findBuilderLineItems: findBuilderLineItems2, associatedIds: associatedIds2, associate: associate2, unassociate: unassociate2 };
   }
 });
 
 // functions-src/quote-builder-submit.js
-var { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems } = require_hubspot();
-var { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts } = require_pricing();
+var { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems, associatedIds, associate, unassociate } = require_hubspot();
+var { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require_pricing();
 var { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require_config();
 var ASSOC = {
   lineItemToDeal: 20,
@@ -935,7 +958,8 @@ var ASSOC = {
   quoteToLineItem: 67,
   quoteToContact: 69,
   quoteToTemplate: 286,
-  quoteToSigner: 702
+  quoteToSigner: 702,
+  lineItemToQuote: 68
 };
 var link = (id, typeId) => ({ to: { id: String(id) }, types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: typeId }] });
 exports.main = async (context) => {
@@ -965,32 +989,59 @@ exports.main = async (context) => {
   const signerId = payload.setup.signerContactId && deal.contacts.some((c) => c.id === String(payload.setup.signerContactId)) ? String(payload.setup.signerContactId) : null;
   const isCpq = template.templateType === "CPQ_QUOTE";
   if (isCpq && payload.setup.acceptance === "esignature" && !signerId) return { ok: false, errors: ["E-signature quotes need a signer contact associated with the deal."] };
-  const sessionId = `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  let editing = null;
+  if (payload.editQuoteId) {
+    editing = deal.quotes.find((q) => q.id === String(payload.editQuoteId));
+    if (!editing) return { ok: false, errors: ["That quote is not on this deal."] };
+    const can = quoteEditability(editing);
+    if (!can.editable) return { ok: false, errors: [`This quote can't be edited: ${can.reason}`] };
+    if (editing.templateType && editing.templateType !== template.templateType) {
+      return { ok: false, errors: ["An existing quote can't switch between a CPQ and a legacy template. Pick a template of the same kind, or start a new option."] };
+    }
+  }
+  const sessionId = editing ? editing.session : `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const lineProps = quote.lines.map((l) => lineItemProperties(l, { billing: setup.billing, rampMonths: quote.ramp.months, sessionId }));
   const created = { dealLines: [], quoteLines: [], quoteId: null };
-  const primary = payload.primary !== false || !deal.quotes.some((q) => q.builder);
-  const affected = openQuoteConflicts(deal.quotes, deal.properties, writes.properties).quotes;
+  const primary = editing ? editing.primary : payload.primary !== false || !deal.quotes.some((q) => q.builder);
+  const affected = openQuoteConflicts(deal.quotes.filter((q) => !editing || q.id !== editing.id), deal.properties, writes.properties).quotes;
   const title = (payload.setup.quoteName || "").trim() || autoQuoteName(deal.company && deal.company.name, payload.products, quote.anyRamp ? quote.ramp.months : 0);
+  const quoteProps = {
+    hs_title: title.slice(0, 250),
+    hs_expiration_date: payload.setup.expirationDate,
+    hs_template_type: template.templateType,
+    hs_language: QUOTE_DEFAULTS.language,
+    hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
+    hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
+    // Seller contact = deal owner, always.
+    hubspot_owner_id: deal.owner.id,
+    hs_sender_firstname: deal.owner.firstName,
+    hs_sender_lastname: deal.owner.lastName,
+    hs_sender_email: deal.owner.email,
+    [QUOTE_SESSION_PROPERTY]: sessionId,
+    [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties)
+  };
+  if (isCpq) quoteProps.hs_acceptance_method = payload.setup.acceptance || "esignature";
+  else if (!editing) quoteProps.hs_status = "DRAFT";
+  const result = (quoteId) => ({
+    ok: true,
+    edited: !!editing,
+    quoteId,
+    quoteUrl: `https://app.hubspot.com/quotes/${context.accountId}/details/${quoteId}`,
+    title,
+    templateType: template.templateType,
+    lineCount: lineProps.length,
+    primary,
+    replaced: 0,
+    openQuotesAffected: affected.map((q) => ({ id: q.id, title: q.title })),
+    approval: quote.approval,
+    totals: quote.totals,
+    dealProperties: writes.properties,
+    warnings: writes.warnings
+  });
+  if (editing) return editInPlace({ editing, dealId, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result });
   try {
     if (primary) created.dealLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties, associations: [link(dealId, ASSOC.lineItemToDeal)] })));
     created.quoteLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties })));
-    const quoteProps = {
-      hs_title: title.slice(0, 250),
-      hs_expiration_date: payload.setup.expirationDate,
-      hs_template_type: template.templateType,
-      hs_language: QUOTE_DEFAULTS.language,
-      hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
-      hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
-      // Seller contact = deal owner, always.
-      hubspot_owner_id: deal.owner.id,
-      hs_sender_firstname: deal.owner.firstName,
-      hs_sender_lastname: deal.owner.lastName,
-      hs_sender_email: deal.owner.email,
-      [QUOTE_SESSION_PROPERTY]: sessionId,
-      [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties)
-    };
-    if (isCpq) quoteProps.hs_acceptance_method = payload.setup.acceptance || "esignature";
-    else quoteProps.hs_status = "DRAFT";
     const associations = [link(dealId, ASSOC.quoteToDeal), link(template.id, ASSOC.quoteToTemplate)].concat(created.quoteLines.map((li) => link(li.id, ASSOC.quoteToLineItem)));
     if (signerId) {
       associations.push(link(signerId, ASSOC.quoteToContact));
@@ -1005,21 +1056,7 @@ exports.main = async (context) => {
       if (old.length) await batchArchive("line_items", old);
       replaced = old.length;
     }
-    return {
-      ok: true,
-      quoteId: created.quoteId,
-      quoteUrl: `https://app.hubspot.com/quotes/${context.accountId}/details/${created.quoteId}`,
-      title,
-      templateType: template.templateType,
-      lineCount: created.quoteLines.length,
-      primary,
-      replaced,
-      openQuotesAffected: affected.map((q) => ({ id: q.id, title: q.title })),
-      approval: quote.approval,
-      totals: quote.totals,
-      dealProperties: writes.properties,
-      warnings: writes.warnings
-    };
+    return Object.assign(result(created.quoteId), { replaced });
   } catch (err) {
     console.error("quote-builder-submit failed; rolling back", err.message, err.details || "");
     const rollbackErrors = [];
@@ -1029,3 +1066,40 @@ exports.main = async (context) => {
     return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
   }
 };
+async function editInPlace({ editing, dealId, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result }) {
+  const quoteId = editing.id;
+  const created = { dealLines: [], quoteLines: [] };
+  let before = null;
+  try {
+    const oldQuoteLines = await associatedIds("quotes", quoteId, "line_items");
+    const current = (await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}?properties=${Object.keys(quoteProps).join(",")}`)).properties || {};
+    before = Object.fromEntries(Object.keys(quoteProps).map((k) => [k, current[k] == null ? "" : current[k]]));
+    if (primary) created.dealLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties, associations: [link(dealId, ASSOC.lineItemToDeal)] })));
+    created.quoteLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties, associations: [link(quoteId, ASSOC.lineItemToQuote)] })));
+    await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: { properties: quoteProps } });
+    const templates = await associatedIds("quotes", quoteId, "quote_template");
+    if (!templates.includes(String(template.id))) {
+      for (const id of templates) await unassociate("quotes", quoteId, "quote_template", id);
+      await associate("quotes", quoteId, "quote_template", template.id, [ASSOC.quoteToTemplate]);
+    }
+    const contacts = await associatedIds("quotes", quoteId, "contacts");
+    for (const id of contacts) await unassociate("quotes", quoteId, "contacts", id);
+    if (signerId) await associate("quotes", quoteId, "contacts", signerId, isCpq && payload.setup.acceptance === "esignature" ? [ASSOC.quoteToContact, ASSOC.quoteToSigner] : [ASSOC.quoteToContact]);
+    if (oldQuoteLines.length) await batchArchive("line_items", oldQuoteLines);
+    await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: "PATCH", body: { properties: writes.properties } });
+    let replaced = 0;
+    if (primary) {
+      const old = await findBuilderLineItems(dealId, null, created.dealLines.map((li) => li.id));
+      if (old.length) await batchArchive("line_items", old);
+      replaced = old.length;
+    }
+    return Object.assign(result(quoteId), { replaced });
+  } catch (err) {
+    console.error("quote-builder-submit edit failed; rolling back", err.message, err.details || "");
+    const rollbackErrors = [];
+    const lineIds = created.dealLines.concat(created.quoteLines).map((li) => li.id);
+    if (lineIds.length) await batchArchive("line_items", lineIds).catch((e) => rollbackErrors.push(e.message));
+    if (before) await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: { properties: before } }).catch((e) => rollbackErrors.push(e.message));
+    return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
+  }
+}

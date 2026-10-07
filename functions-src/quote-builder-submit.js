@@ -6,8 +6,10 @@
 // A deal can hold several builder quotes ("options", e.g. 100 vs 250 agents). Only the
 // primary option's lines sit on the deal, so the deal amount reflects one option.
 // Anything created before a failure is archived again so a failed run leaves no debris.
-const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems } = require('./lib/hubspot.js');
-const { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts } = require('./lib/pricing.js');
+// With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
+// new line items replace the quote's old ones, the quote keeps its id, link and option status.
+const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
+const { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
 const ASSOC = {
@@ -17,6 +19,7 @@ const ASSOC = {
   quoteToContact: 69,
   quoteToTemplate: 286,
   quoteToSigner: 702,
+  lineItemToQuote: 68,
 };
 const link = (id, typeId) => ({ to: { id: String(id) }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: typeId }] });
 
@@ -51,35 +54,64 @@ exports.main = async (context) => {
   const isCpq = template.templateType === 'CPQ_QUOTE';
   if (isCpq && payload.setup.acceptance === 'esignature' && !signerId) return { ok: false, errors: ['E-signature quotes need a signer contact associated with the deal.'] };
 
-  const sessionId = `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  let editing = null;
+  if (payload.editQuoteId) {
+    editing = deal.quotes.find((q) => q.id === String(payload.editQuoteId));
+    if (!editing) return { ok: false, errors: ['That quote is not on this deal.'] };
+    const can = quoteEditability(editing);
+    if (!can.editable) return { ok: false, errors: [`This quote can't be edited: ${can.reason}`] };
+    if (editing.templateType && editing.templateType !== template.templateType) {
+      return { ok: false, errors: ["An existing quote can't switch between a CPQ and a legacy template. Pick a template of the same kind, or start a new option."] };
+    }
+  }
+
+  const sessionId = editing ? editing.session : `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const lineProps = quote.lines.map((l) => lineItemProperties(l, { billing: setup.billing, rampMonths: quote.ramp.months, sessionId }));
   const created = { dealLines: [], quoteLines: [], quoteId: null };
   // Primary unless the rep says otherwise; the first builder quote on a deal is always primary.
-  const primary = payload.primary !== false || !deal.quotes.some((q) => q.builder);
-  const affected = openQuoteConflicts(deal.quotes, deal.properties, writes.properties).quotes;
+  // An edited quote keeps whatever option status it had.
+  const primary = editing ? editing.primary : payload.primary !== false || !deal.quotes.some((q) => q.builder);
+  const affected = openQuoteConflicts(deal.quotes.filter((q) => !editing || q.id !== editing.id), deal.properties, writes.properties).quotes;
   const title = (payload.setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, payload.products, quote.anyRamp ? quote.ramp.months : 0);
+  const quoteProps = {
+    hs_title: title.slice(0, 250),
+    hs_expiration_date: payload.setup.expirationDate,
+    hs_template_type: template.templateType,
+    hs_language: QUOTE_DEFAULTS.language,
+    hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
+    hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
+    // Seller contact = deal owner, always.
+    hubspot_owner_id: deal.owner.id,
+    hs_sender_firstname: deal.owner.firstName,
+    hs_sender_lastname: deal.owner.lastName,
+    hs_sender_email: deal.owner.email,
+    [QUOTE_SESSION_PROPERTY]: sessionId,
+    [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties),
+  };
+  if (isCpq) quoteProps.hs_acceptance_method = payload.setup.acceptance || 'esignature';
+  else if (!editing) quoteProps.hs_status = 'DRAFT';
+  const result = (quoteId) => ({
+    ok: true,
+    edited: !!editing,
+    quoteId,
+    quoteUrl: `https://app.hubspot.com/quotes/${context.accountId}/details/${quoteId}`,
+    title,
+    templateType: template.templateType,
+    lineCount: lineProps.length,
+    primary,
+    replaced: 0,
+    openQuotesAffected: affected.map((q) => ({ id: q.id, title: q.title })),
+    approval: quote.approval,
+    totals: quote.totals,
+    dealProperties: writes.properties,
+    warnings: writes.warnings,
+  });
+
+  if (editing) return editInPlace({ editing, dealId, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result });
 
   try {
     if (primary) created.dealLines = await batchCreate('line_items', lineProps.map((properties) => ({ properties, associations: [link(dealId, ASSOC.lineItemToDeal)] })));
     created.quoteLines = await batchCreate('line_items', lineProps.map((properties) => ({ properties })));
-
-    const quoteProps = {
-      hs_title: title.slice(0, 250),
-      hs_expiration_date: payload.setup.expirationDate,
-      hs_template_type: template.templateType,
-      hs_language: QUOTE_DEFAULTS.language,
-      hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
-      hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
-      // Seller contact = deal owner, always.
-      hubspot_owner_id: deal.owner.id,
-      hs_sender_firstname: deal.owner.firstName,
-      hs_sender_lastname: deal.owner.lastName,
-      hs_sender_email: deal.owner.email,
-      [QUOTE_SESSION_PROPERTY]: sessionId,
-      [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties),
-    };
-    if (isCpq) quoteProps.hs_acceptance_method = payload.setup.acceptance || 'esignature';
-    else quoteProps.hs_status = 'DRAFT';
 
     const associations = [link(dealId, ASSOC.quoteToDeal), link(template.id, ASSOC.quoteToTemplate)]
       .concat(created.quoteLines.map((li) => link(li.id, ASSOC.quoteToLineItem)));
@@ -99,21 +131,7 @@ exports.main = async (context) => {
       replaced = old.length;
     }
 
-    return {
-      ok: true,
-      quoteId: created.quoteId,
-      quoteUrl: `https://app.hubspot.com/quotes/${context.accountId}/details/${created.quoteId}`,
-      title,
-      templateType: template.templateType,
-      lineCount: created.quoteLines.length,
-      primary,
-      replaced,
-      openQuotesAffected: affected.map((q) => ({ id: q.id, title: q.title })),
-      approval: quote.approval,
-      totals: quote.totals,
-      dealProperties: writes.properties,
-      warnings: writes.warnings,
-    };
+    return Object.assign(result(created.quoteId), { replaced });
   } catch (err) {
     console.error('quote-builder-submit failed; rolling back', err.message, err.details || '');
     const rollbackErrors = [];
@@ -123,3 +141,46 @@ exports.main = async (context) => {
     return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
   }
 };
+
+// Edit a builder quote in place: same quote id, new line items, updated properties.
+async function editInPlace({ editing, dealId, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result }) {
+  const quoteId = editing.id;
+  const created = { dealLines: [], quoteLines: [] };
+  let before = null;
+  try {
+    const oldQuoteLines = await associatedIds('quotes', quoteId, 'line_items');
+    const current = (await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}?properties=${Object.keys(quoteProps).join(',')}`)).properties || {};
+    before = Object.fromEntries(Object.keys(quoteProps).map((k) => [k, current[k] == null ? '' : current[k]]));
+
+    if (primary) created.dealLines = await batchCreate('line_items', lineProps.map((properties) => ({ properties, associations: [link(dealId, ASSOC.lineItemToDeal)] })));
+    created.quoteLines = await batchCreate('line_items', lineProps.map((properties) => ({ properties, associations: [link(quoteId, ASSOC.lineItemToQuote)] })));
+    await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: 'PATCH', body: { properties: quoteProps } });
+
+    const templates = await associatedIds('quotes', quoteId, 'quote_template');
+    if (!templates.includes(String(template.id))) {
+      for (const id of templates) await unassociate('quotes', quoteId, 'quote_template', id);
+      await associate('quotes', quoteId, 'quote_template', template.id, [ASSOC.quoteToTemplate]);
+    }
+    const contacts = await associatedIds('quotes', quoteId, 'contacts');
+    for (const id of contacts) await unassociate('quotes', quoteId, 'contacts', id);
+    if (signerId) await associate('quotes', quoteId, 'contacts', signerId, isCpq && payload.setup.acceptance === 'esignature' ? [ASSOC.quoteToContact, ASSOC.quoteToSigner] : [ASSOC.quoteToContact]);
+
+    if (oldQuoteLines.length) await batchArchive('line_items', oldQuoteLines);
+    await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: 'PATCH', body: { properties: writes.properties } });
+
+    let replaced = 0;
+    if (primary) {
+      const old = await findBuilderLineItems(dealId, null, created.dealLines.map((li) => li.id));
+      if (old.length) await batchArchive('line_items', old);
+      replaced = old.length;
+    }
+    return Object.assign(result(quoteId), { replaced });
+  } catch (err) {
+    console.error('quote-builder-submit edit failed; rolling back', err.message, err.details || '');
+    const rollbackErrors = [];
+    const lineIds = created.dealLines.concat(created.quoteLines).map((li) => li.id);
+    if (lineIds.length) await batchArchive('line_items', lineIds).catch((e) => rollbackErrors.push(e.message));
+    if (before) await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: 'PATCH', body: { properties: before } }).catch((e) => rollbackErrors.push(e.message));
+    return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
+  }
+}
