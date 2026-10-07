@@ -61,7 +61,9 @@ export const BILLING = {
   m2m: { label: 'Month-to-month', frequency: 'monthly', periodsPerYear: 12 },
 };
 
-export const MAX_RAMP_MONTHS = 12;
+export const MAX_RAMP_MONTHS = 12; // total across all ramp stages
+// A ramp can step down in stages, e.g. 2 months free then 2 months at 50% off.
+export const MAX_RAMP_STAGES = 4;
 
 // Approval policy (mirrors the Commerce Hub approval workflow; keep them in sync).
 export const APPROVAL = {

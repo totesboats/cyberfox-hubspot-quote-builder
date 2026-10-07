@@ -16,8 +16,8 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, dealWrites, indexCatalog, openQuoteConflicts, suggestTemplate } from './lib/pricing.js';
-import { AGREEMENT_LENGTH_DEFAULT, FAMILIES, QUOTE_DEFAULTS } from './lib/config.js';
+import { buildQuote, dealWrites, indexCatalog, openQuoteConflicts, rampStages, suggestTemplate } from './lib/pricing.js';
+import { AGREEMENT_LENGTH_DEFAULT, FAMILIES, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
 
@@ -55,7 +55,7 @@ export const initialState = {
   products: [],
   nextUid: 1,
   // Ramp settings; the ramp is on whenever at least one product has its Ramp box ticked.
-  ramp: { months: 3, mode: 'free', percent: 50 },
+  ramp: { stages: [{ months: 3, mode: 'free', percent: 50 }] },
   notes: '',
   primary: null, // null = automatic: primary when it's the deal's first builder quote
   editing: null, // { id, title, primary } while editing an existing builder quote in place
@@ -99,9 +99,20 @@ export function reducer(state, action) {
       return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid) });
     case 'clearRamp':
       return Object.assign({}, state, { products: state.products.map((p) => (p.ramp ? Object.assign({}, p, { ramp: false }) : p)) });
-    case 'ramp': {
-      return Object.assign({}, state, { ramp: Object.assign({}, state.ramp, action.patch) });
+    case 'rampStage':
+      return Object.assign({}, state, {
+        ramp: { stages: state.ramp.stages.map((st, i) => (i === action.index ? Object.assign({}, st, action.patch) : st)) },
+      });
+    case 'addRampStage': {
+      if (state.ramp.stages.length >= MAX_RAMP_STAGES) return state;
+      /** @type {any} */
+      const last = state.ramp.stages[state.ramp.stages.length - 1] || { months: 1, mode: 'free', percent: 100 };
+      // Next step down: half the previous discount (free → 50% off).
+      const prev = last.mode === 'percent' ? Number(last.percent) || 50 : 100;
+      return Object.assign({}, state, { ramp: { stages: state.ramp.stages.concat([{ months: 1, mode: 'percent', percent: Math.max(1, Math.round(prev / 2)) }]) } });
     }
+    case 'removeRampStage':
+      return Object.assign({}, state, { ramp: { stages: state.ramp.stages.filter((_, i) => i !== action.index) } });
     case 'notes':
       return Object.assign({}, state, { notes: action.value });
     case 'primary':
@@ -115,7 +126,7 @@ export function reducer(state, action) {
         setup: Object.assign({}, state.setup, saved.setup, { expirationDate: state.setup.expirationDate, quoteName: '' }),
         products,
         nextUid: products.length + 1,
-        ramp: Object.assign({}, state.ramp, saved.ramp),
+        ramp: { stages: rampStages(saved.ramp) },
         notes: saved.notes || '',
         primary: false,
         editing: null,
@@ -131,7 +142,7 @@ export function reducer(state, action) {
         setup: Object.assign({}, state.setup, saved.setup, { quoteName: q.title || '', expirationDate: q.expirationDate || (saved.setup && saved.setup.expirationDate) || state.setup.expirationDate }),
         products,
         nextUid: products.length + 1,
-        ramp: Object.assign({}, state.ramp, saved.ramp),
+        ramp: { stages: rampStages(saved.ramp) },
         notes: saved.notes || '',
         primary: !!q.primary,
         editing: { id: q.id, title: q.title, primary: !!q.primary },
@@ -384,7 +395,9 @@ export function QuoteBuilderApp() {
           onUpdate={(uid, patch) => dispatch({ type: 'updateProduct', uid, patch })}
           onRemove={(uid) => dispatch({ type: 'removeProduct', uid })}
           ramp={rampFor(state)}
-          onRamp={(patch) => dispatch({ type: 'ramp', patch })}
+          onStage={(index, patch) => dispatch({ type: 'rampStage', index, patch })}
+          onAddStage={() => dispatch({ type: 'addRampStage' })}
+          onRemoveStage={(index) => dispatch({ type: 'removeRampStage', index })}
           onClearRamp={() => dispatch({ type: 'clearRamp' })}
         />
       )}

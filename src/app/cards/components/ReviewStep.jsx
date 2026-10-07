@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert, AutoGrid, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Link, Tag, Text, TextArea, Tile } from '@hubspot/ui-extensions';
-import { autoQuoteName } from '../lib/pricing.js';
+import { autoQuoteName, stageLabel } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 
 // Deal properties shown with their HubSpot labels, in the order the templates use them.
@@ -120,7 +120,9 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
                 {editing ? `${quote.lines.length} new, replacing this quote's current lines` : 'A separate copy of each (CPQ keeps quote lines apart from deal lines)'}
               </DescriptionListItem>
               <DescriptionListItem label="Ramp lines">
-                {rampCount ? `${rampCount} with Ramp = Yes, Term P${quote.ramp.months}M, Approval Ramp Months = ${quote.ramp.months}` : 'None'}
+                {rampCount
+                  ? `${rampCount} with Ramp = Yes: ${quote.ramp.stages.map((st, i) => `${quote.ramp.stages.length > 1 ? `RAMP ${i + 1} ` : ''}P${st.months}M ${stageLabel(st).toLowerCase()}`).join(', ')}. Approval Ramp Months = ${quote.ramp.months}`
+                  : 'None'}
               </DescriptionListItem>
               <DescriptionListItem label="Approval Discount %">Each line's discount (0 on RAMP lines)</DescriptionListItem>
             </DescriptionList>

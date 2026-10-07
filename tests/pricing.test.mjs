@@ -325,3 +325,43 @@ test('builder state round-trips; junk is ignored', () => {
   assert.equal(P.parseBuilderState('not json'), null);
   assert.equal(P.parseBuilderState(''), null);
 });
+
+test('multi-stage ramp: 2 months free then 2 at 50% off on a 16-month agreement', () => {
+  const setup = Object.assign({}, MSP, { agreementLength: '16 Months' });
+  const ramp = { enabled: true, stages: [{ months: 2, mode: 'free' }, { months: 2, mode: 'percent', percent: 50 }] };
+  const q = P.buildQuote(setup, [ae({ discountPct: 10 })], ramp, CATALOG);
+  assert.deepEqual(q.conflicts, []);
+  assert.equal(q.ramp.months, 4);
+  const r1 = q.lines.filter((l) => l.stage === 1);
+  const r2 = q.lines.filter((l) => l.stage === 2);
+  const plan = q.lines.filter((l) => !l.ramp);
+  assert.equal(r1.length, 2);
+  assert.ok(r1.every((l) => l.name.startsWith('RAMP 1 ') && l.discountPct === 100 && l.termMonths === 2 && l.startMonth === 1));
+  assert.ok(r2.every((l) => l.name.startsWith('RAMP 2 ') && l.discountPct === 50 && l.termMonths === 2 && l.startMonth === 3));
+  assert.ok(plan.every((l) => l.termMonths === 12 && l.startMonth === 5 && l.discountPct === 10));
+  // Order on the quote: stage 1, stage 2, then the plan.
+  assert.deepEqual(q.lines.map((l) => l.stage || 0), [1, 1, 2, 2, 0, 0]);
+  // Values: full list per month = 1050 + 250 × 1.05 = 1312.50
+  const list = 1312.5;
+  assert.equal(q.totals.tcv, Math.round((2 * 0 + 2 * list * 0.5 + 12 * list * 0.9) * 100) / 100);
+  assert.equal(q.totals.firstYear, Math.round((2 * list * 0.5 + 8 * list * 0.9) * 100) / 100);
+  // Approval sees the total ramp (4 months), and every RAMP line carries it.
+  assert.ok(q.approval.reasons.some((x) => /4-month ramp/.test(x)));
+  const props = P.lineItemProperties(r2[0], { billing: 'monthly', rampMonths: q.ramp.months, sessionId: 's' });
+  assert.equal(props.approval_ramp_months, '4');
+  assert.equal(props.hs_recurring_billing_period, 'P2M');
+  assert.equal(props.approval_discount, '0');
+});
+
+test('ramp stages: old single-stage saved ramps still work; limits are enforced', () => {
+  const legacy = P.normalizeRamp({ enabled: true, months: 3, mode: 'percent', percent: 40 });
+  assert.deepEqual(legacy.stages.map((s) => [s.months, s.mode, s.percent]), [[3, 'percent', 40]]);
+  const single = P.buildQuote(MSP, [ae()], { enabled: true, months: 3, mode: 'free' }, CATALOG);
+  assert.ok(single.lines.filter((l) => l.ramp).every((l) => l.name.startsWith('RAMP ') && !l.name.startsWith('RAMP 1')));
+  const long = P.buildQuote(Object.assign({}, MSP, { agreementLength: '24 Months' }), [ae()], { enabled: true, stages: [{ months: 8 }, { months: 6, mode: 'percent', percent: 50 }] }, CATALOG);
+  assert.match(long.conflicts.join(' '), /add up to 14 months/);
+  const base = { setup: { segment: 'MSP', billing: 'monthly', agreementLength: '24 Months', templateId: '1', expirationDate: '2026-11-05' }, products: [ae()] };
+  assert.match(P.validateSubmission(Object.assign({}, base, { ramp: { enabled: true, stages: [{ months: 8 }, { months: 6 }] } })).join(), /add up to 14/);
+  assert.match(P.validateSubmission(Object.assign({}, base, { ramp: { enabled: true, stages: [{ months: 1 }, { months: 1 }, { months: 1 }, { months: 1 }, { months: 1 }] } })).join(), /at most 4 ramp stages/);
+  assert.deepEqual(P.validateSubmission(Object.assign({}, base, { ramp: { enabled: true, stages: [{ months: 2, mode: 'free' }, { months: 2, mode: 'percent', percent: 50 }] } })), []);
+});

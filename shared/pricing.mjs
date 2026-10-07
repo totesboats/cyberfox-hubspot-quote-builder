@@ -4,6 +4,7 @@ import {
   FAMILIES,
   BILLING,
   MAX_RAMP_MONTHS,
+  MAX_RAMP_STAGES,
   APPROVAL,
   TIMUS,
   RAMP_NAME_PREFIX,
@@ -378,15 +379,35 @@ export function resolveAeFeature(rows) {
 // Whole quote
 // ---------------------------------------------------------------------------
 
-export function normalizeRamp(ramp) {
-  const enabled = !!(ramp && ramp.enabled);
+// A ramp is one or more stages run back to back, e.g. [{2 months free}, {2 months 50% off}].
+// Older saved quotes stored a single { months, mode, percent }; they read as one stage.
+export function normalizeStage(st) {
+  const mode = st && st.mode === 'percent' ? 'percent' : 'free';
   return {
-    enabled,
-    months: enabled ? clamp(Math.round(toNum(ramp.months, 1)), 1, MAX_RAMP_MONTHS) : 0,
-    mode: ramp && ramp.mode === 'percent' ? 'percent' : 'free',
-    percent: ramp && ramp.mode === 'percent' ? clamp(Math.round(toNum(ramp.percent, 50)), 1, 99) : 100,
+    months: clamp(Math.round(toNum(st && st.months, 1)), 1, MAX_RAMP_MONTHS),
+    mode,
+    percent: mode === 'percent' ? clamp(Math.round(toNum(st.percent, 50)), 1, 99) : 100,
   };
 }
+
+export function rampStages(ramp) {
+  const raw = ramp && Array.isArray(ramp.stages) && ramp.stages.length ? ramp.stages : [ramp || {}];
+  return raw.slice(0, MAX_RAMP_STAGES).map(normalizeStage);
+}
+
+export function normalizeRamp(ramp) {
+  const enabled = !!(ramp && ramp.enabled);
+  const stages = enabled ? rampStages(ramp) : [];
+  let start = 1;
+  for (const st of stages) {
+    st.startMonth = start;
+    start += st.months;
+  }
+  return { enabled, stages, months: stages.reduce((a, st) => a + st.months, 0) };
+}
+
+// "Free", "50% off"
+export const stageLabel = (st) => (st.mode === 'free' ? 'Free' : `${st.percent}% off`);
 
 // "15 Months" → 15; the Month-to-Month option → null.
 export function agreementMonths(value) {
@@ -413,10 +434,13 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
   const agreement = months || 12;
   const conflicts = [];
   if (!m2m && !months) conflicts.push('Pick an Agreement Length on the Setup step.');
+  if (ramp.enabled && ramp.months > MAX_RAMP_MONTHS) {
+    conflicts.push(`The ramp stages add up to ${ramp.months} months; the most is ${MAX_RAMP_MONTHS}.`);
+  }
   if (!m2m && ramp.enabled && ramp.months >= agreement) {
     conflicts.push(`The ${ramp.months}-month ramp is as long as the ${agreement}-month Agreement Length. Pick a longer Agreement Length or a shorter ramp.`);
   }
-  const rampDiscount = ramp.mode === 'free' ? 100 : ramp.percent;
+  const multiStage = ramp.stages.length > 1;
 
   const rows = (inputs || []).map((input) => {
     const priced = priceProduct(input, priceSetup, catalog);
@@ -427,14 +451,18 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     const mainLines = priced.lines.map((l) =>
       Object.assign({}, l, { ramp: false, termMonths: mainTerm, startMonth: ramped ? ramp.months + 1 : 1 })
     );
+    // One RAMP line per product line per stage: "RAMP …" for a single stage, "RAMP 1 …", "RAMP 2 …" for steps.
     const rampLines = ramped
-      ? priced.lines.map((l) =>
-          Object.assign(makeLine(Object.assign({}, l, { discountPct: rampDiscount })), {
-            name: RAMP_NAME_PREFIX + l.name,
-            ramp: true,
-            termMonths: ramp.months,
-            startMonth: 1,
-          })
+      ? ramp.stages.flatMap((st, si) =>
+          priced.lines.map((l) =>
+            Object.assign(makeLine(Object.assign({}, l, { discountPct: st.mode === 'free' ? 100 : st.percent })), {
+              name: (multiStage ? `${RAMP_NAME_PREFIX.trim()} ${si + 1} ` : RAMP_NAME_PREFIX) + l.name,
+              ramp: true,
+              stage: si + 1,
+              termMonths: st.months,
+              startMonth: st.startMonth,
+            })
+          )
         )
       : [];
     const sum = (ls, k) => ls.reduce((a, l) => a + l[k], 0);
@@ -448,7 +476,10 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
       mainLines,
       rampLines,
       mainMrr: sum(mainLines, 'mrr'),
-      rampMrr: sum(rampLines, 'mrr'),
+      rampMrr: sum(rampLines.filter((l) => l.stage === 1), 'mrr'),
+      // Per-stage monthly amount for this product (the billing schedule shows one row per stage).
+      stageMrr: ramp.stages.map((st, si) => sum(rampLines.filter((l) => l.stage === si + 1), 'mrr')),
+      rampValue: rampLines.reduce((a, l) => a + l.mrr * l.termMonths, 0),
       listMrr: sum(mainLines, 'listMrr'),
     };
   });
@@ -472,8 +503,13 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     if (!r.usable) continue;
     const rm = r.ramped ? ramp.months : 0;
     mrr += r.mainMrr;
-    firstYear += Math.min(rm, 12) * r.rampMrr + Math.max(0, 12 - rm) * r.mainMrr;
-    tcv += rm * r.rampMrr + r.valueMonths * r.mainMrr;
+    if (r.ramped) {
+      ramp.stages.forEach((st, si) => {
+        firstYear += Math.max(0, Math.min(12, st.startMonth - 1 + st.months) - (st.startMonth - 1)) * r.stageMrr[si];
+      });
+    }
+    firstYear += Math.max(0, 12 - rm) * r.mainMrr;
+    tcv += r.rampValue + r.valueMonths * r.mainMrr;
     listTcv += (rm + r.valueMonths) * r.listMrr;
     if (r.priced.discountPct > maxDiscountPct) {
       maxDiscountPct = r.priced.discountPct;
@@ -544,7 +580,8 @@ export function lineItemProperties(line, { billing, rampMonths, sessionId }) {
     hs_position_on_quote: String(line.position),
     ramp: line.ramp ? 'true' : 'false',
     approval_discount: String(line.ramp ? 0 : line.discountPct),
-    approval_ramp_months: String(line.ramp ? line.termMonths : 0),
+    // Total ramp length (all stages), so the approval rule sees a 2 + 2 ramp as 4 months.
+    approval_ramp_months: String(line.ramp ? rampMonths || line.termMonths : 0),
     [LINE_SOURCE_PROPERTY]: LINE_SOURCE_VALUE,
     [LINE_SESSION_PROPERTY]: sessionId,
   };
@@ -553,9 +590,9 @@ export function lineItemProperties(line, { billing, rampMonths, sessionId }) {
   } else {
     props.hs_recurring_billing_period = `P${line.termMonths}M`;
   }
-  if (SET_BILLING_DELAY_AFTER_RAMP && !line.ramp && line.startMonth > 1) {
+  if (SET_BILLING_DELAY_AFTER_RAMP && line.startMonth > 1) {
     props.hs_billing_start_delay_type = 'hs_billing_start_delay_months';
-    props.hs_billing_start_delay_months = String(rampMonths);
+    props.hs_billing_start_delay_months = String(line.startMonth - 1);
   }
   return props;
 }
@@ -688,8 +725,16 @@ export function validateSubmission(payload) {
     if (p.family === 'autoelevate' && p.featureType && !AE_FEATURE_TYPES.some((f) => f.value === p.featureType)) errors.push(`unknown AE feature type ${p.featureType}`);
   }
   if (ramp.enabled) {
-    const m = toNum(ramp.months, NaN);
-    if (!(m >= 1 && m <= MAX_RAMP_MONTHS)) errors.push(`ramp months must be 1–${MAX_RAMP_MONTHS}`);
+    const raw = Array.isArray(ramp.stages) && ramp.stages.length ? ramp.stages : [ramp];
+    if (raw.length > MAX_RAMP_STAGES) errors.push(`at most ${MAX_RAMP_STAGES} ramp stages`);
+    let total = 0;
+    for (const st of raw) {
+      const m = toNum(st.months, NaN);
+      if (!(m >= 1 && m <= MAX_RAMP_MONTHS)) errors.push(`ramp stage months must be 1–${MAX_RAMP_MONTHS}`);
+      if (st.mode === 'percent' && !(toNum(st.percent, NaN) >= 1 && toNum(st.percent, NaN) <= 99)) errors.push('ramp stage percent must be 1–99');
+      total += m || 0;
+    }
+    if (total > MAX_RAMP_MONTHS) errors.push(`ramp stages add up to ${total} months; the most is ${MAX_RAMP_MONTHS}`);
   }
   return errors;
 }

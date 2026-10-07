@@ -168,7 +168,7 @@ function ProductTile({ row, onUpdate, onRemove }) {
   );
 }
 
-export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, onRamp, onClearRamp }) {
+export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, onStage, onAddStage, onRemoveStage, onClearRamp }) {
   const segment = (SEGMENTS.find((s) => s.value === setup.segment) || SEGMENTS[0]).label;
   return (
     <Flex direction="column" gap="medium">
@@ -203,7 +203,7 @@ export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, on
         </Flex>
       </Tile>
 
-      {ramp.enabled && <RampSection quote={quote} ramp={ramp} onRamp={onRamp} onClear={onClearRamp} />}
+      {ramp.enabled && <RampSection quote={quote} ramp={ramp} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} onClear={onClearRamp} />}
     </Flex>
   );
 }

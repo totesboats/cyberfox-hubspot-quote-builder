@@ -73,11 +73,11 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
 
   // Ramp controls are on the same step as the products.
   // Ramp & schedule only appears once a product's Ramp box is ticked.
-  assert.equal(r.maybeFind(Select, { name: 'rampMonths' }), null);
+  assert.equal(r.maybeFind(Select, { name: 'rampMonths-1' }), null);
   assert.equal(r.find(Checkbox, { name: 'ramp-1' }).text, 'Ramp');
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths' })));
-  r.find(Select, { name: 'rampMonths' }).trigger('onChange', 3);
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
+  r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 3);
   await r.waitFor(() => assert.match(text(r.getRootNode()), /Needs approval/));
   const stats = r.findAll(StatisticsItem).map((s) => [s.props.label, s.props.number]);
   assert.deepEqual(stats, [['MRR (full plan)', '$1,181.25'], ['First 12 months', '$10,631'], ['Total contract value', '$14,175'], ['Savings vs list', '$5,513']]);
@@ -95,7 +95,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   const submit = calls.find((c) => c.name === 'quote_builder_submit');
   assert.equal(submit.parameters.setup.templateId, '10');
   assert.equal(submit.parameters.products[0].quantity, 1250);
-  assert.equal(submit.parameters.ramp.months, 3);
+  assert.equal(submit.parameters.ramp.stages[0].months, 3);
   assert.equal(r.mocks.actions.addAlert.callCount, 1);
   assert.equal(r.mocks.actions.addAlert.calls[0][0].type, 'success');
 });
@@ -232,11 +232,11 @@ test('remove a product, untick Ramp, Remove ramp clears every Ramp box', async (
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
   r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', true);
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths' })));
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
   r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', false);
   await r.waitFor(() => assert.equal(r.find(Checkbox, { name: 'ramp-2' }).props.checked, false));
   r.find(Button, (n) => /"Remove ramp"/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths' }), null));
+  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-1' }), null));
   assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.checked, false);
   const removes = () => r.findAll(Button, (n) => /"Remove"/.test(text(n)));
   assert.equal(removes().length, 2);
@@ -278,9 +278,9 @@ test('edit an existing draft quote in place; ramp goes up to 12 months', async (
   assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '15 Months');
 
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths' })));
-  assert.equal(r.find(Select, { name: 'rampMonths' }).props.options.length, 12);
-  assert.equal(r.find(Select, { name: 'rampMonths' }).props.value, 9);
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
+  assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.options.length, 12);
+  assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 9);
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Button, (n) => /"Update quote"/.test(text(n)))));
@@ -290,5 +290,39 @@ test('edit an existing draft quote in place; ramp goes up to 12 months', async (
   const submit = calls.find((c) => c.name === 'quote_builder_submit');
   assert.equal(submit.parameters.editQuoteId, 'Q5');
   assert.equal(submit.parameters.products[0].quantity, 1250);
-  assert.equal(submit.parameters.ramp.months, 9);
+  assert.equal(submit.parameters.ramp.stages[0].months, 9);
+});
+
+test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both stages', async () => {
+  const r = mk();
+  const calls = [];
+  r.mocks.runServerlessFunction.willCall(async (params) => {
+    calls.push(params);
+    return { status: 'SUCCESS', response: CATALOG_RESPONSE };
+  });
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '15 Months');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
+  r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
+  r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 2);
+  r.find(Button, (n) => /"\+ Add ramp stage"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-2' })));
+  assert.equal(r.find(Select, { name: 'rampMode-2' }).props.value, 'percent');
+  assert.equal(r.find(NumberInput, { name: 'rampPercent-2' }).props.value, 50);
+  r.find(Select, { name: 'rampMonths-2' }).trigger('onChange', 2);
+  await r.waitFor(() => assert.match(text(r.getRootNode()), /"Ramp 2"/));
+  const root = text(r.getRootNode());
+  assert.match(root, /"Ramp 1"/);
+  assert.match(root, /"1–2"/);
+  assert.match(root, /"3–4"/);
+  assert.match(root, /"5–15"/);
+  assert.match(root, /4 months in total/);
+  // Removing stage 2 goes back to a single stage
+  r.findAll(Button, (n) => /"Remove stage"/.test(text(n)))[1].trigger('onClick');
+  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-2' }), null));
 });
