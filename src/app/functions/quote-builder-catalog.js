@@ -53,7 +53,7 @@ var require_config = __commonJS({
         editions: [{ value: "standard", label: "Standard" }]
       }
     };
-    var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365", "bundle"];
+    var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365"];
     var SEGMENTS = [
       { value: "MSP", label: "MSP" },
       { value: "ENT", label: "Enterprise" }
@@ -511,6 +511,12 @@ var require_pricing = __commonJS({
       }
       return { enabled, stages, months: stages.reduce((a, st) => a + st.months, 0) };
     }
+    function defaultRampMonths(agreementLength) {
+      const m = agreementMonths(agreementLength);
+      if (!m) return 3;
+      if (m > 12) return Math.min(MAX_RAMP_MONTHS, m - 12);
+      return Math.max(1, Math.min(3, m - 1));
+    }
     var stageLabel = (st) => st.mode === "free" ? "Free" : `${st.percent}% off`;
     function agreementMonths(value) {
       if (!value || value === AGREEMENT_LENGTH_M2M) return null;
@@ -792,7 +798,7 @@ var require_pricing = __commonJS({
       }
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 

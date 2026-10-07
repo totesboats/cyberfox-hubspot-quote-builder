@@ -26,7 +26,7 @@ const CATALOG_RESPONSE = {
   deal: { id: '123', properties: { promo: '' }, salesTeam: 'MSP', owner: { id: '77', name: 'Riley Rep', email: 'riley.rep@example.com' }, company: { id: '9', name: 'Example MSP' }, contacts: [{ id: '501', label: 'Sample Contact — Owner' }], quoteCount: 0 },
   issues: [],
   dealOptions: {
-    agreement_length: ['12 Months - Month-to-Month', '12 Months', '15 Months'].map((v) => ({ value: v, label: v })),
+    agreement_length: ['12 Months - Month-to-Month', '12 Months', '15 Months', '16 Months', '18 Months', '24 Months'].map((v) => ({ value: v, label: v })),
     payment_terms: [{ value: 'Month-to-Month', label: 'Monthly' }, { value: 'Quarterly', label: 'Quarterly' }, { value: 'Annual Payments', label: 'Annual Payments' }, { value: 'One Time', label: 'One Time' }],
     payment_method: [{ value: 'Credit Card', label: 'Credit Card' }, { value: 'ACH', label: 'ACH' }],
     invoice_terms: [{ value: 'Net-30', label: 'Net-30' }],
@@ -110,7 +110,7 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   // Blank choices show their label ("None", "Match SKU pricing"), not HubSpot's empty "Select" placeholder.
   assert.equal(r.find(Select, { name: 'promo' }).props.value, '__none__');
   assert.equal(r.find(Select, { name: 'paymentFrequency' }).props.value, '__none__');
-  assert.deepEqual(r.find(Select, { name: 'agreementLength' }).props.options.map((o) => o.value), ['12 Months - Month-to-Month', '12 Months', '15 Months']);
+  assert.deepEqual(r.find(Select, { name: 'agreementLength' }).props.options.map((o) => o.value), ['12 Months - Month-to-Month', '12 Months', '15 Months', '16 Months', '18 Months', '24 Months']);
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
@@ -333,4 +333,32 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-2' }), null));
   r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
+});
+
+test('ramp defaults to the months past 12 and follows Agreement Length; Bundles cannot be added', async () => {
+  const r = mk();
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: CATALOG_RESPONSE }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '16 Months');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  assert.equal(r.maybeFind(Button, (n) => /CyberFOX Bundle/.test(text(n))), null);
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
+  r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 4));
+  // Change the agreement to 18 months: an untouched default ramp follows (6 months)
+  r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '18 Months');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 6));
+  // A ramp length the rep picked is left alone
+  r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 2);
+  r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '24 Months');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 2));
 });

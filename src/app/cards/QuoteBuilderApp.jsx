@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, dealWrites, indexCatalog, openQuoteConflicts, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, rampStages, suggestTemplate } from './lib/pricing.js';
 import { AGREEMENT_LENGTH_DEFAULT, FAMILIES, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -72,8 +72,15 @@ export function reducer(state, action) {
       return Object.assign({}, state, { setup: Object.assign({}, state.setup, action.setup) });
     case 'step':
       return Object.assign({}, state, { step: Math.max(0, Math.min(STEPS.length - 1, action.step)) });
-    case 'setup':
-      return Object.assign({}, state, { setup: Object.assign({}, state.setup, action.patch) });
+    case 'setup': {
+      const setup = Object.assign({}, state.setup, action.patch);
+      // Agreement Length changed and the ramp is still the default single stage → follow the new default.
+      const st = state.ramp.stages;
+      if (action.patch.agreementLength && st.length === 1 && st[0].months === defaultRampMonths(state.setup.agreementLength)) {
+        return Object.assign({}, state, { setup, ramp: { stages: [Object.assign({}, st[0], { months: defaultRampMonths(setup.agreementLength) })] } });
+      }
+      return Object.assign({}, state, { setup });
+    }
     case 'addProduct': {
       const family = FAMILIES[action.family];
       const row = {
@@ -93,8 +100,14 @@ export function reducer(state, action) {
       }
       return Object.assign({}, state, { products: state.products.concat([row]), nextUid: state.nextUid + 1 });
     }
-    case 'updateProduct':
-      return Object.assign({}, state, { products: state.products.map((p) => (p.uid === action.uid ? Object.assign({}, p, action.patch) : p)) });
+    case 'updateProduct': {
+      const products = state.products.map((p) => (p.uid === action.uid ? Object.assign({}, p, action.patch) : p));
+      // First product ticked for Ramp: start the ramp at the default length for this agreement (16 months → 4).
+      if (action.patch.ramp === true && !state.products.some((p) => p.ramp)) {
+        return Object.assign({}, state, { products, ramp: { stages: [{ months: defaultRampMonths(state.setup.agreementLength), mode: 'free', percent: 50 }] } });
+      }
+      return Object.assign({}, state, { products });
+    }
     case 'removeProduct':
       return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid) });
     case 'clearRamp':

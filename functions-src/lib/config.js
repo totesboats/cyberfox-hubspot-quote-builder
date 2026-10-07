@@ -50,7 +50,9 @@ const FAMILIES = {
   },
 };
 
-const FAMILY_ORDER = ['autoelevate', 'password', 'dns', 'timus', 'optimize365', 'bundle'];
+// Products reps can add (in this order). CyberFOX Bundles are being retired (SKUs off Jan 1), so they
+// can't be added to new quotes; saved quotes that already include a bundle still load and edit.
+const FAMILY_ORDER = ['autoelevate', 'password', 'dns', 'timus', 'optimize365'];
 
 const SEGMENTS = [
   { value: 'MSP', label: 'MSP' },

@@ -406,6 +406,15 @@ export function normalizeRamp(ramp) {
   return { enabled, stages, months: stages.reduce((a, st) => a + st.months, 0) };
 }
 
+// Default ramp length when Ramp is first ticked: whatever the agreement runs past 12 months
+// (16 months → 4, 18 → 6), capped at the maximum; agreements of 12 months or less get a short ramp.
+export function defaultRampMonths(agreementLength) {
+  const m = agreementMonths(agreementLength);
+  if (!m) return 3;
+  if (m > 12) return Math.min(MAX_RAMP_MONTHS, m - 12);
+  return Math.max(1, Math.min(3, m - 1));
+}
+
 // "Free", "50% off"
 export const stageLabel = (st) => (st.mode === 'free' ? 'Free' : `${st.percent}% off`);
 

@@ -365,3 +365,7 @@ test('ramp stages: old single-stage saved ramps still work; limits are enforced'
   assert.match(P.validateSubmission(Object.assign({}, base, { ramp: { enabled: true, stages: [{ months: 1 }, { months: 1 }, { months: 1 }, { months: 1 }, { months: 1 }] } })).join(), /at most 4 ramp stages/);
   assert.deepEqual(P.validateSubmission(Object.assign({}, base, { ramp: { enabled: true, stages: [{ months: 2, mode: 'free' }, { months: 2, mode: 'percent', percent: 50 }] } })), []);
 });
+
+test('default ramp length = months past 12 on the agreement', () => {
+  assert.deepEqual(['16 Months', '18 Months', '13 Months', '24 Months', '36 Months', '12 Months', '6 Months', '12 Months - Month-to-Month'].map(P.defaultRampMonths), [4, 6, 1, 12, 12, 3, 3, 3]);
+});

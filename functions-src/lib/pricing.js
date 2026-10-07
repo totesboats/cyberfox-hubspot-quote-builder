@@ -386,6 +386,15 @@ function normalizeRamp(ramp) {
   return { enabled, stages, months: stages.reduce((a, st) => a + st.months, 0) };
 }
 
+// Default ramp length when Ramp is first ticked: whatever the agreement runs past 12 months
+// (16 months → 4, 18 → 6), capped at the maximum; agreements of 12 months or less get a short ramp.
+function defaultRampMonths(agreementLength) {
+  const m = agreementMonths(agreementLength);
+  if (!m) return 3;
+  if (m > 12) return Math.min(MAX_RAMP_MONTHS, m - 12);
+  return Math.max(1, Math.min(3, m - 1));
+}
+
 // "Free", "50% off"
 const stageLabel = (st) => (st.mode === 'free' ? 'Free' : `${st.percent}% off`);
 
@@ -719,4 +728,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };

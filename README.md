@@ -1,11 +1,13 @@
 # CyberFOX Quote Builder
 
 A HubSpot app card on the **Deal** record (“Quote Builder” tab) that builds one quote across
-AutoElevate, Password Manager, DNS Filtering, Timus SASE, Optimize365 and CyberFOX Bundles:
+AutoElevate, Password Manager, DNS Filtering, Timus SASE, Optimize365 (CyberFOX Bundles are retired: no longer offered on new quotes; saved quotes with a bundle still load):
 
 1. **Setup**: template, segment, SKU pricing (monthly or annual), expiry, signer, and the deal properties the quote prints: **Agreement Length, Payment Frequency, Payment Method, Invoice Terms, Promo**. Their dropdowns are the properties' own options in HubSpot.
 2. **Products & ramp**: rep enters a total count; the builder picks the cheapest commit tier and adds the overage (“Additional”) SKU. AutoElevate rows pick an **AE Feature Type**. Timus uses the Timus SKUs (Monthly Minimum at the minimum the rep sets, or a SATGAT SKU); the rep enters **Timus Price Per User** and **Timus Price Per Gateway**, which print on the quote, and the card checks estimated usage against the minimum. Each product has a **Ramp** box; ticking any of them shows the Ramp & schedule section (1–12 months in up to 4 stages, each free or % off, e.g. 2 months free then 2 months at 50% off; plus the billing schedule; **Remove ramp** clears it) on the same page. Untick them all and the section disappears.
 3. **Review & create**: exact line items, the quote-token values, notes for approvers, approval preview → creates a **draft** HubSpot quote.
+
+**Default ramp length.** Ticking the first Ramp box starts the ramp at the months the Agreement Length runs past 12 (16 months → 4, 18 → 6; 12 months or less → a short ramp). Changing the Agreement Length updates an untouched default; a length the rep picked is kept.
 
 **Ramp stages.** A single-stage ramp writes `RAMP …` lines; a staged ramp writes `RAMP 1 …`, `RAMP 2 …` lines in order, each with its own term (P2M, P2M …) and discount. `approval_ramp_months` on every RAMP line is the total ramp length, so a 2 + 2 ramp counts as 4 months for approvals. No billing start delay is set (same as single-stage ramps today; `SET_BILLING_DELAY_AFTER_RAMP` turns delays on for every stage and the plan).
 
@@ -112,4 +114,4 @@ These won't be tagged until fixed, so they won't appear in the builder:
 
 ## Tests
 
-`npm run check` runs 65 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and seven card flows rendered with HubSpot's test renderer. Fixtures are synthetic.
+`npm run check` runs 67 tests: pricing/ramp/approval math (including Timus), tagging (including a price book switch), both app functions against a fake HubSpot API (association IDs, server-side pricing, cleanup scope, rollback), a type-check of every card component against `@hubspot/ui-extensions` 0.17.0, and eight card flows rendered with HubSpot's test renderer. Fixtures are synthetic.
