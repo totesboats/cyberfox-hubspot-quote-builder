@@ -312,6 +312,12 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 2);
   r.find(Button, (n) => /"\+ Add ramp stage"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-2' })));
+  // Setup's printed fields are shown read-only on this step
+  const ref = (label) => r.find(DescriptionListItem, { label }).text;
+  assert.equal(ref('Agreement Length'), '15 Months');
+  assert.equal(ref('Payment Frequency'), 'Monthly');
+  assert.equal(ref('Promo'), 'None');
+  assert.equal(r.maybeFind(Select, { name: 'paymentMethod' }), null); // not editable here
   assert.equal(r.find(Select, { name: 'rampMode-2' }).props.value, 'percent');
   assert.equal(r.find(NumberInput, { name: 'rampPercent-2' }).props.value, 50);
   r.find(Select, { name: 'rampMonths-2' }).trigger('onChange', 2);
@@ -325,4 +331,6 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   // Removing stage 2 goes back to a single stage
   r.findAll(Button, (n) => /"Remove stage"/.test(text(n)))[1].trigger('onClick');
   await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-2' }), null));
+  r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
 });

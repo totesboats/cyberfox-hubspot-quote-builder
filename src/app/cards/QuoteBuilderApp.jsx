@@ -381,6 +381,9 @@ export function QuoteBuilderApp() {
         <ProductsStep
           quote={quote}
           setup={state.setup}
+          writes={writes}
+          dealOptions={data.dealOptions}
+          onEditSetup={() => go(0)}
           onAdd={(family) =>
             dispatch({
               type: 'addProduct',

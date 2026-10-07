@@ -5,6 +5,7 @@ import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, SEGMENTS } from '../
 import { formatMoney } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 import { RampSection } from './RampSection.jsx';
+import { PrintedReference } from './PrintedReference.jsx';
 
 function StandardFields({ input, priced, family, onUpdate }) {
   const per = priced.annual ? '/yr' : '/mo';
@@ -168,7 +169,7 @@ function ProductTile({ row, onUpdate, onRemove }) {
   );
 }
 
-export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, onStage, onAddStage, onRemoveStage, onClearRamp }) {
+export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSetup, onAdd, onUpdate, onRemove, onStage, onAddStage, onRemoveStage, onClearRamp }) {
   const segment = (SEGMENTS.find((s) => s.value === setup.segment) || SEGMENTS[0]).label;
   return (
     <Flex direction="column" gap="medium">
@@ -179,6 +180,8 @@ export function ProductsStep({ quote, setup, ramp, onAdd, onUpdate, onRemove, on
           {BILLING[quote.billing].label.toLowerCase()} SKUs.
         </Text>
       </Flex>
+
+      <PrintedReference writes={writes} dealOptions={dealOptions} ramp={ramp} quote={quote} onEdit={onEditSetup} />
 
       {quote.conflicts.map((c) => (
         <Alert key={c} title="Fix before continuing" variant="warning">
