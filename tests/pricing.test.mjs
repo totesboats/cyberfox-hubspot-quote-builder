@@ -213,10 +213,10 @@ const OPTIONS = {
   promo: [{ value: 'ENT 13 for 12', label: 'ENT 13 for 12' }],
   sku_type: ['Advanced', 'Standard', 'Advanced (GrandFathered)'].map((v) => ({ value: v, label: v })),
 };
-const W = (setup, products, ramp, notes = '') => {
+const W = (setup, products, ramp) => {
   const s = Object.assign({}, MSP, { paymentMethod: 'ACH', invoiceTerms: 'Net-30' }, setup);
   const q = P.buildQuote(s, products, ramp, CATALOG);
-  return { q, w: P.dealWrites(q, { setup: s, notes }, OPTIONS) };
+  return { q, w: P.dealWrites(q, { setup: s }, OPTIONS) };
 };
 
 test('agreement length is the rep choice; contract term is not written; payment frequency follows billing', () => {

@@ -56,7 +56,6 @@ export const initialState = {
   nextUid: 1,
   // Ramp settings; the ramp is on whenever at least one product has its Ramp box ticked.
   ramp: { stages: [{ months: 3, mode: 'free', percent: 50 }] },
-  notes: '',
   primary: null, // null = automatic: primary when it's the deal's first builder quote
   editing: null, // { id, title, primary } while editing an existing builder quote in place
 };
@@ -126,8 +125,6 @@ export function reducer(state, action) {
     }
     case 'removeRampStage':
       return Object.assign({}, state, { ramp: { stages: state.ramp.stages.filter((_, i) => i !== action.index) } });
-    case 'notes':
-      return Object.assign({}, state, { notes: action.value });
     case 'primary':
       return Object.assign({}, state, { primary: action.value });
     case 'loadState': {
@@ -140,7 +137,6 @@ export function reducer(state, action) {
         products,
         nextUid: products.length + 1,
         ramp: { stages: rampStages(saved.ramp) },
-        notes: saved.notes || '',
         primary: false,
         editing: null,
       });
@@ -156,7 +152,6 @@ export function reducer(state, action) {
         products,
         nextUid: products.length + 1,
         ramp: { stages: rampStages(saved.ramp) },
-        notes: saved.notes || '',
         primary: !!q.primary,
         editing: { id: q.id, title: q.title, primary: !!q.primary },
       });
@@ -230,7 +225,7 @@ export function QuoteBuilderApp() {
     return buildQuote(setup, state.products, rampFor(state), data.catalog);
   }, [data, state.setup, state.products, state.ramp, template]);
   // Deal properties the quote template prints as tokens (validated against live options).
-  const writes = useMemo(() => (quote ? dealWrites(quote, { setup: state.setup, notes: state.notes }, data.dealOptions) : null), [quote, state.setup, state.notes, data]);
+  const writes = useMemo(() => (quote ? dealWrites(quote, { setup: state.setup }, data.dealOptions) : null), [quote, state.setup, data]);
 
   if (loadError) {
     return (
@@ -298,7 +293,6 @@ export function QuoteBuilderApp() {
         setup: Object.assign({}, state.setup, { templateId: template.id }),
         products: state.products,
         ramp: rampFor(state),
-        notes: state.notes,
         primary,
         editQuoteId: state.editing ? state.editing.id : undefined,
       };
@@ -424,8 +418,6 @@ export function QuoteBuilderApp() {
           template={template}
           deal={data.deal}
           products={state.products}
-          notes={state.notes}
-          onNotes={(value) => dispatch({ type: 'notes', value })}
           primary={primary}
           editing={state.editing}
           firstBuilderQuote={!quotes.some((q) => q.builder)}

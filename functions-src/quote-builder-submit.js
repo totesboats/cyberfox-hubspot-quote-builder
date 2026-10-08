@@ -47,7 +47,7 @@ exports.main = async (context) => {
   if (quote.blocking.length) return { ok: false, errors: quote.blocking.map((b) => b.error) };
   if (quote.conflicts.length) return { ok: false, errors: quote.conflicts };
   if (!quote.lines.length) return { ok: false, errors: ['Nothing to quote.'] };
-  const writes = dealWrites(quote, { setup, notes: payload.notes }, dealOptions.options);
+  const writes = dealWrites(quote, { setup }, dealOptions.options);
   if (writes.errors.length) return { ok: false, errors: writes.errors };
 
   const signerId = payload.setup.signerContactId && deal.contacts.some((c) => c.id === String(payload.setup.signerContactId)) ? String(payload.setup.signerContactId) : null;
@@ -86,7 +86,7 @@ exports.main = async (context) => {
     hs_sender_lastname: deal.owner.lastName,
     hs_sender_email: deal.owner.email,
     [QUOTE_SESSION_PROPERTY]: sessionId,
-    [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties),
+    [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp }, writes.properties),
   };
   if (isCpq) quoteProps.hs_acceptance_method = payload.setup.acceptance || 'esignature';
   else if (!editing) quoteProps.hs_status = 'DRAFT';

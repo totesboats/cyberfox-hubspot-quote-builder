@@ -682,7 +682,7 @@ var require_pricing = __commonJS({
       }
       return props;
     }
-    function dealWrites(quote, { setup = {}, notes = "" } = {}, enumOptions = {}) {
+    function dealWrites(quote, { setup = {} } = {}, enumOptions = {}) {
       const properties = {};
       const errors = [];
       const warnings = [];
@@ -710,7 +710,6 @@ var require_pricing = __commonJS({
       setEnum("payment_method", "Payment Method", setup.paymentMethod || "");
       setEnum("invoice_terms", "Invoice Terms", setup.invoiceTerms || "");
       setEnum("promo", "Promo", setup.promo || "");
-      properties.hubspot_quote_notes = String(notes || "").slice(0, 5e3);
       if (quote.aeFeature && !quote.aeFeature.conflict) {
         setEnum("sku_type", "AE Feature Type", quote.aeFeature.type);
         properties.ae_feature_type_details = quote.aeFeature.details;
@@ -745,8 +744,8 @@ var require_pricing = __commonJS({
       if (!changed.length) return { changed, quotes: [] };
       return { changed, quotes: (quotes || []).filter((q) => quoteLockState(q.progressionStatus) === "open") };
     }
-    function builderState({ setup, products, ramp, notes }, dealProperties) {
-      return JSON.stringify({ v: 1, setup, products, ramp, notes: notes || "", dealProperties });
+    function builderState({ setup, products, ramp }, dealProperties) {
+      return JSON.stringify({ v: 1, setup, products, ramp, dealProperties });
     }
     function parseBuilderState(value) {
       try {

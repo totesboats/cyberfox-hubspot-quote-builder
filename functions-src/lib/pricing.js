@@ -589,8 +589,10 @@ function lineItemProperties(line, { billing, rampMonths, sessionId }) {
 // Deal properties the quote template prints as tokens, plus bookkeeping fields.
 // `enumOptions` = { propertyName: [{ value, label }] } read live from HubSpot; a value that
 // isn't an option is reported as an error instead of being written.
-/** @param {any} quote @param {{ setup?: any, notes?: string }} [ctx] @param {Record<string, {value: string, label: string}[]>} [enumOptions] */
-function dealWrites(quote, { setup = {}, notes = '' } = {}, enumOptions = {}) {
+// HubSpot Quote Notes (hubspot_quote_notes) holds special verbiage reps write themselves, so the
+// builder never writes it.
+/** @param {any} quote @param {{ setup?: any }} [ctx] @param {Record<string, {value: string, label: string}[]>} [enumOptions] */
+function dealWrites(quote, { setup = {} } = {}, enumOptions = {}) {
   const properties = {};
   const errors = [];
   const warnings = [];
@@ -620,7 +622,6 @@ function dealWrites(quote, { setup = {}, notes = '' } = {}, enumOptions = {}) {
   setEnum('payment_method', 'Payment Method', setup.paymentMethod || '');
   setEnum('invoice_terms', 'Invoice Terms', setup.invoiceTerms || '');
   setEnum('promo', 'Promo', setup.promo || '');
-  properties.hubspot_quote_notes = String(notes || '').slice(0, 5000);
 
   if (quote.aeFeature && !quote.aeFeature.conflict) {
     setEnum('sku_type', 'AE Feature Type', quote.aeFeature.type);
@@ -670,8 +671,8 @@ function openQuoteConflicts(quotes, currentDealProps, newProps) {
 }
 
 // What a builder quote stores so it can be cloned or made primary later.
-function builderState({ setup, products, ramp, notes }, dealProperties) {
-  return JSON.stringify({ v: 1, setup, products, ramp, notes: notes || '', dealProperties });
+function builderState({ setup, products, ramp }, dealProperties) {
+  return JSON.stringify({ v: 1, setup, products, ramp, dealProperties });
 }
 
 function parseBuilderState(value) {

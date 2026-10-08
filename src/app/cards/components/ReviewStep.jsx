@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, AutoGrid, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Link, Tag, Text, TextArea, Tile } from '@hubspot/ui-extensions';
+import { Alert, AutoGrid, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Link, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { autoQuoteName, stageLabel } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 
@@ -15,17 +15,16 @@ const TOKEN_ROWS = [
   ['timus_price_per_user', 'Timus Price Per User'],
   ['timus_price_per_gateway', 'Timus Price Per Gateway'],
   ['new_minimum_commitment_amount', 'Timus New Minimum Commitment Amount'],
-  ['hubspot_quote_notes', 'HubSpot Quote Notes'],
 ];
 
-export function ReviewStep({ quote, setup, template, deal, products, notes, onNotes, primary, editing, firstBuilderQuote, onPrimary, affectedQuotes = [], onAnotherOption, result, writes, dealOptions }) {
+export function ReviewStep({ quote, setup, template, deal, products, primary, editing, firstBuilderQuote, onPrimary, affectedQuotes = [], onAnotherOption, result, writes, dealOptions }) {
   const labelFor = (name, value) => {
     const o = ((dealOptions && dealOptions[name]) || []).find((x) => x.value === value);
     return o && o.label !== value ? `${o.label} (${value})` : value;
   };
   const tokenRows = TOKEN_ROWS.filter(([name]) => writes && name in writes.properties).map(([name, label]) => {
     const v = writes.properties[name];
-    const shown = name === 'hubspot_quote_notes' ? (v ? 'Notes for approvers' : '') : labelFor(name, v);
+    const shown = labelFor(name, v);
     return { name, label, value: shown === '' ? 'Cleared' : shown };
   });
   const title = (setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, products, quote.anyRamp ? quote.ramp.months : 0);
@@ -127,15 +126,6 @@ export function ReviewStep({ quote, setup, template, deal, products, notes, onNo
               <DescriptionListItem label="Approval Discount %">Each line's discount (0 on RAMP lines)</DescriptionListItem>
             </DescriptionList>
           </AutoGrid>
-          <TextArea
-            label="Notes for approvers"
-            name="notes"
-            rows={3}
-            placeholder="Why this discount or ramp? e.g. competitive displacement, migration time needed"
-            description="Saved to the deal's HubSpot Quote Notes property; not printed on the quote."
-            value={notes}
-            onChange={onNotes}
-          />
           {editing ? (
             <Text variant="microcopy">{editing.primary ? 'This quote is the primary option and stays primary.' : 'This quote is an alternative option; use Make primary under Quotes on this deal to switch.'}</Text>
           ) : (

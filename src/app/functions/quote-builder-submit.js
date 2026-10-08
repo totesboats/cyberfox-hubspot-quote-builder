@@ -682,7 +682,7 @@ var require_pricing = __commonJS({
       }
       return props;
     }
-    function dealWrites2(quote, { setup = {}, notes = "" } = {}, enumOptions = {}) {
+    function dealWrites2(quote, { setup = {} } = {}, enumOptions = {}) {
       const properties = {};
       const errors = [];
       const warnings = [];
@@ -710,7 +710,6 @@ var require_pricing = __commonJS({
       setEnum("payment_method", "Payment Method", setup.paymentMethod || "");
       setEnum("invoice_terms", "Invoice Terms", setup.invoiceTerms || "");
       setEnum("promo", "Promo", setup.promo || "");
-      properties.hubspot_quote_notes = String(notes || "").slice(0, 5e3);
       if (quote.aeFeature && !quote.aeFeature.conflict) {
         setEnum("sku_type", "AE Feature Type", quote.aeFeature.type);
         properties.ae_feature_type_details = quote.aeFeature.details;
@@ -745,8 +744,8 @@ var require_pricing = __commonJS({
       if (!changed.length) return { changed, quotes: [] };
       return { changed, quotes: (quotes || []).filter((q) => quoteLockState(q.progressionStatus) === "open") };
     }
-    function builderState2({ setup, products, ramp, notes }, dealProperties) {
-      return JSON.stringify({ v: 1, setup, products, ramp, notes: notes || "", dealProperties });
+    function builderState2({ setup, products, ramp }, dealProperties) {
+      return JSON.stringify({ v: 1, setup, products, ramp, dealProperties });
     }
     function parseBuilderState(value) {
       try {
@@ -1028,7 +1027,7 @@ exports.main = async (context) => {
   if (quote.blocking.length) return { ok: false, errors: quote.blocking.map((b) => b.error) };
   if (quote.conflicts.length) return { ok: false, errors: quote.conflicts };
   if (!quote.lines.length) return { ok: false, errors: ["Nothing to quote."] };
-  const writes = dealWrites(quote, { setup, notes: payload.notes }, dealOptions.options);
+  const writes = dealWrites(quote, { setup }, dealOptions.options);
   if (writes.errors.length) return { ok: false, errors: writes.errors };
   const signerId = payload.setup.signerContactId && deal.contacts.some((c) => c.id === String(payload.setup.signerContactId)) ? String(payload.setup.signerContactId) : null;
   const isCpq = template.templateType === "CPQ_QUOTE";
@@ -1062,7 +1061,7 @@ exports.main = async (context) => {
     hs_sender_lastname: deal.owner.lastName,
     hs_sender_email: deal.owner.email,
     [QUOTE_SESSION_PROPERTY]: sessionId,
-    [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp, notes: payload.notes }, writes.properties)
+    [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp }, writes.properties)
   };
   if (isCpq) quoteProps.hs_acceptance_method = payload.setup.acceptance || "esignature";
   else if (!editing) quoteProps.hs_status = "DRAFT";

@@ -167,7 +167,6 @@ test('submit writes deal lines, quote copies, quote and deal fields; replaces on
     payment_method: 'ACH',
     invoice_terms: 'Net-30',
     promo: '',
-    hubspot_quote_notes: 'Competitive displacement',
     sku_type: 'Standard',
     ae_feature_type_details:
       'Elevation. Additional agents over the minimum commitment of this plan will be billed at the same price per agent. Usage of Advanced features Blocker and Just-in-Time Admin Login will result in additional charges. Unlimited User (Technician) & Company licenses included',
@@ -381,4 +380,11 @@ test('edit in place: CPQ quote cannot switch to a legacy template; failures roll
   assert.equal(res.ok, false);
   assert.ok(!store.archived.includes('QL5a')); // the quote's original lines survive
   assert.ok(store.archived.length >= 2); // the new lines were archived again
+});
+
+test('HubSpot Quote Notes is never written (reps keep their own verbiage there)', async () => {
+  const { store } = fakeHubSpot();
+  const res = await submitFn().main({ parameters: payload({ notes: 'should be ignored' }), accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.ok(!('hubspot_quote_notes' in store.dealPatch));
 });
