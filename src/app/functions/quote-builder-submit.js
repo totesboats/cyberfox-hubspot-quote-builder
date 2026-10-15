@@ -733,6 +733,11 @@ var require_pricing = __commonJS({
       if (status === "PENDING_APPROVAL") return { editable: false, reason: "Recall the approval request in HubSpot to edit it." };
       return { editable: false, reason: "Published quotes are locked. Start a new option from it instead." };
     }
+    function quoteUrl2(portalId, quoteId, templateType, progressionStatus) {
+      if (templateType === "CPQ_QUOTE") return `https://app.hubspot.com/quote/${portalId}/editor/${quoteId}/content`;
+      const draft = !progressionStatus || progressionStatus === "DRAFT";
+      return `https://app.hubspot.com/quotes/${portalId}/${draft ? "edit" : "details"}/${quoteId}`;
+    }
     function quoteLockState(progressionStatus) {
       const s = progressionStatus || "DRAFT";
       if (QUOTE_IGNORED_STATUSES.includes(s)) return "void";
@@ -798,7 +803,7 @@ var require_pricing = __commonJS({
       }
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteUrl: quoteUrl2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
   }
 });
 
@@ -1000,7 +1005,7 @@ var require_hubspot = __commonJS({
 
 // functions-src/quote-builder-submit.js
 var { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require_hubspot();
-var { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require_pricing();
+var { quoteUrl, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require_pricing();
 var { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require_config();
 var ASSOC = {
   lineItemToDeal: 20,
@@ -1025,7 +1030,8 @@ exports.main = async (context) => {
       loadTemplates(),
       loadDealOptions(),
       loadDeal(dealId),
-      findOwnerByEmail(payload.builder && payload.builder.email)
+      // HubSpot passes the signed-in user's email to the function; the card's copy is a fallback.
+      findOwnerByEmail(context.userEmail || payload.builder && payload.builder.email)
     ]);
   } catch (err) {
     console.error("quote-builder-submit load failed", err.message);
@@ -1083,7 +1089,7 @@ exports.main = async (context) => {
     ok: true,
     edited: !!editing,
     quoteId,
-    quoteUrl: `https://app.hubspot.com/quotes/${context.accountId}/details/${quoteId}`,
+    quoteUrl: quoteUrl(context.accountId, quoteId, template.templateType, editing ? editing.progressionStatus : "DRAFT"),
     title,
     templateType: template.templateType,
     lineCount: lineProps.length,

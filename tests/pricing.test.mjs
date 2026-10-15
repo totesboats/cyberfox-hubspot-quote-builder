@@ -372,3 +372,10 @@ test('ramp stages: old single-stage saved ramps still work; limits are enforced'
 test('default ramp length = months past 12 on the agreement', () => {
   assert.deepEqual(['16 Months', '18 Months', '13 Months', '24 Months', '36 Months', '12 Months', '6 Months', '12 Months - Month-to-Month'].map(P.defaultRampMonths), [4, 6, 1, 12, 12, 3, 3, 3]);
 });
+
+test('Open quote links: CPQ quotes open in the quote editor; legacy drafts in the edit wizard, published on details', () => {
+  assert.equal(P.quoteUrl(2585282, '44013419580', 'CPQ_QUOTE', 'DRAFT'), 'https://app.hubspot.com/quote/2585282/editor/44013419580/content');
+  assert.equal(P.quoteUrl(2585282, '1', 'CPQ_QUOTE', 'APPROVAL_NOT_NEEDED'), 'https://app.hubspot.com/quote/2585282/editor/1/content');
+  assert.equal(P.quoteUrl(2585282, '2', 'CUSTOMIZABLE_QUOTE_TEMPLATE', 'DRAFT'), 'https://app.hubspot.com/quotes/2585282/edit/2');
+  assert.equal(P.quoteUrl(2585282, '3', 'CUSTOMIZABLE_QUOTE_TEMPLATE', 'APPROVAL_NOT_NEEDED'), 'https://app.hubspot.com/quotes/2585282/details/3');
+});

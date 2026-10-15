@@ -733,6 +733,11 @@ var require_pricing = __commonJS({
       if (status === "PENDING_APPROVAL") return { editable: false, reason: "Recall the approval request in HubSpot to edit it." };
       return { editable: false, reason: "Published quotes are locked. Start a new option from it instead." };
     }
+    function quoteUrl(portalId, quoteId, templateType, progressionStatus) {
+      if (templateType === "CPQ_QUOTE") return `https://app.hubspot.com/quote/${portalId}/editor/${quoteId}/content`;
+      const draft = !progressionStatus || progressionStatus === "DRAFT";
+      return `https://app.hubspot.com/quotes/${portalId}/${draft ? "edit" : "details"}/${quoteId}`;
+    }
     function quoteLockState(progressionStatus) {
       const s = progressionStatus || "DRAFT";
       if (QUOTE_IGNORED_STATUSES.includes(s)) return "void";
@@ -798,7 +803,7 @@ var require_pricing = __commonJS({
       }
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 

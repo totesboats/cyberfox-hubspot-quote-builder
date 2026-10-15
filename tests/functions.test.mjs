@@ -144,7 +144,7 @@ test('submit writes deal lines, quote copies, quote and deal fields; replaces on
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   assert.equal(res.lineCount, 4);
   assert.equal(res.title, 'Example MSP - AutoElevate + 3 Month Ramp');
-  assert.equal(res.quoteUrl, 'https://app.hubspot.com/quotes/2585282/details/Q1');
+  assert.equal(res.quoteUrl, 'https://app.hubspot.com/quote/2585282/editor/Q1/content'); // CPQ quotes open in the quote editor
   assert.equal(res.approval.required, false); // 3-month ramp, 10% discount: under both approval rules
   assert.ok(log.every((l) => l.auth === 'Bearer test-token'));
 
@@ -302,6 +302,13 @@ test('seller is whoever builds the quote; the quote owner stays the deal owner',
   assert.equal(q.hs_payment_enabled, 'false'); // like every CyberFOX CPQ quote; payments would block sub-$35 ramp invoices
   const cat = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
   assert.equal(cat.deal.owner.email, 'riley.rep@example.com');
+});
+
+test("the signed-in user HubSpot passes to the function wins over the card's copy", async () => {
+  const { store } = fakeHubSpot();
+  const res = await submitFn().main({ parameters: payload({ builder: { email: 'riley.rep@example.com' } }), accountId: 1, userEmail: 'pat.ops@example.com' });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.equal(store.quote.properties.hs_sender_email, 'pat.ops@example.com');
 });
 
 test('rep on their own deal: owner and seller are both the rep', async () => {

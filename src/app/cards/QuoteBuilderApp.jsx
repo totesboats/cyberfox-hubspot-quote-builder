@@ -351,7 +351,7 @@ export function QuoteBuilderApp() {
       {state.step === 0 && (
         <QuotesPanel
           quotes={quotes}
-          portalId={data.portalId}
+          portalId={data.portalId || (context && context.portal ? context.portal.id : '')}
           busyId={busyQuoteId}
           pendingPrimary={pendingPrimary}
           onStartFrom={(q) => {

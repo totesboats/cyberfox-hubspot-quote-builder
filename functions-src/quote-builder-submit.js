@@ -9,7 +9,7 @@
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
 const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
-const { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
+const { quoteUrl, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
 const ASSOC = {
@@ -37,7 +37,8 @@ exports.main = async (context) => {
       loadTemplates(),
       loadDealOptions(),
       loadDeal(dealId),
-      findOwnerByEmail(payload.builder && payload.builder.email),
+      // HubSpot passes the signed-in user's email to the function; the card's copy is a fallback.
+      findOwnerByEmail(context.userEmail || (payload.builder && payload.builder.email)),
     ]);
   } catch (err) {
     console.error('quote-builder-submit load failed', err.message);
@@ -103,7 +104,7 @@ exports.main = async (context) => {
     ok: true,
     edited: !!editing,
     quoteId,
-    quoteUrl: `https://app.hubspot.com/quotes/${context.accountId}/details/${quoteId}`,
+    quoteUrl: quoteUrl(context.accountId, quoteId, template.templateType, editing ? editing.progressionStatus : 'DRAFT'),
     title,
     templateType: template.templateType,
     lineCount: lineProps.length,

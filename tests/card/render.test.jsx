@@ -43,7 +43,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   r.mocks.runServerlessFunction.willCall(async (params) => {
     calls.push(params);
     if (params.name === 'quote_builder_catalog') return { status: 'SUCCESS', response: CATALOG_RESPONSE };
-    return { status: 'SUCCESS', response: { ok: true, quoteId: '777', quoteUrl: 'https://app.hubspot.com/quotes/123/details/777', title: 'Example MSP - AutoElevate + 3 Month Ramp', lineCount: 4, replaced: 0, approval: { required: true, manual: false, approver: 'Tina Harvey (MSP Sales Manager)', reasons: [] } } };
+    return { status: 'SUCCESS', response: { ok: true, quoteId: '777', quoteUrl: 'https://app.hubspot.com/quote/123/editor/777/content', title: 'Example MSP - AutoElevate + 3 Month Ramp', lineCount: 4, replaced: 0, approval: { required: true, manual: false, approver: 'Tina Harvey (MSP Sales Manager)', reasons: [] } } };
   });
   r.render(<QuoteBuilderApp />);
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
@@ -111,7 +111,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Draft quote created' })));
   const open = r.find(Button, (n) => /Open quote in HubSpot/.test(text(n)));
   assert.equal(open.props.variant, 'primary');
-  assert.equal(open.props.href.url, 'https://app.hubspot.com/quotes/123/details/777');
+  assert.equal(open.props.href.url, 'https://app.hubspot.com/quote/123/editor/777/content');
   assert.match(text(r.getRootNode()), /rename the quote/); // approval needed → "Saving…" workaround tip
   const submit = calls.find((c) => c.name === 'quote_builder_submit');
   assert.equal(submit.parameters.setup.templateId, '10');

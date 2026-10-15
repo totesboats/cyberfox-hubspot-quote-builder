@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert, Button, Flex, Heading, Link, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag, Text, Tile } from '@hubspot/ui-extensions';
-import { formatMoney, quoteEditability } from '../lib/pricing.js';
+import { formatMoney, quoteEditability, quoteUrl } from '../lib/pricing.js';
 
 const STATUS_LABEL = {
   DRAFT: 'Draft',
@@ -68,7 +68,7 @@ export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, editingI
               <TableRow key={q.id}>
                 <TableCell>
                   <Flex direction="column" gap="extra-small">
-                    <Link href={{ url: `https://app.hubspot.com/quotes/${portalId}/details/${q.id}`, external: true }}>{q.title || `Quote ${q.id}`}</Link>
+                    <Link href={{ url: quoteUrl(portalId, q.id, q.templateType, q.progressionStatus), external: true }}>{q.title || `Quote ${q.id}`}</Link>
                     <Flex gap="extra-small" wrap>
                       {q.primary && <Tag variant="success">Primary</Tag>}
                       {q.id === editingId && <Tag variant="info">Editing</Tag>}

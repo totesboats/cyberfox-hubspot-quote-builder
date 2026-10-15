@@ -655,6 +655,16 @@ function quoteEditability(q) {
   return { editable: false, reason: 'Published quotes are locked. Start a new option from it instead.' };
 }
 
+// Where "Open quote" should go. CPQ quotes open in HubSpot's quote editor (it also shows published
+// quotes read-only). Legacy quotes: drafts open in the old edit wizard, the rest on the details page.
+// (/quotes/{portal}/details/{id} only works for published legacy quotes; for a CPQ quote it lands on an
+// empty "All quotes" list.)
+function quoteUrl(portalId, quoteId, templateType, progressionStatus) {
+  if (templateType === 'CPQ_QUOTE') return `https://app.hubspot.com/quote/${portalId}/editor/${quoteId}/content`;
+  const draft = !progressionStatus || progressionStatus === 'DRAFT';
+  return `https://app.hubspot.com/quotes/${portalId}/${draft ? 'edit' : 'details'}/${quoteId}`;
+}
+
 function quoteLockState(progressionStatus) {
   const s = progressionStatus || 'DRAFT';
   if (QUOTE_IGNORED_STATUSES.includes(s)) return 'void';
@@ -729,4 +739,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
