@@ -68,10 +68,10 @@ var require_config = __commonJS({
     var APPROVAL = {
       discountThresholdPct: 30,
       // discounts at or above this need a sales manager
-      rampMonthsThreshold: 3,
-      // ramps this long or longer need approval
+      rampMonthsThreshold: 4,
+      // ramps this long or longer (total of all stages) need approval; matches the Commerce Hub workflow (> 3)
       approversByTeam: {
-        MSP: "Tina Kalke (MSP Sales Manager)",
+        MSP: "Tina Harvey (MSP Sales Manager)",
         ENT: "Adam Friedman (ENT Sales Manager)",
         AM: "Julie Webb (AM Sales Manager)"
       },

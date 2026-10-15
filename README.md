@@ -67,7 +67,7 @@ If any write fails, everything that run created is archived again and the rep se
 
 The texts are the ones already on your deals. The deal holds one AE Feature Type, so a quote with AutoElevate rows of different feature types is blocked with an explanation.
 
-**Approvals:** the API always creates quotes as Draft; HubSpot does not let the API start an approval. The card shows whether approval is needed and who it routes to (MSP → Tina Kalke, ENT → Adam Friedman, AM → Julie Webb, else Operations), and the rep clicks **Request approval** on the quote. Legacy (custom-coded) templates don't run Commerce Hub approvals, so the card says so.
+**Approvals:** the API always creates quotes as Draft; HubSpot does not let the API start an approval. The card shows whether approval is needed and who it routes to (MSP → Tina Harvey, ENT → Adam Friedman, AM → Julie Webb, else Operations), and the rep clicks **Request approval** on the quote. Legacy (custom-coded) templates don't run Commerce Hub approvals, so the card says so.
 
 ## Setup (once)
 

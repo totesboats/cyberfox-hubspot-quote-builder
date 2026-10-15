@@ -140,7 +140,7 @@ test('submit writes deal lines, quote copies, quote and deal fields; replaces on
   assert.equal(res.lineCount, 4);
   assert.equal(res.title, 'Example MSP - AutoElevate + 3 Month Ramp');
   assert.equal(res.quoteUrl, 'https://app.hubspot.com/quotes/2585282/details/Q1');
-  assert.equal(res.approval.required, true);
+  assert.equal(res.approval.required, false); // 3-month ramp, 10% discount: under both approval rules
   assert.ok(log.every((l) => l.auth === 'Bearer test-token'));
 
   const creates = log.filter((l) => l.path === '/crm/v3/objects/line_items/batch/create');

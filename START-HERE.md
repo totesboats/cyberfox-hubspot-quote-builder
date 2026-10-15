@@ -85,7 +85,7 @@ Create company **TEST – Quote Builder**, a contact with a job title, and a dea
 | # | Build | Check |
 |---|---|---|
 | 1 | AutoElevate Standard, 1,250 agents, 10%, Agreement Length 12 Months | 2 lines (1,000 tier + 250 additional); Standard wording on the quote; Auto-approves |
-| 2 | Tick Ramp, 3 months free, Agreement Length 15 Months | RAMP lines P3M, plan lines P12M; Request approval → Tina |
+| 2 | Tick Ramp, 4 months free, Agreement Length 16 Months | RAMP lines P4M, plan lines P12M; Request approval → Tina Harvey (a 3-month ramp auto-approves) |
 | 3 | Discount 35% | Approval reason; Commerce Hub approval fires |
 | 4 | AE Feature Type = Advanced (GrandFathered) | Details text "1,000 agents include advanced features…" |
 | 5 | Enterprise + Annual SKUs, Password Manager + DNS | Annual SKUs; Payment Frequency Annual Payments |

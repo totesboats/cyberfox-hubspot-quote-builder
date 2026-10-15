@@ -96,9 +96,12 @@ test('3-month free ramp: RAMP lines, totals and approval', () => {
   assert.equal(q.totals.firstYear, 10631.25);
   assert.equal(q.totals.tcv, 14175);
   assert.equal(q.totals.contractMonths, 15);
-  assert.equal(q.approval.required, true);
-  assert.equal(q.approval.reasons.length, 1);
-  assert.match(q.approval.approver, /Tina Kalke/);
+  // 3 months is under the 4+ month rule; 4 months needs approval (routes to the MSP manager).
+  assert.equal(q.approval.required, false);
+  const q4 = P.buildQuote(Object.assign({}, MSP, { agreementLength: '16 Months' }), [ae()], { enabled: true, months: 4, mode: 'free' }, CATALOG);
+  assert.equal(q4.approval.required, true);
+  assert.deepEqual(q4.approval.reasons, ['4-month ramp (4+ months needs approval)']);
+  assert.match(q4.approval.approver, /Tina Harvey/);
 });
 
 test('percent ramp uses the ramp discount, not the plan discount', () => {

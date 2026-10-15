@@ -1,6 +1,6 @@
 import React from 'react';
-import { Alert, AutoGrid, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Link, Tag, Text, Tile } from '@hubspot/ui-extensions';
-import { autoQuoteName, stageLabel } from '../lib/pricing.js';
+import { Alert, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Link, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { autoQuoteName } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 
 // Deal properties shown with their HubSpot labels, in the order the templates use them.
@@ -105,27 +105,15 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
 
       <Tile>
         <Flex direction="column" gap="medium">
-          <Heading>{editing ? 'What Update quote writes to HubSpot' : 'What Create quote writes to HubSpot'}</Heading>
-          <AutoGrid columnWidth={240} gap="medium" flexible>
-            <DescriptionList direction="column">
-              <DescriptionListItem label="Quote">{title}</DescriptionListItem>
-              <DescriptionListItem label="Template">{template ? `${template.name} (${template.templateType === 'CPQ_QUOTE' ? 'CPQ' : 'legacy'})` : 'Not chosen'}</DescriptionListItem>
-              <DescriptionListItem label="Expires · status">{`${setup.expirationDate} · Draft`}</DescriptionListItem>
-              <DescriptionListItem label="Contact">{signer ? signer.label : 'None'}</DescriptionListItem>
-            </DescriptionList>
-            <DescriptionList direction="column">
-              <DescriptionListItem label="Deal line items">{primary ? `${quote.lines.length} new, replacing the previous primary option's lines` : 'Unchanged (not the primary option)'}</DescriptionListItem>
-              <DescriptionListItem label="Quote line items">
-                {editing ? `${quote.lines.length} new, replacing this quote's current lines` : 'A separate copy of each (CPQ keeps quote lines apart from deal lines)'}
-              </DescriptionListItem>
-              <DescriptionListItem label="Ramp lines">
-                {rampCount
-                  ? `${rampCount} with Ramp = Yes: ${quote.ramp.stages.map((st, i) => `${quote.ramp.stages.length > 1 ? `RAMP ${i + 1} ` : ''}P${st.months}M ${stageLabel(st).toLowerCase()}`).join(', ')}. Approval Ramp Months = ${quote.ramp.months}`
-                  : 'None'}
-              </DescriptionListItem>
-              <DescriptionListItem label="Approval Discount %">Each line's discount (0 on RAMP lines)</DescriptionListItem>
-            </DescriptionList>
-          </AutoGrid>
+          <Heading>Quote summary</Heading>
+          <DescriptionList direction="row">
+            <DescriptionListItem label="Quote name">{title}</DescriptionListItem>
+            <DescriptionListItem label="Template">{template ? template.name : 'Not chosen'}</DescriptionListItem>
+            <DescriptionListItem label="Expires">{setup.expirationDate}</DescriptionListItem>
+            <DescriptionListItem label="Signer">{signer ? signer.label : 'None'}</DescriptionListItem>
+            <DescriptionListItem label="Line items">{rampCount ? `${quote.lines.length} (${rampCount} ramp)` : String(quote.lines.length)}</DescriptionListItem>
+          </DescriptionList>
+          <Text variant="microcopy">{editing ? 'Update quote saves these changes to the existing draft.' : 'Create quote makes a draft you can review in HubSpot before sending.'}</Text>
           {editing ? (
             <Text variant="microcopy">{editing.primary ? 'This quote is the primary option and stays primary.' : 'This quote is an alternative option; use Make primary under Quotes on this deal to switch.'}</Text>
           ) : (
@@ -135,8 +123,8 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
             readOnly={firstBuilderQuote}
             description={
               firstBuilderQuote
-                ? "This is the deal's first builder quote, so it's the primary option."
-                : 'The primary option\'s line items sit on the deal and drive its amount. Leave unticked for an alternative option (e.g. 250 instead of 100 agents); you can switch later under Quotes on this deal.'
+                ? "This is the deal's first quote, so it's the primary option."
+                : 'The primary option sets the deal amount. Leave unticked for an alternative (e.g. 250 instead of 100 agents); you can switch later.'
             }
             onChange={onPrimary}
           >

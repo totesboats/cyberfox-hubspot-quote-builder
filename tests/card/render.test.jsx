@@ -43,7 +43,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   r.mocks.runServerlessFunction.willCall(async (params) => {
     calls.push(params);
     if (params.name === 'quote_builder_catalog') return { status: 'SUCCESS', response: CATALOG_RESPONSE };
-    return { status: 'SUCCESS', response: { ok: true, quoteId: '777', quoteUrl: 'https://app.hubspot.com/quotes/123/details/777', title: 'Example MSP - AutoElevate + 3 Month Ramp', lineCount: 4, replaced: 0, approval: { required: true, manual: false, approver: 'Tina Kalke (MSP Sales Manager)', reasons: [] } } };
+    return { status: 'SUCCESS', response: { ok: true, quoteId: '777', quoteUrl: 'https://app.hubspot.com/quotes/123/details/777', title: 'Example MSP - AutoElevate + 3 Month Ramp', lineCount: 4, replaced: 0, approval: { required: true, manual: false, approver: 'Tina Harvey (MSP Sales Manager)', reasons: [] } } };
   });
   r.render(<QuoteBuilderApp />);
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
@@ -78,13 +78,16 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
   r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 3);
-  await r.waitFor(() => assert.match(text(r.getRootNode()), /Needs approval/));
+  await r.waitFor(() => assert.match(text(r.getRootNode()), /Auto-approves/)); // 3 months is under the 4+ month rule
   const stats = r.findAll(StatisticsItem).map((s) => [s.props.label, s.props.number]);
   assert.deepEqual(stats, [['MRR (full plan)', '$1,181.25'], ['First 12 months', '$10,631'], ['Total contract value', '$14,175'], ['Savings vs list', '$5,513']]);
 
   cont().trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
   assert.match(text(r.getRootNode()), /4 lines · 2 ramp/);
+  assert.match(text(r.getRootNode()), /Quote summary/);
+  assert.doesNotMatch(text(r.getRootNode()), /What Create quote writes|Approval Discount %|Notes for approvers/);
+  assert.equal(r.find(DescriptionListItem, { label: 'Line items' }).text, '4 (2 ramp)');
   const token = (label) => r.find(DescriptionListItem, { label }).text;
   assert.equal(token('Agreement Length'), '15 Months');
   assert.equal(token('Payment Frequency'), 'Monthly (Month-to-Month)');
