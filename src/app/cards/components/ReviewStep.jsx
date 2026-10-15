@@ -17,7 +17,7 @@ const TOKEN_ROWS = [
   ['new_minimum_commitment_amount', 'Timus New Minimum Commitment Amount'],
 ];
 
-export function ReviewStep({ quote, setup, template, deal, products, primary, editing, firstBuilderQuote, onPrimary, affectedQuotes = [], onAnotherOption, result, writes, dealOptions }) {
+export function ReviewStep({ quote, setup, template, deal, products, primary, editing, firstBuilderQuote, onPrimary, affectedQuotes = [], onAnotherOption, onReloadPage, result, writes, dealOptions }) {
   const labelFor = (name, value) => {
     const o = ((dealOptions && dealOptions[name]) || []).find((x) => x.value === value);
     return o && o.label !== value ? `${o.label} (${value})` : value;
@@ -42,18 +42,21 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
               {result.approval.required
                 ? result.approval.manual
                   ? `It needs approval from ${result.approval.approver}; this template doesn't run Commerce Hub approvals, so request it manually.`
-                  : `It needs approval: open it and click Request approval. It routes to ${result.approval.approver}.`
-                : 'No approval needed. Open it to review, publish and send.'}
+                  : `It needs approval: open it from the deal's Quotes card and click Request approval. It routes to ${result.approval.approver}.`
+                : "No approval needed. Open it from the deal's Quotes card to review, publish and send."}
             </Text>
+            <Text format={{ fontWeight: 'demibold' }}>{result.edited ? 'Refresh the page to see the changes in the Quotes card.' : 'Refresh the page and the quote will appear in the Quotes card.'}</Text>
             {result.edited && quote.approval.required && <Text variant="microcopy">If it was approved or had changes requested, request approval again in HubSpot.</Text>}
             {result.approval.required && !result.approval.manual && (
               <Text variant="microcopy">If Request approval keeps showing "Saving…", rename the quote (any small change), save, then request approval again. It's a known HubSpot issue.</Text>
             )}
             <Text variant="microcopy">Publish it before building another option, so it keeps these printed values.</Text>
             <Flex gap="small" align="center" wrap>
-              <Button variant="primary" href={{ url: result.quoteUrl, external: true }}>
-                Open quote in HubSpot
-              </Button>
+              {onReloadPage && (
+                <Button variant="primary" onClick={onReloadPage}>
+                  Refresh page
+                </Button>
+              )}
               <Button variant="secondary" onClick={onAnotherOption}>
                 Build another option
               </Button>

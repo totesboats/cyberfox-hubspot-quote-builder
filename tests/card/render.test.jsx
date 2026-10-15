@@ -109,9 +109,13 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.match(token('AE Feature Type Details'), /^Elevation\. Additional agents/);
   r.find(Button, (n) => /Create quote/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Draft quote created' })));
-  const open = r.find(Button, (n) => /Open quote in HubSpot/.test(text(n)));
-  assert.equal(open.props.variant, 'primary');
-  assert.equal(open.props.href.url, 'https://app.hubspot.com/quote/123/editor/777/content');
+  // The success message says to refresh (the deal's Quotes card only shows the new quote after a reload).
+  assert.equal(r.maybeFind(Button, (n) => /Open quote in HubSpot/.test(text(n))), null);
+  assert.match(text(r.getRootNode()), /Refresh the page and the quote will appear in the Quotes card/);
+  const refresh = r.find(Button, (n) => /Refresh page/.test(text(n)));
+  assert.equal(refresh.props.variant, 'primary');
+  refresh.trigger('onClick');
+  assert.equal(r.mocks.actions.reloadPage.callCount, 1);
   assert.match(text(r.getRootNode()), /rename the quote/); // approval needed → "Saving…" workaround tip
   const submit = calls.find((c) => c.name === 'quote_builder_submit');
   assert.equal(submit.parameters.setup.templateId, '10');

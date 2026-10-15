@@ -430,6 +430,7 @@ export function QuoteBuilderApp() {
             dispatch({ type: 'nextOption' });
           }}
           result={result}
+          onReloadPage={actions && actions.reloadPage ? () => actions.reloadPage() : undefined}
           writes={writes}
           dealOptions={data.dealOptions}
         />
