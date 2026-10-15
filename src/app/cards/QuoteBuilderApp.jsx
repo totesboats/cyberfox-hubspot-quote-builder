@@ -17,7 +17,7 @@ import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
 import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, rampStages, suggestTemplate } from './lib/pricing.js';
-import { AGREEMENT_LENGTH_DEFAULT, FAMILIES, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
+import { AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
 
@@ -47,7 +47,7 @@ export const initialState = {
     promo: '',
     paymentFrequency: '', // '' = follow billing
     paymentMethod: 'Credit Card',
-    invoiceTerms: 'Net-30',
+    invoiceTerms: INVOICE_TERMS_DEFAULT,
     acceptance: 'esignature',
     signerContactId: '',
     quoteName: '',
@@ -197,7 +197,7 @@ export function QuoteBuilderApp() {
           segment: res.deal && res.deal.salesTeam === 'ENT' ? 'ENT' : 'MSP',
           promo: props.promo || '',
           paymentMethod: props.payment_method || 'Credit Card',
-          invoiceTerms: props.invoice_terms || 'Net-30',
+          invoiceTerms: INVOICE_TERMS_DEFAULT, // always starts here, even if the deal holds Net-30 etc.
           signerContactId: res.deal && res.deal.contacts[0] ? res.deal.contacts[0].id : '',
           paymentFrequency: props.payment_terms || '',
           agreementLength: props.agreement_length || AGREEMENT_LENGTH_DEFAULT,
@@ -348,8 +348,6 @@ export function QuoteBuilderApp() {
         </Alert>
       )}
 
-      <SummaryPanel quote={quote} template={template} dealQuoteCount={data.deal.quoteCount} />
-
       {state.step === 0 && (
         <QuotesPanel
           quotes={quotes}
@@ -372,6 +370,9 @@ export function QuoteBuilderApp() {
       )}
 
       <StepIndicator stepNames={STEPS} currentStep={state.step} onClick={go} />
+
+      {/* Totals and approval status follow the rep through every step, right under the step tracker. */}
+      <SummaryPanel quote={quote} template={template} dealQuoteCount={data.deal.quoteCount} />
 
       {state.step === 0 && (
         <SetupStep

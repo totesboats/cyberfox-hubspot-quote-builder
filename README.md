@@ -3,9 +3,11 @@
 A HubSpot app card on the **Deal** record (“Quote Builder” tab) that builds one quote across
 AutoElevate, Password Manager, DNS Filtering, Timus SASE, Optimize365 (CyberFOX Bundles are retired: no longer offered on new quotes; saved quotes with a bundle still load):
 
-1. **Setup**: template, segment, SKU pricing (monthly or annual), expiry, signer, and the deal properties the quote prints: **Agreement Length, Payment Frequency, Payment Method, Invoice Terms, Promo**. Their dropdowns are the properties' own options in HubSpot.
+1. **Setup**: template, segment, SKU pricing (monthly or annual), expiry, signer, and the deal properties the quote prints: **Agreement Length, Payment Frequency, Payment Method, Invoice Terms, Promo**. Their dropdowns are the properties' own options in HubSpot. Agreement Length is always open; the other four show as one read-only line (Invoice Terms starts at Due Upon Receipt, Payment Method at the deal's value) until the rep clicks **Edit**.
 2. **Products & ramp**: rep enters a total count; the builder picks the cheapest commit tier and adds the overage (“Additional”) SKU. AutoElevate rows pick an **AE Feature Type**. Timus uses the Timus SKUs (Monthly Minimum at the minimum the rep sets, or a SATGAT SKU); the rep enters **Timus Price Per User** and **Timus Price Per Gateway**, which print on the quote, and the card checks estimated usage against the minimum. Each product has a **Ramp** box; ticking any of them shows the Ramp & schedule section (1–12 months in up to 4 stages, each free or % off, e.g. 2 months free then 2 months at 50% off; plus the billing schedule; **Remove ramp** clears it) on the same page. Untick them all and the section disappears.
-3. **Review & create**: exact line items, the quote-token values, approval preview → creates a **draft** HubSpot quote.
+3. **Review & create**: exact line items, the quote-token values, approval preview → creates a **draft** HubSpot quote. The success message has an **Open quote in HubSpot** button and, when approval is needed, the rename workaround for HubSpot's "Saving…" approval bug.
+
+The **Live summary** (totals and approval status) sits under the step tracker on every step; until products are added it's a single line.
 
 **Default ramp length.** Ticking the first Ramp box starts the ramp at the months the Agreement Length runs past 12 (16 months → 4, 18 → 6; 12 months or less → a short ramp). Changing the Agreement Length updates an untouched default; a length the rep picked is kept.
 

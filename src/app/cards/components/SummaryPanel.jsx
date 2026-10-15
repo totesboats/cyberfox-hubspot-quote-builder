@@ -11,15 +11,31 @@ export function SummaryPanel({ quote, template, dealQuoteCount }) {
   const usable = quote.rows.filter((r) => r.usable);
   const length = t.contractMonths == null ? 'Month-to-month' : `${t.contractMonths} months${quote.anyRamp ? ` incl. ${quote.ramp.months}-mo ramp` : ''}`;
 
+  const header = (
+    <Flex gap="small" align="center" wrap>
+      <Text format={{ fontWeight: 'demibold' }}>Live summary</Text>
+      {template && <Tag variant={template.templateType === 'CPQ_QUOTE' ? 'info' : 'default'}>{template.templateType === 'CPQ_QUOTE' ? 'CPQ template' : 'Legacy template'}</Tag>}
+      <Tag>{dealQuoteCount ? `${dealQuoteCount} quote${dealQuoteCount > 1 ? 's' : ''} on deal` : 'No quotes on deal yet'}</Tag>
+    </Flex>
+  );
+
+  // Nothing priced yet (e.g. on Setup): one compact line instead of four $0 figures.
+  if (usable.length === 0) {
+    return (
+      <Tile compact>
+        <Flex justify="between" align="center" gap="medium" wrap>
+          {header}
+          <Text variant="microcopy">Totals and approval show here once you add products.</Text>
+        </Flex>
+      </Tile>
+    );
+  }
+
   return (
     <Tile>
       <Flex direction="column" gap="medium">
         <Flex justify="between" align="center" wrap>
-          <Flex gap="small" align="center" wrap>
-            <Text format={{ fontWeight: 'demibold' }}>Live summary</Text>
-            {template && <Tag variant={template.templateType === 'CPQ_QUOTE' ? 'info' : 'default'}>{template.templateType === 'CPQ_QUOTE' ? 'CPQ template' : 'Legacy template'}</Tag>}
-            <Tag>{dealQuoteCount ? `${dealQuoteCount} quote${dealQuoteCount > 1 ? 's' : ''} on deal` : 'No quotes on deal yet'}</Tag>
-          </Flex>
+          {header}
           <Tag variant={a.required ? 'warning' : 'success'}>{a.required ? 'Needs approval' : 'Auto-approves'}</Tag>
         </Flex>
 

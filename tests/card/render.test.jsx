@@ -23,13 +23,13 @@ const CATALOG_RESPONSE = {
     prod('DNS-500-Device-Commit-Additional-Devices+2026', 0.6, 'dns', 'standard', 'MSP', 'monthly', 500, 'additional'),
   ],
   templates: [{ id: '10', name: 'AutoElevate', templateType: 'CPQ_QUOTE', families: ['autoelevate'] }, { id: '11', name: 'PB / DNS', templateType: 'CUSTOMIZABLE_QUOTE_TEMPLATE', families: ['password', 'dns'] }],
-  deal: { id: '123', properties: { promo: '' }, salesTeam: 'MSP', owner: { id: '77', name: 'Riley Rep', email: 'riley.rep@example.com' }, company: { id: '9', name: 'Example MSP' }, contacts: [{ id: '501', label: 'Sample Contact — Owner' }], quoteCount: 0 },
+  deal: { id: '123', properties: { promo: '', invoice_terms: 'Net-30' }, salesTeam: 'MSP', owner: { id: '77', name: 'Riley Rep', email: 'riley.rep@example.com' }, company: { id: '9', name: 'Example MSP' }, contacts: [{ id: '501', label: 'Sample Contact — Owner' }], quoteCount: 0 },
   issues: [],
   dealOptions: {
     agreement_length: ['12 Months - Month-to-Month', '12 Months', '15 Months', '16 Months', '18 Months', '24 Months'].map((v) => ({ value: v, label: v })),
     payment_terms: [{ value: 'Month-to-Month', label: 'Monthly' }, { value: 'Quarterly', label: 'Quarterly' }, { value: 'Annual Payments', label: 'Annual Payments' }, { value: 'One Time', label: 'One Time' }],
     payment_method: [{ value: 'Credit Card', label: 'Credit Card' }, { value: 'ACH', label: 'ACH' }],
-    invoice_terms: [{ value: 'Net-30', label: 'Net-30' }],
+    invoice_terms: [{ value: 'Due Upon Receipt', label: 'Due Upon Receipt' }, { value: 'Net-30', label: 'Net-30' }],
     promo: [],
     sku_type: ['Advanced', 'Standard', 'Advanced (GrandFathered)'].map((v) => ({ value: v, label: v })),
   },
@@ -56,6 +56,20 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '12 Months');
   assert.equal(r.find(Input, { name: 'seller' }).props.value, 'Riley Rep · riley.rep@example.com');
   assert.equal(r.find(Select, { name: 'segment' }).props.value, 'MSP');
+  // Printed fields other than Agreement Length show as one read-only line until Edit.
+  // Invoice Terms always starts at Due Upon Receipt, even though the deal holds Net-30.
+  assert.equal(r.maybeFind(Select, { name: 'invoiceTerms' }), null);
+  assert.equal(r.find(DescriptionListItem, { label: 'Invoice Terms' }).text, 'Due Upon Receipt');
+  assert.equal(r.find(DescriptionListItem, { label: 'Payment Frequency' }).text, 'Monthly (matches SKU pricing)');
+  assert.equal(r.find(DescriptionListItem, { label: 'Payment Method' }).text, 'Credit Card');
+  assert.equal(r.find(DescriptionListItem, { label: 'Promo' }).text, 'None');
+  r.find(Button, (n) => /"Edit"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'invoiceTerms' })));
+  assert.equal(r.find(Select, { name: 'invoiceTerms' }).props.value, 'Due Upon Receipt');
+  assert.ok(r.maybeFind(Button, (n) => /"Done"/.test(text(n))));
+  // Nothing priced yet: the summary is one compact line, not four $0 figures.
+  assert.equal(r.findAll(StatisticsItem).length, 0);
+  assert.match(text(r.getRootNode()), /Totals and approval show here once you add products/);
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '15 Months');
   cont().trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
@@ -95,6 +109,10 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.match(token('AE Feature Type Details'), /^Elevation\. Additional agents/);
   r.find(Button, (n) => /Create quote/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Draft quote created' })));
+  const open = r.find(Button, (n) => /Open quote in HubSpot/.test(text(n)));
+  assert.equal(open.props.variant, 'primary');
+  assert.equal(open.props.href.url, 'https://app.hubspot.com/quotes/123/details/777');
+  assert.match(text(r.getRootNode()), /rename the quote/); // approval needed → "Saving…" workaround tip
   const submit = calls.find((c) => c.name === 'quote_builder_submit');
   assert.equal(submit.parameters.setup.templateId, '10');
   assert.equal(submit.parameters.products[0].quantity, 1250);
@@ -108,6 +126,8 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: CATALOG_RESPONSE }));
   r.render(<QuoteBuilderApp />);
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /"Edit"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'paymentFrequency' })));
   const freq = r.find(Select, { name: 'paymentFrequency' }).props.options.map((o) => o.value);
   assert.deepEqual(freq, ['__none__', 'Month-to-Month', 'Quarterly', 'Annual Payments']);
   // Blank choices show their label ("None", "Match SKU pricing"), not HubSpot's empty "Select" placeholder.

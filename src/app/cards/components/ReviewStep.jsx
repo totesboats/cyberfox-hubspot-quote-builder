@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Link, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Alert, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { autoQuoteName } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 
@@ -46,10 +46,15 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
                 : 'No approval needed. Open it to review, publish and send.'}
             </Text>
             {result.edited && quote.approval.required && <Text variant="microcopy">If it was approved or had changes requested, request approval again in HubSpot.</Text>}
+            {result.approval.required && !result.approval.manual && (
+              <Text variant="microcopy">If Request approval keeps showing "Saving…", rename the quote (any small change), save, then request approval again. It's a known HubSpot issue.</Text>
+            )}
             <Text variant="microcopy">Publish it before building another option, so it keeps these printed values.</Text>
             <Flex gap="small" align="center" wrap>
-              <Link href={{ url: result.quoteUrl, external: true }}>Open quote in HubSpot</Link>
-              <Button size="sm" variant="secondary" onClick={onAnotherOption}>
+              <Button variant="primary" href={{ url: result.quoteUrl, external: true }}>
+                Open quote in HubSpot
+              </Button>
+              <Button variant="secondary" onClick={onAnotherOption}>
                 Build another option
               </Button>
             </Flex>

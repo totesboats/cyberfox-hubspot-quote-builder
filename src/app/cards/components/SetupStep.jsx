@@ -1,5 +1,5 @@
-import React from 'react';
-import { DateInput, Divider, Flex, Heading, Input, Select, Text, Tile } from '@hubspot/ui-extensions';
+import React, { useState } from 'react';
+import { Button, DateInput, DescriptionList, DescriptionListItem, Divider, Flex, Heading, Input, Select, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { BILLING, FALLBACK_OPTIONS, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, SEGMENTS } from '../lib/config.js';
 import { effectiveBilling } from '../lib/pricing.js';
@@ -21,6 +21,17 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, dealOp
   const autoFrequency = PAYMENT_FREQUENCY_DEFAULT[billing];
   const autoFrequencyLabel = (frequencyOptions.find((o) => o.value === autoFrequency) || { label: autoFrequency }).label;
 
+  const labelOf = (name, value) => (opts(name).find((o) => o.value === value) || { label: value }).label;
+  // Payment Frequency, Method, Invoice Terms and Promo start with sensible values, so they show as
+  // one read-only line until the rep clicks Edit. Agreement Length changes often, so it stays open.
+  const [editPrinted, setEditPrinted] = useState(false);
+  const printedSummary = [
+    ['Payment Frequency', setup.paymentFrequency ? labelOf('payment_terms', setup.paymentFrequency) : `${autoFrequencyLabel} (matches SKU pricing)`],
+    ['Payment Method', setup.paymentMethod ? labelOf('payment_method', setup.paymentMethod) : 'Not set'],
+    ['Invoice Terms', setup.invoiceTerms ? labelOf('invoice_terms', setup.invoiceTerms) : 'Not set'],
+    ['Promo', setup.promo ? labelOf('promo', setup.promo) : 'None'],
+  ];
+
   const selected = templates.find((t) => t.id === setup.templateId) || suggested;
   const today = new Date();
   const templateOptions = [{ label: suggested ? `Suggest from products — ${suggested.name} (${kind(suggested)})` : 'Suggest from products', value: NONE }].concat(
@@ -31,6 +42,19 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, dealOp
     : selected.templateType === 'CPQ_QUOTE'
       ? 'CPQ template: Commerce Hub approvals run on this quote.'
       : 'Legacy custom-coded template: your HTML/CSS renders, but Commerce Hub approvals do not run on it.';
+
+  const agreementSelect = (
+    <Select
+      label="Agreement Length"
+      name="agreementLength"
+      required
+      tooltip={m2m ? 'Month-to-month: plans renew monthly.' : 'Total length, including any ramp.'}
+      placeholder="Choose a length"
+      options={opts('agreement_length')}
+      value={setup.agreementLength}
+      onChange={(v) => onChange({ agreementLength: String(v) })}
+    />
+  );
 
   return (
     <Tile>
@@ -116,33 +140,42 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, dealOp
 
         <Divider />
 
-        <Flex direction="column" gap="extra-small">
-          <Heading>Prints on the quote</Heading>
-          <Text variant="microcopy">Deal properties the quote templates print. The choices are the properties' own options in HubSpot.</Text>
+        <Flex justify="between" align="center" gap="medium">
+          <Flex direction="column" gap="extra-small">
+            <Heading>Prints on the quote</Heading>
+            <Text variant="microcopy">Deal properties the quote templates print. The choices are the properties' own options in HubSpot.</Text>
+          </Flex>
+          <Button variant="secondary" size="sm" onClick={() => setEditPrinted(!editPrinted)}>
+            {editPrinted ? 'Done' : 'Edit'}
+          </Button>
         </Flex>
-        <Row>
-          <Select
-            label="Agreement Length"
-            name="agreementLength"
-            required
-            tooltip={m2m ? 'Month-to-month: plans renew monthly.' : 'Total length, including any ramp.'}
-            placeholder="Choose a length"
-            options={opts('agreement_length')}
-            value={setup.agreementLength}
-            onChange={(v) => onChange({ agreementLength: String(v) })}
-          />
-          <Select
-            label="Payment Frequency"
-            name="paymentFrequency"
-            tooltip={`Blank matches the SKU pricing (${autoFrequencyLabel}).`}
-            options={[{ label: `Match SKU pricing — ${autoFrequencyLabel}`, value: NONE }].concat(frequencyOptions)}
-            value={toSelect(setup.paymentFrequency)}
-            onChange={(v) => onChange({ paymentFrequency: fromSelect(v) })}
-          />
-          <Select label="Payment Method" name="paymentMethod" options={opts('payment_method')} value={setup.paymentMethod} onChange={(v) => onChange({ paymentMethod: String(v) })} />
-          <Select label="Invoice Terms" name="invoiceTerms" options={opts('invoice_terms')} value={setup.invoiceTerms} onChange={(v) => onChange({ invoiceTerms: String(v) })} />
-          <Select label="Promo" name="promo" options={[{ label: 'None', value: NONE }].concat(opts('promo'))} value={toSelect(setup.promo)} onChange={(v) => onChange({ promo: fromSelect(v) })} />
-        </Row>
+        {editPrinted ? (
+          <Row>
+            {agreementSelect}
+            <Select
+              label="Payment Frequency"
+              name="paymentFrequency"
+              tooltip={`Blank matches the SKU pricing (${autoFrequencyLabel}).`}
+              options={[{ label: `Match SKU pricing — ${autoFrequencyLabel}`, value: NONE }].concat(frequencyOptions)}
+              value={toSelect(setup.paymentFrequency)}
+              onChange={(v) => onChange({ paymentFrequency: fromSelect(v) })}
+            />
+            <Select label="Payment Method" name="paymentMethod" options={opts('payment_method')} value={setup.paymentMethod} onChange={(v) => onChange({ paymentMethod: String(v) })} />
+            <Select label="Invoice Terms" name="invoiceTerms" options={opts('invoice_terms')} value={setup.invoiceTerms} onChange={(v) => onChange({ invoiceTerms: String(v) })} />
+            <Select label="Promo" name="promo" options={[{ label: 'None', value: NONE }].concat(opts('promo'))} value={toSelect(setup.promo)} onChange={(v) => onChange({ promo: fromSelect(v) })} />
+          </Row>
+        ) : (
+          <Row weights={[1, 4]}>
+            {agreementSelect}
+            <DescriptionList direction="row">
+              {printedSummary.map(([label, value]) => (
+                <DescriptionListItem key={label} label={label}>
+                  {value}
+                </DescriptionListItem>
+              ))}
+            </DescriptionList>
+          </Row>
+        )}
         <Text variant="microcopy">AE Feature Type is set on the AutoElevate product, because it decides which SKUs are used.</Text>
       </Flex>
     </Tile>

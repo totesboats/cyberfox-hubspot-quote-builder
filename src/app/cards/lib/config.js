@@ -172,6 +172,8 @@ export const ENUM_PROPERTIES = ['agreement_length', 'payment_terms', 'payment_me
 // Agreement Length value for month-to-month quotes (the option HubSpot labels "Month-to-Month").
 export const AGREEMENT_LENGTH_M2M = '12 Months - Month-to-Month';
 export const AGREEMENT_LENGTH_DEFAULT = '12 Months';
+// Invoice Terms every new quote starts with, whatever the deal already holds; the rep can change it on Setup.
+export const INVOICE_TERMS_DEFAULT = 'Due Upon Receipt';
 // Contract Term (contract_term) is not shown or written: Agreement Length is what quotes print.
 // Turn on only if something downstream (e.g. Sale Review) still reads contract_term.
 export const WRITE_CONTRACT_TERM = false;
