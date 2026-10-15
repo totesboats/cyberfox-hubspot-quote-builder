@@ -44,10 +44,11 @@ exports.main = async (context) => {
     console.error('quote-builder-submit load failed', err.message);
     return { ok: false, errors: [err.message] };
   }
-  // Like a native HubSpot quote: the seller (sender) is whoever builds the quote, because HubSpot
-  // only lets the sender click Request approval. The quote owner stays the deal owner.
+  // Whoever builds the quote owns it and is its seller. HubSpot only lets the quote's owner or its
+  // creator click Request approval, and a quote made by an app has no creator, so without this only
+  // the deal owner could request approval. The deal and its owner are not changed.
   const sender = builder || deal.owner;
-  const quoteOwner = deal.owner || builder;
+  const quoteOwner = builder || deal.owner;
   if (!sender || !quoteOwner) return { ok: false, errors: ["Couldn't find you as a HubSpot user, and the deal has no owner. Assign a deal owner and try again."] };
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ['The selected quote template no longer exists.'] };

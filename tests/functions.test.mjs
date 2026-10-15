@@ -292,13 +292,15 @@ test('deployed function files are self-contained (HubSpot ships each as a single
   for (const f of files) assert.doesNotMatch(readFileSync(new URL(f, dir), 'utf8'), /require\(["']\.\.?\//, `${f} still requires a local file`);
 });
 
-test('seller is whoever builds the quote; the quote owner stays the deal owner', async () => {
-  // Pat (not the deal owner) builds on Riley's deal: Pat is the sender, so Pat can request approval.
+test('whoever builds the quote owns it and is the seller, so they can request approval', async () => {
+  // Pat (not the deal owner) builds on Riley's deal. HubSpot lets only the quote owner or creator
+  // request approval, and app-made quotes have no creator, so Pat must own the quote.
   const { store } = fakeHubSpot();
   const res = await submitFn().main({ parameters: payload({ builder: { email: 'pat.ops@example.com' } }), accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   const q = store.quote.properties;
-  assert.deepEqual([q.hubspot_owner_id, q.hs_sender_firstname, q.hs_sender_lastname, q.hs_sender_email], ['77', 'Pat', 'Ops', 'pat.ops@example.com']);
+  assert.deepEqual([q.hubspot_owner_id, q.hs_sender_firstname, q.hs_sender_lastname, q.hs_sender_email], ['88', 'Pat', 'Ops', 'pat.ops@example.com']);
+  assert.equal(store.dealPatch && store.dealPatch.hubspot_owner_id, undefined); // the deal owner is untouched
   assert.equal(q.hs_payment_enabled, 'false'); // like every CyberFOX CPQ quote; payments would block sub-$35 ramp invoices
   const cat = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
   assert.equal(cat.deal.owner.email, 'riley.rep@example.com');
@@ -319,11 +321,11 @@ test('rep on their own deal: owner and seller are both the rep', async () => {
   assert.deepEqual([q.hubspot_owner_id, q.hs_sender_email], ['77', 'riley.rep@example.com']);
 });
 
-test('builder not found as a HubSpot user: falls back to the deal owner as seller', async () => {
+test('builder not found as a HubSpot user: falls back to the deal owner as owner and seller', async () => {
   const { store } = fakeHubSpot();
   const res = await submitFn().main({ parameters: payload({ builder: { email: 'nobody@example.com' } }), accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
-  assert.equal(store.quote.properties.hs_sender_email, 'riley.rep@example.com');
+  assert.deepEqual([store.quote.properties.hubspot_owner_id, store.quote.properties.hs_sender_email], ['77', 'riley.rep@example.com']);
 });
 
 test('no deal owner: the builder owns and sends the quote', async () => {
@@ -378,6 +380,7 @@ test('edit in place: same quote, new lines replace old ones, primary deal lines 
   assert.ok(quoteLines.body.inputs.every((i) => i.associations[0].to.id === 'Q5' && i.properties.qb_session_id === 'qb-old'));
   assert.equal(store.quotePatches[0].properties.qb_session_id, 'qb-old');
   assert.equal(store.quotePatches[0].properties.hs_sender_email, 'pat.ops@example.com'); // whoever updates it can request approval
+  assert.equal(store.quotePatches[0].properties.hubspot_owner_id, '88');
   assert.equal(store.quotePatches[0].properties.hs_payment_enabled, 'false');
   assert.ok(store.archived.includes('QL5a') && store.archived.includes('QL5b')); // old quote lines
   assert.ok(store.archived.includes('L-old-builder')); // old primary deal lines

@@ -1038,7 +1038,7 @@ exports.main = async (context) => {
     return { ok: false, errors: [err.message] };
   }
   const sender = builder || deal.owner;
-  const quoteOwner = deal.owner || builder;
+  const quoteOwner = builder || deal.owner;
   if (!sender || !quoteOwner) return { ok: false, errors: ["Couldn't find you as a HubSpot user, and the deal has no owner. Assign a deal owner and try again."] };
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ["The selected quote template no longer exists."] };

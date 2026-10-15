@@ -131,7 +131,7 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, user, 
             label="Seller contact"
             name="seller"
             readOnly
-            tooltip={`Whoever builds the quote is the seller, like a native HubSpot quote, so you can request approval. The quote owner stays the deal owner${owner ? ` (${owner.name})` : ''}.`}
+            tooltip={`Whoever builds the quote owns it and is the seller, so they can request approval. The deal and its owner${owner ? ` (${owner.name})` : ''} don't change.`}
             value={user ? [[user.firstName, user.lastName].filter(Boolean).join(' '), user.email].filter(Boolean).join(' · ') : 'You'}
           />
         </Row>
