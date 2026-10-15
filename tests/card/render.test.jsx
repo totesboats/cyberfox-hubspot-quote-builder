@@ -54,7 +54,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   // Quote-token fields live on Setup; Contract Term is gone.
   assert.equal(r.maybeFind(Select, { name: 'term' }), null);
   assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '12 Months');
-  assert.equal(r.find(Input, { name: 'seller' }).props.value, 'Riley Rep · riley.rep@example.com');
+  assert.equal(r.find(Input, { name: 'seller' }).props.value, 'fake_firstName fake_lastName · fake_email@example.com'); // whoever builds the quote
   assert.equal(r.find(Select, { name: 'segment' }).props.value, 'MSP');
   // Printed fields other than Agreement Length show as one read-only line until Edit.
   // Invoice Terms always starts at Due Upon Receipt, even though the deal holds Net-30.
@@ -117,6 +117,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(submit.parameters.setup.templateId, '10');
   assert.equal(submit.parameters.products[0].quantity, 1250);
   assert.equal(submit.parameters.ramp.stages[0].months, 3);
+  assert.equal(submit.parameters.builder.email, 'fake_email@example.com');
   assert.equal(r.mocks.actions.addAlert.callCount, 1);
   assert.equal(r.mocks.actions.addAlert.calls[0][0].type, 'success');
 });

@@ -120,6 +120,14 @@ async function loadOwner(ownerId) {
   }
 }
 
+// The HubSpot owner record for a user's email (the person building the quote), or null.
+async function findOwnerByEmail(email) {
+  if (!email) return null;
+  const res = await hs(`/crm/v3/owners?email=${encodeURIComponent(email)}&limit=1`);
+  const o = (res.results || [])[0];
+  return o ? { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(' '), firstName: o.firstName || '', lastName: o.lastName || '', email: o.email || email } : null;
+}
+
 async function loadDeal(dealId) {
   const deal = await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(',')}&associations=companies,contacts,quotes`);
   const assoc = (type) => ((deal.associations && deal.associations[type] && deal.associations[type].results) || []).map((r) => String(r.id));
@@ -218,4 +226,4 @@ async function unassociate(fromType, fromId, toType, toId) {
   await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: 'DELETE' });
 }
 
-module.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems, associatedIds, associate, unassociate };
+module.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate };

@@ -278,8 +278,6 @@ export function QuoteBuilderApp() {
           ? 'Fix the deal property issues below.'
         : state.step === 2 && !template
           ? 'Pick a quote template on the Setup step.'
-        : state.step === 2 && !data.deal.owner
-          ? 'Assign a deal owner. The quote\'s seller contact is always the deal owner.'
           : state.step === 2 && quote.lines.length === 0
             ? 'There are no line items to write.'
             : '';
@@ -295,6 +293,8 @@ export function QuoteBuilderApp() {
         ramp: rampFor(state),
         primary,
         editQuoteId: state.editing ? state.editing.id : undefined,
+        // The quote's seller is whoever builds it (HubSpot only lets the sender request approval).
+        builder: { email: context && context.user ? context.user.email : '' },
       };
       const res = await callFunction('quote_builder_submit', payload);
       setResult(res);
@@ -381,6 +381,7 @@ export function QuoteBuilderApp() {
           suggested={suggested}
           contacts={data.deal.contacts}
           owner={data.deal.owner}
+          user={context && context.user}
           dealOptions={data.dealOptions}
           onChange={(patch) => dispatch({ type: 'setup', patch })}
         />

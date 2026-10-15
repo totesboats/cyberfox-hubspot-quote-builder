@@ -11,7 +11,7 @@ const toDateValue = (iso) => {
 const fromDateValue = (v) => (v ? `${v.year}-${String(v.month + 1).padStart(2, '0')}-${String(v.date).padStart(2, '0')}` : '');
 const kind = (t) => (t.templateType === 'CPQ_QUOTE' ? 'CPQ' : 'Legacy');
 
-export function SetupStep({ setup, templates, suggested, contacts, owner, dealOptions, onChange }) {
+export function SetupStep({ setup, templates, suggested, contacts, owner, user, dealOptions, onChange }) {
   // Dropdowns use the deal properties' live options, so whatever the rep picks is exactly
   // what the quote template prints.
   const opts = (name) => ((dealOptions && dealOptions[name]) || FALLBACK_OPTIONS[name] || []).map((o) => ({ label: o.label, value: o.value }));
@@ -131,10 +131,8 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, dealOp
             label="Seller contact"
             name="seller"
             readOnly
-            tooltip="Always the deal owner. Change the deal owner to change the seller on the quote."
-            value={owner ? [owner.name, owner.email].filter(Boolean).join(' · ') : 'No deal owner'}
-            error={!owner}
-            validationMessage={owner ? undefined : 'Assign a deal owner first.'}
+            tooltip={`Whoever builds the quote is the seller, like a native HubSpot quote, so you can request approval. The quote owner stays the deal owner${owner ? ` (${owner.name})` : ''}.`}
+            value={user ? [[user.firstName, user.lastName].filter(Boolean).join(' '), user.email].filter(Boolean).join(' · ') : 'You'}
           />
         </Row>
 

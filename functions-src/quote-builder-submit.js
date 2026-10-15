@@ -8,7 +8,7 @@
 // Anything created before a failure is archived again so a failed run leaves no debris.
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
-const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
+const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
 const { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
@@ -30,14 +30,24 @@ exports.main = async (context) => {
   if (!dealId) errors.push('dealId is required');
   if (errors.length) return { ok: false, errors };
 
-  let products, templates, dealOptions, deal;
+  let products, templates, dealOptions, deal, builder;
   try {
-    [products, templates, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadDealOptions(), loadDeal(dealId)]);
+    [products, templates, dealOptions, deal, builder] = await Promise.all([
+      loadProducts(),
+      loadTemplates(),
+      loadDealOptions(),
+      loadDeal(dealId),
+      findOwnerByEmail(payload.builder && payload.builder.email),
+    ]);
   } catch (err) {
     console.error('quote-builder-submit load failed', err.message);
     return { ok: false, errors: [err.message] };
   }
-  if (!deal.owner) return { ok: false, errors: ['Assign a deal owner first. The quote\'s seller contact is always the deal owner.'] };
+  // Like a native HubSpot quote: the seller (sender) is whoever builds the quote, because HubSpot
+  // only lets the sender click Request approval. The quote owner stays the deal owner.
+  const sender = builder || deal.owner;
+  const quoteOwner = deal.owner || builder;
+  if (!sender || !quoteOwner) return { ok: false, errors: ["Couldn't find you as a HubSpot user, and the deal has no owner. Assign a deal owner and try again."] };
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ['The selected quote template no longer exists.'] };
 
@@ -80,11 +90,10 @@ exports.main = async (context) => {
     hs_language: QUOTE_DEFAULTS.language,
     hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
     hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
-    // Seller contact = deal owner, always.
-    hubspot_owner_id: deal.owner.id,
-    hs_sender_firstname: deal.owner.firstName,
-    hs_sender_lastname: deal.owner.lastName,
-    hs_sender_email: deal.owner.email,
+    hubspot_owner_id: quoteOwner.id,
+    hs_sender_firstname: sender.firstName,
+    hs_sender_lastname: sender.lastName,
+    hs_sender_email: sender.email,
     [QUOTE_SESSION_PROPERTY]: sessionId,
     [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp }, writes.properties),
   };

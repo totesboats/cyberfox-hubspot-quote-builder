@@ -49,6 +49,11 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
     if (p === '/crm/v3/objects/quote_templates') return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }, { id: '11', properties: { hs_name: 'Timus SASE', hs_type: 'customizable_quote_template' } }] });
     if (p === '/crm/v3/objects/deals/123' && method === 'GET')
       return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: 'USD', hubspot_owner_id: store.ownerId },  associations: { companies: { results: [{ id: '7' }] }, contacts: { results: [{ id: '501' }] }, quotes: { results: store.quotes.map((q) => ({ id: q.id })) } } });
+    if (p === '/crm/v3/owners') {
+      const users = { 'riley.rep@example.com': { id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }, 'pat.ops@example.com': { id: '88', firstName: 'Pat', lastName: 'Ops', email: 'pat.ops@example.com' } };
+      const found = users[u.searchParams.get('email')];
+      return ok({ results: found ? [found] : [] });
+    }
     if (p.startsWith('/crm/v3/owners/')) return p.endsWith('/77') ? ok({ id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }) : { ok: false, status: 404, headers: new Map(), text: async () => '{"message":"not found"}' };
     if (p === '/crm/v3/objects/companies/batch/read') return ok({ results: [{ id: '7', properties: { name: 'Example MSP' } }] });
     if (p === '/crm/v3/objects/contacts/batch/read') return ok({ results: [{ id: '501', properties: { firstname: 'Sam', lastname: 'Sample', jobtitle: 'Owner' } }] });
@@ -287,18 +292,41 @@ test('deployed function files are self-contained (HubSpot ships each as a single
   for (const f of files) assert.doesNotMatch(readFileSync(new URL(f, dir), 'utf8'), /require\(["']\.\.?\//, `${f} still requires a local file`);
 });
 
-test('seller contact on the quote is always the deal owner', async () => {
+test('seller is whoever builds the quote; the quote owner stays the deal owner', async () => {
+  // Pat (not the deal owner) builds on Riley's deal: Pat is the sender, so Pat can request approval.
   const { store } = fakeHubSpot();
-  const res = await submitFn().main({ parameters: payload(), accountId: 1 });
+  const res = await submitFn().main({ parameters: payload({ builder: { email: 'pat.ops@example.com' } }), accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   const q = store.quote.properties;
-  assert.deepEqual([q.hubspot_owner_id, q.hs_sender_firstname, q.hs_sender_lastname, q.hs_sender_email], ['77', 'Riley', 'Rep', 'riley.rep@example.com']);
+  assert.deepEqual([q.hubspot_owner_id, q.hs_sender_firstname, q.hs_sender_lastname, q.hs_sender_email], ['77', 'Pat', 'Ops', 'pat.ops@example.com']);
   assert.equal(q.hs_payment_enabled, 'false'); // like every CyberFOX CPQ quote; payments would block sub-$35 ramp invoices
   const cat = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
   assert.equal(cat.deal.owner.email, 'riley.rep@example.com');
 });
 
-test('no deal owner: quote is not created', async () => {
+test('rep on their own deal: owner and seller are both the rep', async () => {
+  const { store } = fakeHubSpot();
+  const res = await submitFn().main({ parameters: payload({ builder: { email: 'riley.rep@example.com' } }), accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const q = store.quote.properties;
+  assert.deepEqual([q.hubspot_owner_id, q.hs_sender_email], ['77', 'riley.rep@example.com']);
+});
+
+test('builder not found as a HubSpot user: falls back to the deal owner as seller', async () => {
+  const { store } = fakeHubSpot();
+  const res = await submitFn().main({ parameters: payload({ builder: { email: 'nobody@example.com' } }), accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.equal(store.quote.properties.hs_sender_email, 'riley.rep@example.com');
+});
+
+test('no deal owner: the builder owns and sends the quote', async () => {
+  const { store } = fakeHubSpot({ ownerId: '' });
+  const res = await submitFn().main({ parameters: payload({ builder: { email: 'pat.ops@example.com' } }), accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.deepEqual([store.quote.properties.hubspot_owner_id, store.quote.properties.hs_sender_email], ['88', 'pat.ops@example.com']);
+});
+
+test('no deal owner and no known builder: quote is not created', async () => {
   const { store } = fakeHubSpot({ ownerId: '' });
   const res = await submitFn().main({ parameters: payload(), accountId: 1 });
   assert.equal(res.ok, false);
@@ -331,7 +359,7 @@ test('edit in place: same quote, new lines replace old ones, primary deal lines 
   const q = draftBuilderQuote();
   const { store, log } = fakeHubSpot({ quotes: [q] });
   store.lineItems.QL5a = { qb_source: 'quote_builder', qb_session_id: 'qb-old' };
-  const res = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5', primary: false }), accountId: 1 });
+  const res = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5', primary: false, builder: { email: 'pat.ops@example.com' } }), accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   assert.equal(res.edited, true);
   assert.equal(res.quoteId, 'Q5');
@@ -342,6 +370,7 @@ test('edit in place: same quote, new lines replace old ones, primary deal lines 
   const quoteLines = creates.find((c) => c.body.inputs[0].associations[0].types[0].associationTypeId === 68);
   assert.ok(quoteLines.body.inputs.every((i) => i.associations[0].to.id === 'Q5' && i.properties.qb_session_id === 'qb-old'));
   assert.equal(store.quotePatches[0].properties.qb_session_id, 'qb-old');
+  assert.equal(store.quotePatches[0].properties.hs_sender_email, 'pat.ops@example.com'); // whoever updates it can request approval
   assert.equal(store.quotePatches[0].properties.hs_payment_enabled, 'false');
   assert.ok(store.archived.includes('QL5a') && store.archived.includes('QL5b')); // old quote lines
   assert.ok(store.archived.includes('L-old-builder')); // old primary deal lines

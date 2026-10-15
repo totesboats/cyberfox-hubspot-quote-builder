@@ -906,6 +906,12 @@ var require_hubspot = __commonJS({
         throw err;
       }
     }
+    async function findOwnerByEmail(email) {
+      if (!email) return null;
+      const res = await hs2(`/crm/v3/owners?email=${encodeURIComponent(email)}&limit=1`);
+      const o = (res.results || [])[0];
+      return o ? { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(" "), firstName: o.firstName || "", lastName: o.lastName || "", email: o.email || email } : null;
+    }
     async function loadDeal2(dealId) {
       const deal = await hs2(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(",")}&associations=companies,contacts,quotes`);
       const assoc = (type) => (deal.associations && deal.associations[type] && deal.associations[type].results || []).map((r) => String(r.id));
@@ -988,7 +994,7 @@ var require_hubspot = __commonJS({
     async function unassociate(fromType, fromId, toType, toId) {
       await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: "DELETE" });
     }
-    module2.exports = { hs: hs2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts, loadTemplates, loadDealOptions, loadDeal: loadDeal2, findBuilderLineItems: findBuilderLineItems2, associatedIds, associate, unassociate };
+    module2.exports = { hs: hs2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts, loadTemplates, loadDealOptions, loadDeal: loadDeal2, findOwnerByEmail, findBuilderLineItems: findBuilderLineItems2, associatedIds, associate, unassociate };
   }
 });
 

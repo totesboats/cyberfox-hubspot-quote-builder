@@ -906,6 +906,12 @@ var require_hubspot = __commonJS({
         throw err;
       }
     }
+    async function findOwnerByEmail2(email) {
+      if (!email) return null;
+      const res = await hs2(`/crm/v3/owners?email=${encodeURIComponent(email)}&limit=1`);
+      const o = (res.results || [])[0];
+      return o ? { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(" "), firstName: o.firstName || "", lastName: o.lastName || "", email: o.email || email } : null;
+    }
     async function loadDeal2(dealId) {
       const deal = await hs2(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(",")}&associations=companies,contacts,quotes`);
       const assoc = (type) => (deal.associations && deal.associations[type] && deal.associations[type].results || []).map((r) => String(r.id));
@@ -988,12 +994,12 @@ var require_hubspot = __commonJS({
     async function unassociate2(fromType, fromId, toType, toId) {
       await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: "DELETE" });
     }
-    module2.exports = { hs: hs2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findBuilderLineItems: findBuilderLineItems2, associatedIds: associatedIds2, associate: associate2, unassociate: unassociate2 };
+    module2.exports = { hs: hs2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findOwnerByEmail: findOwnerByEmail2, findBuilderLineItems: findBuilderLineItems2, associatedIds: associatedIds2, associate: associate2, unassociate: unassociate2 };
   }
 });
 
 // functions-src/quote-builder-submit.js
-var { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findBuilderLineItems, associatedIds, associate, unassociate } = require_hubspot();
+var { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require_hubspot();
 var { indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require_pricing();
 var { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require_config();
 var ASSOC = {
@@ -1012,14 +1018,22 @@ exports.main = async (context) => {
   const errors = validateSubmission(payload);
   if (!dealId) errors.push("dealId is required");
   if (errors.length) return { ok: false, errors };
-  let products, templates, dealOptions, deal;
+  let products, templates, dealOptions, deal, builder;
   try {
-    [products, templates, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadDealOptions(), loadDeal(dealId)]);
+    [products, templates, dealOptions, deal, builder] = await Promise.all([
+      loadProducts(),
+      loadTemplates(),
+      loadDealOptions(),
+      loadDeal(dealId),
+      findOwnerByEmail(payload.builder && payload.builder.email)
+    ]);
   } catch (err) {
     console.error("quote-builder-submit load failed", err.message);
     return { ok: false, errors: [err.message] };
   }
-  if (!deal.owner) return { ok: false, errors: ["Assign a deal owner first. The quote's seller contact is always the deal owner."] };
+  const sender = builder || deal.owner;
+  const quoteOwner = deal.owner || builder;
+  if (!sender || !quoteOwner) return { ok: false, errors: ["Couldn't find you as a HubSpot user, and the deal has no owner. Assign a deal owner and try again."] };
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ["The selected quote template no longer exists."] };
   const setup = Object.assign({}, payload.setup, { salesTeam: deal.salesTeam, templateType: template.templateType });
@@ -1056,11 +1070,10 @@ exports.main = async (context) => {
     hs_language: QUOTE_DEFAULTS.language,
     hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
     hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
-    // Seller contact = deal owner, always.
-    hubspot_owner_id: deal.owner.id,
-    hs_sender_firstname: deal.owner.firstName,
-    hs_sender_lastname: deal.owner.lastName,
-    hs_sender_email: deal.owner.email,
+    hubspot_owner_id: quoteOwner.id,
+    hs_sender_firstname: sender.firstName,
+    hs_sender_lastname: sender.lastName,
+    hs_sender_email: sender.email,
     [QUOTE_SESSION_PROPERTY]: sessionId,
     [QUOTE_STATE_PROPERTY]: builderState({ setup: payload.setup, products: payload.products, ramp: payload.ramp }, writes.properties)
   };
