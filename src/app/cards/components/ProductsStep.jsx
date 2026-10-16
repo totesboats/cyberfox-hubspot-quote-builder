@@ -112,7 +112,7 @@ function TimusFields({ input, priced, onUpdate }) {
   );
 }
 
-function ProductTile({ row, onUpdate, onRemove }) {
+function ProductTile({ row, optimizeRamp, onUpdate, onRemove }) {
   const { input, priced } = row;
   const family = FAMILIES[input.family];
   const edition =
@@ -154,10 +154,17 @@ function ProductTile({ row, onUpdate, onRemove }) {
           </Alert>
         ) : null}
 
+        {/* Optimize365 can only ramp 1–2 free months on a 13/14-month monthly agreement; otherwise the box
+            is locked (still untickable if it was ticked before Setup changed). */}
         <Checkbox
           name={`ramp-${input.uid}`}
           checked={!!input.ramp}
-          description="Adds RAMP line items for the first months; set the length and pricing under Ramp & schedule."
+          readOnly={input.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp}
+          description={
+            input.family === 'optimize365' && optimizeRamp
+              ? optimizeRamp.reason
+              : 'Adds RAMP line items for the first months; set the length and pricing under Ramp & schedule.'
+          }
           onChange={(checked) => update({ ramp: checked })}
         >
           Ramp
@@ -190,7 +197,7 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
       ))}
 
       {quote.rows.map((row) => (
-        <ProductTile key={row.input.uid} row={row} onUpdate={onUpdate} onRemove={onRemove} />
+        <ProductTile key={row.input.uid} row={row} optimizeRamp={quote.optimizeRamp} onUpdate={onUpdate} onRemove={onRemove} />
       ))}
 
       <Tile compact>

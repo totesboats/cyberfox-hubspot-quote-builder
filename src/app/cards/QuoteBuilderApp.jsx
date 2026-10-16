@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, rampStages, suggestTemplate } from './lib/pricing.js';
 import { AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -101,6 +101,12 @@ export function reducer(state, action) {
     }
     case 'updateProduct': {
       const products = state.products.map((p) => (p.uid === action.uid ? Object.assign({}, p, action.patch) : p));
+      // Optimize365 ticked for Ramp: the ramp becomes its only allowed shape (13 months → 1 free, 14 → 2 free).
+      const ticked = state.products.find((p) => p.uid === action.uid);
+      const optimize = optimizeRampRule(state.setup);
+      if (action.patch.ramp === true && ticked && ticked.family === 'optimize365' && optimize.allowed) {
+        return Object.assign({}, state, { products, ramp: { stages: [{ months: optimize.months, mode: 'free', percent: 50 }] } });
+      }
       // First product ticked for Ramp: start the ramp at the default length for this agreement (16 months → 4).
       if (action.patch.ramp === true && !state.products.some((p) => p.ramp)) {
         return Object.assign({}, state, { products, ramp: { stages: [{ months: defaultRampMonths(state.setup.agreementLength), mode: 'free', percent: 50 }] } });

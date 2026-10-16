@@ -390,3 +390,65 @@ test('ramp defaults to the months past 12 and follows Agreement Length; Bundles 
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 2));
 });
+
+test('Optimize365 Ramp box is locked on agreements past 14 months', async () => {
+  const r = mk();
+  const withOptimize = Object.assign({}, CATALOG_RESPONSE, {
+    products: CATALOG_RESPONSE.products.concat([prod('Optimize365-100-User-Commit', 200, 'optimize365', 'standard', 'MSP', 'monthly', 100)]),
+  });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: withOptimize }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  const cont = () => r.find(Button, (n) => /Continue/.test(text(n)));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '16 Months');
+  cont().trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ Optimize365/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
+  // 16 months: Optimize can't ramp, so its Ramp box is locked and says why.
+  assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.readOnly, true);
+  assert.match(r.find(Checkbox, { name: 'ramp-1' }).props.description, /13 or 14-month agreement paid monthly/);
+
+  r.find(StepIndicator).trigger('onClick', 0);
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '24 Months');
+  cont().trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.readOnly, true);
+});
+
+test('Optimize365 ramp on a 14-month agreement is 2 free months, one stage, locked', async () => {
+  const r = mk();
+  const withOptimize = Object.assign({}, CATALOG_RESPONSE, {
+    products: CATALOG_RESPONSE.products.concat([prod('Optimize365-100-User-Commit', 200, 'optimize365', 'standard', 'MSP', 'monthly', 100)]),
+  });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: withOptimize }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '16 Months');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  // AutoElevate ramps 4 months on a 16-month agreement; Optimize can't join that ramp.
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /\+ Optimize365/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
+  r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
+  r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 100);
+  r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 4));
+  assert.equal(r.find(Checkbox, { name: 'ramp-2' }).props.readOnly, true); // Optimize can't join a 16-month ramp
+
+  r.find(StepIndicator).trigger('onClick', 0);
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '14 Months');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', true);
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 2));
+  assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.readOnly, true);
+  assert.equal(r.find(Select, { name: 'rampMode-1' }).props.value, 'free');
+  assert.equal(r.find(Select, { name: 'rampMode-1' }).props.readOnly, true);
+  assert.equal(r.find(Button, (n) => /\+ Add ramp stage/.test(text(n))).props.disabled, true);
+  assert.match(text(r.getRootNode()), /fixed at 2 free months/);
+  assert.equal(r.maybeFind(Alert, { title: 'Fix before continuing' }), null);
+});

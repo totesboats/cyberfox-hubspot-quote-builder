@@ -2,7 +2,7 @@
 'use strict';
 // Pure pricing, ramp and approval logic shared by the card (live preview) and the
 // submit function (authoritative rebuild). No HubSpot calls in here.
-const { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES } = require('./config.js');
+const { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP } = require('./config.js');
 
 function toNum(v, fallback = 0) {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -411,6 +411,20 @@ function effectiveBilling(setup) {
   return setup.billing === 'annual' ? 'annual' : 'monthly';
 }
 
+// Can Optimize365 ramp on this Setup, and for how long? { allowed, months, reason }.
+function optimizeRampRule(setup) {
+  const billing = effectiveBilling(setup || {});
+  const frequency = (setup && setup.paymentFrequency) || PAYMENT_FREQUENCY_DEFAULT[billing];
+  const lengths = `${OPTIMIZE_RAMP.planMonths + 1} or ${OPTIMIZE_RAMP.planMonths + OPTIMIZE_RAMP.maxMonths}`;
+  if (billing === 'm2m') return { allowed: false, months: 0, reason: 'Month-to-month Optimize365 quotes can\'t ramp.' };
+  if (billing === 'annual' || frequency === 'Annual Payments') return { allowed: false, months: 0, reason: 'Optimize365 paid annually upfront can\'t ramp.' };
+  const extra = (agreementMonths(setup.agreementLength) || 0) - OPTIMIZE_RAMP.planMonths;
+  if (extra < 1 || extra > OPTIMIZE_RAMP.maxMonths) {
+    return { allowed: false, months: 0, reason: `Optimize365 can only ramp on a ${lengths}-month agreement paid monthly (1 or 2 free months on top of 12).` };
+  }
+  return { allowed: true, months: extra, reason: `Optimize365 ramp: ${extra} free month${extra > 1 ? 's' : ''} on top of the 12-month plan.` };
+}
+
 // The rep picks the Agreement Length (what prints on the quote). It includes any ramp:
 // ramped products run RAMP lines for the ramp months, then the plan for the rest;
 // products not on the ramp run the plan for the whole agreement.
@@ -527,10 +541,18 @@ function buildQuote(setup, inputs, rampInput, catalog) {
   });
 
   const blocking = rows.filter((r) => !r.usable).map((r) => ({ uid: r.input.uid, family: r.input.family, error: r.priced.error }));
+  // Optimize365 ramps only as free months on top of 12 (13 → 1, 14 → 2), billed monthly.
+  const optimizeRamp = optimizeRampRule(setup);
+  if (ramp.enabled && rows.some((r) => r.ramped && r.input.family === OPTIMIZE_RAMP.family)) {
+    if (!optimizeRamp.allowed) conflicts.push(`${optimizeRamp.reason} Untick Ramp on Optimize365, or change the Agreement Length / payment on Setup.`);
+    else if (ramp.stages.length > 1 || ramp.stages[0].mode !== 'free' || ramp.months !== optimizeRamp.months) {
+      conflicts.push(`With Optimize365 on the ramp, the ramp must be ${optimizeRamp.months} free month${optimizeRamp.months > 1 ? 's' : ''} (one stage, 100% off) on this ${agreement}-month agreement.`);
+    }
+  }
   const aeFeature = resolveAeFeature(rows);
   if (aeFeature && aeFeature.conflict) conflicts.push(aeFeature.conflict);
 
-  return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp };
+  return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp };
 }
 
 function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
@@ -739,4 +761,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };

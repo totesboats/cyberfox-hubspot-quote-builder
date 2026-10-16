@@ -11,6 +11,8 @@ The **Live summary** (totals and approval status) sits under the step tracker on
 
 **Default ramp length.** Ticking the first Ramp box starts the ramp at the months the Agreement Length runs past 12 (16 months → 4, 18 → 6; 12 months or less → a short ramp). Changing the Agreement Length updates an untouched default; a length the rep picked is kept.
 
+**Optimize365 ramps.** Optimize ramps only as free months on top of a 12-month plan: a 13-month agreement ramps 1 free month, 14 months ramps 2, paid monthly. Annual (paid upfront, including monthly SKUs on Annual Payments) and month-to-month Optimize quotes never ramp. On other agreements Optimize's Ramp box is locked with the reason; when Optimize is on the ramp, the ramp is fixed at that length, one stage, 100% off (`OPTIMIZE_RAMP` in `shared/config.mjs`). The submit function enforces the same rule.
+
 **Ramp stages.** A single-stage ramp writes `RAMP …` lines; a staged ramp writes `RAMP 1 …`, `RAMP 2 …` lines in order, each with its own term (P2M, P2M …) and discount. `approval_ramp_months` on every RAMP line is the total ramp length, so a 2 + 2 ramp counts as 4 months for approvals. No billing start delay is set (same as single-stage ramps today; `SET_BILLING_DELAY_AFTER_RAMP` turns delays on for every stage and the plan).
 
 **Agreement Length drives the terms.** There is no separate Contract Term field. A ramped product gets RAMP lines for the ramp months and its plan for the rest (15 Months with a 3-month ramp → RAMP P3M + plan P12M); products not on the ramp run the plan for the whole agreement. Choosing the Month-to-Month agreement switches the SKUs to month-to-month.

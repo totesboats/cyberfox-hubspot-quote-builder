@@ -37,6 +37,8 @@ export function RampSection({ quote, ramp, onStage, onAddStage, onRemoveStage, o
   const stages = ramp.stages || [];
   const total = quote.ramp.months;
   const left = MAX_RAMP_MONTHS - total;
+  // Optimize365 on the ramp fixes it: one free stage, as long as the agreement runs past 12 (13 → 1, 14 → 2).
+  const optimizeLocked = quote.rows.some((r) => r.ramped && r.input.family === 'optimize365') && quote.optimizeRamp && quote.optimizeRamp.allowed;
   return (
     <Tile>
       <Flex direction="column" gap="medium">
@@ -52,6 +54,12 @@ export function RampSection({ quote, ramp, onStage, onAddStage, onRemoveStage, o
           </Button>
         </Flex>
 
+        {optimizeLocked && (
+          <Text variant="microcopy" format={{ fontWeight: 'demibold' }}>
+            {`Optimize365 is on this ramp, so it's fixed at ${quote.optimizeRamp.months} free month${quote.optimizeRamp.months > 1 ? 's' : ''} (one stage, 100% off). Untick Ramp on Optimize365 to change it.`}
+          </Text>
+        )}
+
         {stages.map((st, i) => (
           <Row key={i} weights={[1, 1, 1, 0.6]}>
             <Select
@@ -59,6 +67,7 @@ export function RampSection({ quote, ramp, onStage, onAddStage, onRemoveStage, o
               name={`rampMonths-${i + 1}`}
               options={Array.from({ length: MAX_RAMP_MONTHS }, (_, m) => ({ label: `${m + 1} month${m ? 's' : ''}`, value: m + 1 }))}
               value={Number(st.months) || 1}
+              readOnly={optimizeLocked}
               onChange={(v) => onStage(i, { months: Number(v) })}
             />
             <Select
@@ -69,6 +78,7 @@ export function RampSection({ quote, ramp, onStage, onAddStage, onRemoveStage, o
                 { label: 'Percent off', value: 'percent' },
               ]}
               value={st.mode === 'percent' ? 'percent' : 'free'}
+              readOnly={optimizeLocked}
               onChange={(v) => onStage(i, { mode: String(v) })}
             />
             <NumberInput
@@ -91,7 +101,7 @@ export function RampSection({ quote, ramp, onStage, onAddStage, onRemoveStage, o
           <Text variant="microcopy">
             {`Ramp: ${total} month${total === 1 ? '' : 's'} in total${quote.ramp.stages.length > 1 ? ` (${quote.ramp.stages.map((s) => `${s.months} mo ${stageLabel(s).toLowerCase()}`).join(', then ')})` : ''}${left > 0 ? `; up to ${left} more available` : ''}.`}
           </Text>
-          <Button variant="secondary" size="sm" disabled={stages.length >= MAX_RAMP_STAGES || left < 1} onClick={onAddStage}>
+          <Button variant="secondary" size="sm" disabled={optimizeLocked || stages.length >= MAX_RAMP_STAGES || left < 1} onClick={onAddStage}>
             + Add ramp stage
           </Button>
         </Flex>

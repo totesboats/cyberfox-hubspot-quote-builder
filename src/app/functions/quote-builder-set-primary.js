@@ -53,6 +53,7 @@ var require_config = __commonJS({
         editions: [{ value: "standard", label: "Standard" }]
       }
     };
+    var OPTIMIZE_RAMP = { family: "optimize365", planMonths: 12, maxMonths: 2 };
     var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365"];
     var SEGMENTS = [
       { value: "MSP", label: "MSP" },
@@ -185,7 +186,7 @@ var require_config = __commonJS({
     ];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { FAMILIES, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
+    module2.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
   }
 });
 
@@ -193,7 +194,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES } = require_config();
+    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -528,6 +529,18 @@ var require_pricing = __commonJS({
       if (setup.agreementLength === AGREEMENT_LENGTH_M2M) return "m2m";
       return setup.billing === "annual" ? "annual" : "monthly";
     }
+    function optimizeRampRule(setup) {
+      const billing = effectiveBilling(setup || {});
+      const frequency = setup && setup.paymentFrequency || PAYMENT_FREQUENCY_DEFAULT[billing];
+      const lengths = `${OPTIMIZE_RAMP.planMonths + 1} or ${OPTIMIZE_RAMP.planMonths + OPTIMIZE_RAMP.maxMonths}`;
+      if (billing === "m2m") return { allowed: false, months: 0, reason: "Month-to-month Optimize365 quotes can't ramp." };
+      if (billing === "annual" || frequency === "Annual Payments") return { allowed: false, months: 0, reason: "Optimize365 paid annually upfront can't ramp." };
+      const extra = (agreementMonths(setup.agreementLength) || 0) - OPTIMIZE_RAMP.planMonths;
+      if (extra < 1 || extra > OPTIMIZE_RAMP.maxMonths) {
+        return { allowed: false, months: 0, reason: `Optimize365 can only ramp on a ${lengths}-month agreement paid monthly (1 or 2 free months on top of 12).` };
+      }
+      return { allowed: true, months: extra, reason: `Optimize365 ramp: ${extra} free month${extra > 1 ? "s" : ""} on top of the 12-month plan.` };
+    }
     function buildQuote(setup, inputs, rampInput, catalog) {
       const ramp = normalizeRamp(rampInput);
       const billing = effectiveBilling(setup);
@@ -632,9 +645,16 @@ var require_pricing = __commonJS({
         templateType: setup.templateType
       });
       const blocking = rows.filter((r) => !r.usable).map((r) => ({ uid: r.input.uid, family: r.input.family, error: r.priced.error }));
+      const optimizeRamp = optimizeRampRule(setup);
+      if (ramp.enabled && rows.some((r) => r.ramped && r.input.family === OPTIMIZE_RAMP.family)) {
+        if (!optimizeRamp.allowed) conflicts.push(`${optimizeRamp.reason} Untick Ramp on Optimize365, or change the Agreement Length / payment on Setup.`);
+        else if (ramp.stages.length > 1 || ramp.stages[0].mode !== "free" || ramp.months !== optimizeRamp.months) {
+          conflicts.push(`With Optimize365 on the ramp, the ramp must be ${optimizeRamp.months} free month${optimizeRamp.months > 1 ? "s" : ""} (one stage, 100% off) on this ${agreement}-month agreement.`);
+        }
+      }
       const aeFeature = resolveAeFeature(rows);
       if (aeFeature && aeFeature.conflict) conflicts.push(aeFeature.conflict);
-      return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp };
+      return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp };
     }
     function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
       const reasons = [];
@@ -803,7 +823,7 @@ var require_pricing = __commonJS({
       }
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 
