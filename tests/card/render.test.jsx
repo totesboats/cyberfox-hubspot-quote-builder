@@ -62,7 +62,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(r.find(DescriptionListItem, { label: 'Invoice Terms' }).text, 'Due Upon Receipt');
   assert.equal(r.find(DescriptionListItem, { label: 'Payment Frequency' }).text, 'Monthly (matches SKU pricing)');
   assert.equal(r.find(DescriptionListItem, { label: 'Payment Method' }).text, 'Credit Card');
-  assert.equal(r.find(DescriptionListItem, { label: 'Promo' }).text, 'None');
+  assert.equal(r.maybeFind(DescriptionListItem, { label: 'Promo' }), null); // Promo was removed from Setup
   r.find(Button, (n) => /"Edit"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'invoiceTerms' })));
   assert.equal(r.find(Select, { name: 'invoiceTerms' }).props.value, 'Due Upon Receipt');
@@ -136,7 +136,7 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   const freq = r.find(Select, { name: 'paymentFrequency' }).props.options.map((o) => o.value);
   assert.deepEqual(freq, ['__none__', 'Month-to-Month', 'Quarterly', 'Annual Payments']);
   // Blank choices show their label ("None", "Match SKU pricing"), not HubSpot's empty "Select" placeholder.
-  assert.equal(r.find(Select, { name: 'promo' }).props.value, '__none__');
+  assert.equal(r.maybeFind(Select, { name: 'promo' }), null); // Promo was removed from Setup
   assert.equal(r.find(Select, { name: 'paymentFrequency' }).props.value, '__none__');
   assert.deepEqual(r.find(Select, { name: 'agreementLength' }).props.options.map((o) => o.value), ['12 Months - Month-to-Month', '12 Months', '15 Months', '16 Months', '18 Months', '24 Months']);
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
@@ -344,7 +344,7 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   const ref = (label) => r.find(DescriptionListItem, { label }).text;
   assert.equal(ref('Agreement Length'), '15 Months');
   assert.equal(ref('Payment Frequency'), 'Monthly');
-  assert.equal(ref('Promo'), 'None');
+  assert.equal(r.maybeFind(DescriptionListItem, { label: 'Promo' }), null);
   assert.equal(r.maybeFind(Select, { name: 'paymentMethod' }), null); // not editable here
   assert.equal(r.find(Select, { name: 'rampMode-2' }).props.value, 'percent');
   assert.equal(r.find(NumberInput, { name: 'rampPercent-2' }).props.value, 50);

@@ -44,7 +44,6 @@ export const initialState = {
     billing: 'monthly',
     agreementLength: AGREEMENT_LENGTH_DEFAULT,
     expirationDate: isoInDays(QUOTE_DEFAULTS.expirationDays),
-    promo: '',
     paymentFrequency: '', // '' = follow billing
     paymentMethod: 'Credit Card',
     invoiceTerms: INVOICE_TERMS_DEFAULT,
@@ -201,7 +200,6 @@ export function QuoteBuilderApp() {
         type: 'hydrate',
         setup: {
           segment: res.deal && res.deal.salesTeam === 'ENT' ? 'ENT' : 'MSP',
-          promo: props.promo || '',
           paymentMethod: props.payment_method || 'Credit Card',
           invoiceTerms: INVOICE_TERMS_DEFAULT, // always starts here, even if the deal holds Net-30 etc.
           signerContactId: res.deal && res.deal.contacts[0] ? res.deal.contacts[0].id : '',

@@ -664,7 +664,6 @@ export function dealWrites(quote, { setup = {} } = {}, enumOptions = {}) {
   }
   setEnum('payment_method', 'Payment Method', setup.paymentMethod || '');
   setEnum('invoice_terms', 'Invoice Terms', setup.invoiceTerms || '');
-  setEnum('promo', 'Promo', setup.promo || '');
 
   if (quote.aeFeature && !quote.aeFeature.conflict) {
     setEnum('sku_type', 'AE Feature Type', quote.aeFeature.type);

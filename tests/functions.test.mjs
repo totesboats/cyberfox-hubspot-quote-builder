@@ -40,9 +40,8 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
         results: [
           { name: 'agreement_length', options: ['12 Months - Month-to-Month', '12 Months', '15 Months'].map((v) => ({ value: v, label: v, hidden: false })) },
           { name: 'payment_terms', options: [{ value: 'Month-to-Month', label: 'Monthly' }, { value: 'One Time', label: 'One Time' }] },
-          { name: 'payment_method', options: [{ value: 'ACH', label: 'ACH' }, { value: 'Credit Card', label: 'Credit Card' }] },
+          { name: 'payment_method', options: [{ value: 'ACH', label: 'ACH' }, { value: 'Credit Card', label: 'Credit Card' }, { value: 'Wire', label: 'Wire', hidden: true }] },
           { name: 'invoice_terms', options: [{ value: 'Net-30', label: 'Net-30' }, { value: 'Due Upon Receipt', label: 'Due Upon Receipt' }] },
-          { name: 'promo', options: [{ value: 'Old Promo', label: 'Old Promo', hidden: true }] },
           { name: 'sku_type', options: ['Advanced', 'Standard', 'Advanced (GrandFathered)'].map((v) => ({ value: v, label: v })) },
         ],
       });
@@ -132,7 +131,8 @@ test('catalog function returns tagged products, templates and deal context', asy
   assert.equal(res.products.length, 3);
   assert.deepEqual(res.templates.map((t) => t.templateType), ['CPQ_QUOTE', 'CUSTOMIZABLE_QUOTE_TEMPLATE']);
   assert.equal(res.deal.company.name, 'Example MSP');
-  assert.deepEqual(res.dealOptions.promo, []); // hidden options are dropped
+  assert.deepEqual(res.dealOptions.payment_method.map((o) => o.value), ['ACH', 'Credit Card']); // hidden options are dropped
+  assert.equal('promo' in res.dealOptions, false); // Promo is no longer set by the builder
   assert.equal(res.dealOptions.payment_terms[0].label, 'Monthly');
   assert.deepEqual(res.deal.contacts, [{ id: '501', label: 'Sam Sample — Owner' }]);
   assert.deepEqual(res.issues, []);
@@ -171,7 +171,6 @@ test('submit writes deal lines, quote copies, quote and deal fields; replaces on
     payment_terms: 'Month-to-Month',
     payment_method: 'ACH',
     invoice_terms: 'Net-30',
-    promo: '',
     sku_type: 'Standard',
     ae_feature_type_details:
       'Elevation. Additional agents over the minimum commitment of this plan will be billed at the same price per agent. Usage of Advanced features Blocker and Just-in-Time Admin Login will result in additional charges. Unlimited User (Technician) & Company licenses included',

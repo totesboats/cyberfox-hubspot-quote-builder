@@ -22,14 +22,13 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, user, 
   const autoFrequencyLabel = (frequencyOptions.find((o) => o.value === autoFrequency) || { label: autoFrequency }).label;
 
   const labelOf = (name, value) => (opts(name).find((o) => o.value === value) || { label: value }).label;
-  // Payment Frequency, Method, Invoice Terms and Promo start with sensible values, so they show as
+  // Payment Frequency, Method and Invoice Terms start with sensible values, so they show as
   // one read-only line until the rep clicks Edit. Agreement Length changes often, so it stays open.
   const [editPrinted, setEditPrinted] = useState(false);
   const printedSummary = [
     ['Payment Frequency', setup.paymentFrequency ? labelOf('payment_terms', setup.paymentFrequency) : `${autoFrequencyLabel} (matches SKU pricing)`],
     ['Payment Method', setup.paymentMethod ? labelOf('payment_method', setup.paymentMethod) : 'Not set'],
     ['Invoice Terms', setup.invoiceTerms ? labelOf('invoice_terms', setup.invoiceTerms) : 'Not set'],
-    ['Promo', setup.promo ? labelOf('promo', setup.promo) : 'None'],
   ];
 
   const selected = templates.find((t) => t.id === setup.templateId) || suggested;
@@ -160,10 +159,9 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, user, 
             />
             <Select label="Payment Method" name="paymentMethod" options={opts('payment_method')} value={setup.paymentMethod} onChange={(v) => onChange({ paymentMethod: String(v) })} />
             <Select label="Invoice Terms" name="invoiceTerms" options={opts('invoice_terms')} value={setup.invoiceTerms} onChange={(v) => onChange({ invoiceTerms: String(v) })} />
-            <Select label="Promo" name="promo" options={[{ label: 'None', value: NONE }].concat(opts('promo'))} value={toSelect(setup.promo)} onChange={(v) => onChange({ promo: fromSelect(v) })} />
           </Row>
         ) : (
-          <Row weights={[1, 4]}>
+          <Row weights={[1, 3]}>
             {agreementSelect}
             <DescriptionList direction="row">
               {printedSummary.map(([label, value]) => (

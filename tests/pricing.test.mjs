@@ -230,6 +230,7 @@ test('agreement length is the rep choice; contract term is not written; payment 
   assert.equal(w.properties.payment_terms, 'Month-to-Month');
   assert.equal(w.properties.payment_method, 'ACH');
   assert.equal(w.properties.invoice_terms, 'Net-30');
+  assert.equal('promo' in w.properties, false); // the deal's Promo is left as it is
 });
 
 test('month-to-month uses the Month-to-Month agreement length option', () => {

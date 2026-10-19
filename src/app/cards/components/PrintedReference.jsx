@@ -8,13 +8,12 @@ const FIELDS = [
   ['payment_terms', 'Payment Frequency'],
   ['payment_method', 'Payment Method'],
   ['invoice_terms', 'Invoice Terms'],
-  ['promo', 'Promo'],
 ];
 
 export function PrintedReference({ writes, dealOptions, ramp, quote, onEdit }) {
   const props = (writes && writes.properties) || {};
   const label = (name, value) => {
-    if (value === '' || value == null) return name === 'promo' ? 'None' : 'Not set';
+    if (value === '' || value == null) return 'Not set';
     const o = ((dealOptions && dealOptions[name]) || []).find((x) => x.value === value);
     return o ? o.label : value;
   };

@@ -9,7 +9,6 @@ const TOKEN_ROWS = [
   ['payment_terms', 'Payment Frequency'],
   ['payment_method', 'Payment Method'],
   ['invoice_terms', 'Invoice Terms'],
-  ['promo', 'Promo'],
   ['sku_type', 'AE Feature Type'],
   ['ae_feature_type_details', 'AE Feature Type Details'],
   ['timus_price_per_user', 'Timus Price Per User'],

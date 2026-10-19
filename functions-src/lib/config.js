@@ -136,7 +136,6 @@ const DEAL_PROPERTIES = [
   'dealname',
   'hubspot_owner_id',
   'sales_team',
-  'promo',
   'payment_method',
   'invoice_terms',
   'payment_terms',
@@ -154,7 +153,6 @@ const PRINTED_DEAL_PROPERTIES = [
   'payment_terms',
   'payment_method',
   'invoice_terms',
-  'promo',
   'sku_type',
   'ae_feature_type_details',
   'timus_price_per_user',
@@ -169,11 +167,11 @@ const QUOTE_TOKEN_PROPERTIES = {
   paymentFrequency: 'payment_terms', // label "Payment Frequency"
   paymentMethod: 'payment_method',
   invoiceTerms: 'invoice_terms',
-  promo: 'promo',
   aeFeatureType: 'sku_type', // label "AE Feature Type"
   aeFeatureTypeDetails: 'ae_feature_type_details',
 };
-const ENUM_PROPERTIES = ['agreement_length', 'payment_terms', 'payment_method', 'invoice_terms', 'promo', 'sku_type'];
+// Promo is not set by the builder (removed from Setup); a deal's Promo is left as it is.
+const ENUM_PROPERTIES = ['agreement_length', 'payment_terms', 'payment_method', 'invoice_terms', 'sku_type'];
 
 // Agreement Length value for month-to-month quotes (the option HubSpot labels "Month-to-Month").
 const AGREEMENT_LENGTH_M2M = '12 Months - Month-to-Month';
@@ -200,7 +198,6 @@ const FALLBACK_OPTIONS = {
     { value: 'Check', label: 'Check' },
   ],
   invoice_terms: ['Due Upon Receipt', 'Net-30', 'Net-45', 'Net-60', 'Net-90'].map((v) => ({ value: v, label: v })),
-  promo: [],
   agreement_length: [],
   sku_type: [],
 };

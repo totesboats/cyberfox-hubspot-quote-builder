@@ -108,7 +108,6 @@ var require_config = __commonJS({
       "dealname",
       "hubspot_owner_id",
       "sales_team",
-      "promo",
       "payment_method",
       "invoice_terms",
       "payment_terms",
@@ -125,7 +124,6 @@ var require_config = __commonJS({
       "payment_terms",
       "payment_method",
       "invoice_terms",
-      "promo",
       "sku_type",
       "ae_feature_type_details",
       "timus_price_per_user",
@@ -139,12 +137,11 @@ var require_config = __commonJS({
       // label "Payment Frequency"
       paymentMethod: "payment_method",
       invoiceTerms: "invoice_terms",
-      promo: "promo",
       aeFeatureType: "sku_type",
       // label "AE Feature Type"
       aeFeatureTypeDetails: "ae_feature_type_details"
     };
-    var ENUM_PROPERTIES = ["agreement_length", "payment_terms", "payment_method", "invoice_terms", "promo", "sku_type"];
+    var ENUM_PROPERTIES = ["agreement_length", "payment_terms", "payment_method", "invoice_terms", "sku_type"];
     var AGREEMENT_LENGTH_M2M = "12 Months - Month-to-Month";
     var AGREEMENT_LENGTH_DEFAULT = "12 Months";
     var INVOICE_TERMS_DEFAULT = "Due Upon Receipt";
@@ -163,7 +160,6 @@ var require_config = __commonJS({
         { value: "Check", label: "Check" }
       ],
       invoice_terms: ["Due Upon Receipt", "Net-30", "Net-45", "Net-60", "Net-90"].map((v) => ({ value: v, label: v })),
-      promo: [],
       agreement_length: [],
       sku_type: []
     };
@@ -730,7 +726,6 @@ var require_pricing = __commonJS({
       }
       setEnum("payment_method", "Payment Method", setup.paymentMethod || "");
       setEnum("invoice_terms", "Invoice Terms", setup.invoiceTerms || "");
-      setEnum("promo", "Promo", setup.promo || "");
       if (quote.aeFeature && !quote.aeFeature.conflict) {
         setEnum("sku_type", "AE Feature Type", quote.aeFeature.type);
         properties.ae_feature_type_details = quote.aeFeature.details;
