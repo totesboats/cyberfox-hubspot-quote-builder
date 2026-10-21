@@ -173,16 +173,12 @@ var require_config = __commonJS({
         value: "Advanced",
         edition: "advanced",
         details: "Elevation, Blocker, and Just-In-Time Admin Login. Additional agents over the minimum commitment of this plan will be billed at the same price per agent. Unlimited User (Technician) & Company licenses included"
-      },
-      {
-        value: "Advanced (GrandFathered)",
-        edition: "standard",
-        details: "{tier} agents include advanced features Just-In-Time Admin Login and Blocker. All additional agents include standard elevation. Additional agents over the minimum commitment will be billed at an additional cost."
       }
     ];
+    var AE_FEATURE_TYPES_RETIRED = ["Advanced (GrandFathered)"];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS2 = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
+    module2.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
   }
 });
 
@@ -467,7 +463,7 @@ var require_pricing = __commonJS({
       if (!input || input.family !== "autoelevate") return null;
       const byValue = AE_FEATURE_TYPES.find((f) => f.value === input.featureType);
       if (byValue) return byValue;
-      return AE_FEATURE_TYPES.find((f) => f.edition === input.edition && !/grandfathered/i.test(f.value)) || AE_FEATURE_TYPES[0];
+      return AE_FEATURE_TYPES.find((f) => f.edition === input.edition) || AE_FEATURE_TYPES[0];
     }
     function effectiveEdition(input) {
       const ft = aeFeatureTypeFor(input);

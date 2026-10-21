@@ -215,13 +215,9 @@ export const AE_FEATURE_TYPES = [
     details:
       'Elevation, Blocker, and Just-In-Time Admin Login. Additional agents over the minimum commitment of this plan will be billed at the same price per agent. Unlimited User (Technician) & Company licenses included',
   },
-  {
-    value: 'Advanced (GrandFathered)',
-    edition: 'standard',
-    details:
-      '{tier} agents include advanced features Just-In-Time Admin Login and Blocker. All additional agents include standard elevation. Additional agents over the minimum commitment will be billed at an additional cost.',
-  },
 ];
+// Retired feature types: no longer offered. A saved quote (or a deal) that still has one opens as Standard.
+export const AE_FEATURE_TYPES_RETIRED = ['Advanced (GrandFathered)'];
 
 export const RAMP_NAME_PREFIX = 'RAMP ';
 // paymentEnabled: false matches every CyberFOX CPQ quote today (no online payment on the quote).

@@ -352,7 +352,7 @@ export function aeFeatureTypeFor(input) {
   const byValue = AE_FEATURE_TYPES.find((f) => f.value === input.featureType);
   if (byValue) return byValue;
   // No explicit choice: infer from the edition.
-  return AE_FEATURE_TYPES.find((f) => f.edition === input.edition && !/grandfathered/i.test(f.value)) || AE_FEATURE_TYPES[0];
+  return AE_FEATURE_TYPES.find((f) => f.edition === input.edition) || AE_FEATURE_TYPES[0];
 }
 
 // The SKU edition that prices a row. For AutoElevate the feature type decides it.

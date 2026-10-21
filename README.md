@@ -67,9 +67,10 @@ If any write fails, everything that run created is archived again and the rep se
 |---|---|---|
 | Standard | Standard 2026 SKUs | “Elevation. Additional agents … Usage of Advanced features Blocker and Just-in-Time Admin Login will result in additional charges. …” |
 | Advanced | Advanced 2026 SKUs | “Elevation, Blocker, and Just-In-Time Admin Login. Additional agents … Unlimited User (Technician) & Company licenses included” |
-| Advanced (GrandFathered) | Standard 2026 SKUs | “{commit tier} agents include advanced features Just-In-Time Admin Login and Blocker. All additional agents include standard elevation. …” |
 
 The texts are the ones already on your deals. The deal holds one AE Feature Type, so a quote with AutoElevate rows of different feature types is blocked with an explanation.
+
+**Advanced (GrandFathered) is retired** (Oct 2026): it is no longer offered. A deal or saved quote that still has it opens as Standard, and the submit function rejects it.
 
 **Approvals:** the API always creates quotes as Draft; HubSpot does not let the API start an approval. The card shows whether approval is needed and who it routes to (MSP → Tina Harvey, ENT → Adam Friedman, AM → Julie Webb, else Operations), and the rep clicks **Request approval** on the quote. Legacy (custom-coded) templates don't run Commerce Hub approvals, so the card says so.
 
@@ -108,7 +109,7 @@ These won't be tagged until fixed, so they won't appear in the builder:
 1. **Billing start delay after a ramp.** Off by default (`SET_BILLING_DELAY_AFTER_RAMP` in `shared/config.mjs`) to match how ramps are entered now and how Sale Review groups ramp segments. Turn on if billing should start after the ramp.
 2. **Line items on the deal and the quote.** Both are written. If Sale Review should read only quote lines, drop the deal-line step.
 3. **Month-to-month lines** use “Automatically renew until canceled” with no term. Check that Sale Review handles that.
-4. **Advanced (GrandFathered).** Assumed to price on Standard SKUs with the tier-specific wording above (the most common pattern on existing deals; a few grandfathered deals use the plain Advanced or Standard wording instead). Change `edition`/`details` in `AE_FEATURE_TYPES` if that's wrong.
+4. **Advanced (GrandFathered).** Retired in Oct 2026; no longer offered (see AutoElevate feature type).
 5. **Contract Term removed.** Agreement Length is the only length the rep sets and what the quote prints. If Sale Review or a report reads `contract_term`, turn `WRITE_CONTRACT_TERM` back on and it will mirror Agreement Length.
 6. **Payment Frequency vs. SKU billing.** Kept independent (many deals pay annually on monthly-priced SKUs). The card only warns when annual SKUs are set to a non-annual frequency. Line-item billing frequency always follows the SKU.
 7. **The “Length” deal property** (“For HubSpot Quoting”) was empty on the 200 recent AutoElevate deals I checked, so the card doesn't write it. Say if a template still uses it.

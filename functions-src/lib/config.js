@@ -217,17 +217,13 @@ const AE_FEATURE_TYPES = [
     details:
       'Elevation, Blocker, and Just-In-Time Admin Login. Additional agents over the minimum commitment of this plan will be billed at the same price per agent. Unlimited User (Technician) & Company licenses included',
   },
-  {
-    value: 'Advanced (GrandFathered)',
-    edition: 'standard',
-    details:
-      '{tier} agents include advanced features Just-In-Time Admin Login and Blocker. All additional agents include standard elevation. Additional agents over the minimum commitment will be billed at an additional cost.',
-  },
 ];
+// Retired feature types: no longer offered. A saved quote (or a deal) that still has one opens as Standard.
+const AE_FEATURE_TYPES_RETIRED = ['Advanced (GrandFathered)'];
 
 const RAMP_NAME_PREFIX = 'RAMP ';
 // paymentEnabled: false matches every CyberFOX CPQ quote today (no online payment on the quote).
 // With payments on, HubSpot requires every invoice to be $35+, which blocks ramp months.
 const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30, paymentEnabled: false };
 
-module.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
+module.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };

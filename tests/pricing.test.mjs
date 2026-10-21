@@ -260,10 +260,11 @@ test('AE feature type sets AE Feature Type and its details text', () => {
   const std = W({}, [ae({ featureType: 'Standard' })], {}).w.properties;
   assert.equal(std.sku_type, 'Standard');
   assert.match(std.ae_feature_type_details, /^Elevation\. Additional agents .* Usage of Advanced features Blocker/);
-  const gf = W({}, [ae({ featureType: 'Advanced (GrandFathered)' })], {});
-  assert.equal(gf.w.properties.sku_type, 'Advanced (GrandFathered)');
-  assert.equal(gf.w.properties.ae_feature_type_details.slice(0, 63), '1,000 agents include advanced features Just-In-Time Admin Login');
-  assert.equal(gf.q.lines[0].sku, 'Standard-AE-1000-Agent-Commit-2026'); // grandfathered prices on standard SKUs
+  // Advanced (GrandFathered) is retired: not offered, and the server rejects it.
+  const { AE_FEATURE_TYPES } = require('../functions-src/lib/config.js');
+  assert.deepEqual(AE_FEATURE_TYPES.map((f) => f.value), ['Standard', 'Advanced']);
+  const base = { setup: { segment: 'MSP', billing: 'monthly', agreementLength: '12 Months', templateId: '1', expirationDate: '2026-11-30' } };
+  assert.match(P.validateSubmission(Object.assign({}, base, { products: [ae({ featureType: 'Advanced (GrandFathered)' })] })).join(' '), /unknown AE feature type/);
 });
 
 test('Advanced feature type prices on advanced SKUs (none in this fixture → blocking error)', () => {
@@ -272,7 +273,7 @@ test('Advanced feature type prices on advanced SKUs (none in this fixture → bl
 });
 
 test('different AE feature types on one quote are a conflict; non-AE quotes leave AE fields alone', () => {
-  const { q, w } = W({}, [ae({ featureType: 'Standard' }), ae({ uid: 2, featureType: 'Advanced (GrandFathered)' })], {});
+  const { q, w } = W({}, [ae({ featureType: 'Standard' }), ae({ uid: 2, featureType: 'Advanced' })], {});
   assert.equal(q.conflicts.length, 1);
   assert.equal(w.properties.sku_type, undefined);
   const dns = W({}, [{ uid: 3, family: 'dns', edition: 'standard', quantity: 600, discountPct: 0 }], {}).w.properties;

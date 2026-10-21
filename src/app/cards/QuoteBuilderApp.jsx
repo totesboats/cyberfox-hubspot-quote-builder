@@ -17,7 +17,7 @@ import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
 import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, rampStages, suggestTemplate } from './lib/pricing.js';
-import { AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
+import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
 
@@ -71,9 +71,19 @@ export function defaultProductStages(setup, family) {
   return [{ months, mode: 'free', percent: 50 }];
 }
 
-// Saved quotes from before per-product ramps: give each ticked product a copy of the shared ramp.
+// AE Feature Types reps can pick; a retired one (e.g. Advanced (GrandFathered)) or a blank starts as Standard.
+export function offeredFeatureType(value) {
+  return AE_FEATURE_TYPES.some((f) => f.value === value) ? value : 'Standard';
+}
+
+// Saved quotes: give each ticked product its own copy of an older shared ramp, and move retired
+// AE Feature Types to Standard.
 function withOwnRamps(products, savedRamp) {
-  return products.map((p) => (p.ramp && !(Array.isArray(p.rampStages) && p.rampStages.length) ? Object.assign({}, p, { rampStages: rampStages(savedRamp) }) : p));
+  return products.map((p) => {
+    const next = p.ramp && !(Array.isArray(p.rampStages) && p.rampStages.length) ? Object.assign({}, p, { rampStages: rampStages(savedRamp) }) : Object.assign({}, p);
+    if (next.family === 'autoelevate') next.featureType = offeredFeatureType(next.featureType);
+    return next;
+  });
 }
 
 const mapStages = (state, uid, fn) =>
@@ -108,7 +118,7 @@ export function reducer(state, action) {
         discountPct: 0,
         ramp: false,
       };
-      if (action.family === 'autoelevate') row.featureType = action.defaultAeFeatureType || 'Standard';
+      if (action.family === 'autoelevate') row.featureType = offeredFeatureType(action.defaultAeFeatureType);
       if (action.family === 'timus') {
         // Rates start from the deal's current values (if any) so an existing Timus deal re-quotes as-is.
         const t = action.timusDefaults || {};

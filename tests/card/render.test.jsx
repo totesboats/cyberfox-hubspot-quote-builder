@@ -80,7 +80,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(NumberInput, { name: 'disc-1' }).trigger('onChange', 10);
   assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
-  assert.deepEqual(r.find(Select, { name: 'feature-1' }).props.options.map((o) => o.value), ['Standard', 'Advanced', 'Advanced (GrandFathered)']);
+  assert.deepEqual(r.find(Select, { name: 'feature-1' }).props.options.map((o) => o.value), ['Standard', 'Advanced']); // Advanced (GrandFathered) retired
   await r.waitFor(() => assert.match(text(r.getRootNode()), /\$1,181\.25\/mo/));
   // auto-suggested CPQ template appears in the summary
   assert.match(text(r.getRootNode()), /CPQ template/);
@@ -144,7 +144,7 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'feature-2' })));
-  r.find(Select, { name: 'feature-2' }).trigger('onChange', 'Advanced (GrandFathered)');
+  r.find(Select, { name: 'feature-2' }).trigger('onChange', 'Advanced');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Fix before continuing' })));
   assert.equal(r.find(Button, (n) => /Continue/.test(text(n))).props.disabled, true);
 });
@@ -497,4 +497,17 @@ test('per-product ramps: AutoElevate 3 months free, DNS Filtering 2 months at 50
   await r.waitFor(() => assert.ok(calls.find((c) => c.name === 'quote_builder_submit')));
   const products = calls.find((c) => c.name === 'quote_builder_submit').parameters.products;
   assert.deepEqual(products.map((p) => p.rampStages.map((s) => [s.months, s.mode])), [[[3, 'free']], [[2, 'percent']]]);
+});
+
+test('a deal still on Advanced (GrandFathered) starts new AutoElevate rows as Standard', async () => {
+  const r = mk();
+  const gfDeal = Object.assign({}, CATALOG_RESPONSE, { deal: Object.assign({}, CATALOG_RESPONSE.deal, { properties: { sku_type: 'Advanced (GrandFathered)' } }) });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: gfDeal }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'feature-1' })));
+  assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
 });
