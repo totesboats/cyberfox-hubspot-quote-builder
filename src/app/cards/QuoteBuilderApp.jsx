@@ -53,15 +53,31 @@ export const initialState = {
   },
   products: [],
   nextUid: 1,
-  // Ramp settings; the ramp is on whenever at least one product has its Ramp box ticked.
-  ramp: { stages: [{ months: 3, mode: 'free', percent: 50 }] },
   primary: null, // null = automatic: primary when it's the deal's first builder quote
   editing: null, // { id, title, primary } while editing an existing builder quote in place
 };
 
+// Each product carries its own ramp (product.rampStages). `ramp` in the payload only says whether
+// any product ramps; quotes saved before per-product ramps kept one shared ramp (see withOwnRamps).
 export function rampFor(state) {
-  return Object.assign({}, state.ramp, { enabled: state.products.some((p) => p.ramp) });
+  return { enabled: state.products.some((p) => p.ramp) };
 }
+
+// The ramp a product starts with when Ramp is ticked: the months the agreement runs past 12, free
+// (16 months → 4). Optimize365 starts at its only allowed shape (13 months → 1 free, 14 → 2 free).
+export function defaultProductStages(setup, family) {
+  const optimize = family === 'optimize365' ? optimizeRampRule(setup) : null;
+  const months = optimize && optimize.allowed ? optimize.months : defaultRampMonths(setup.agreementLength);
+  return [{ months, mode: 'free', percent: 50 }];
+}
+
+// Saved quotes from before per-product ramps: give each ticked product a copy of the shared ramp.
+function withOwnRamps(products, savedRamp) {
+  return products.map((p) => (p.ramp && !(Array.isArray(p.rampStages) && p.rampStages.length) ? Object.assign({}, p, { rampStages: rampStages(savedRamp) }) : p));
+}
+
+const mapStages = (state, uid, fn) =>
+  Object.assign({}, state, { products: state.products.map((p) => (p.uid === uid && p.ramp ? Object.assign({}, p, { rampStages: fn(p.rampStages || []) }) : p)) });
 
 /** @param {typeof initialState} state @param {any} action @returns {typeof initialState} */
 export function reducer(state, action) {
@@ -72,12 +88,14 @@ export function reducer(state, action) {
       return Object.assign({}, state, { step: Math.max(0, Math.min(STEPS.length - 1, action.step)) });
     case 'setup': {
       const setup = Object.assign({}, state.setup, action.patch);
-      // Agreement Length changed and the ramp is still the default single stage → follow the new default.
-      const st = state.ramp.stages;
-      if (action.patch.agreementLength && st.length === 1 && st[0].months === defaultRampMonths(state.setup.agreementLength)) {
-        return Object.assign({}, state, { setup, ramp: { stages: [Object.assign({}, st[0], { months: defaultRampMonths(setup.agreementLength) })] } });
-      }
-      return Object.assign({}, state, { setup });
+      if (!action.patch.agreementLength) return Object.assign({}, state, { setup });
+      // Agreement Length changed: a product ramp still at its default single stage follows the new default.
+      const products = state.products.map((p) => {
+        const st = p.rampStages || [];
+        if (!p.ramp || st.length !== 1 || st[0].months !== defaultProductStages(state.setup, p.family)[0].months) return p;
+        return Object.assign({}, p, { rampStages: [Object.assign({}, st[0], { months: defaultProductStages(setup, p.family)[0].months })] });
+      });
+      return Object.assign({}, state, { setup, products });
     }
     case 'addProduct': {
       const family = FAMILIES[action.family];
@@ -99,49 +117,51 @@ export function reducer(state, action) {
       return Object.assign({}, state, { products: state.products.concat([row]), nextUid: state.nextUid + 1 });
     }
     case 'updateProduct': {
-      const products = state.products.map((p) => (p.uid === action.uid ? Object.assign({}, p, action.patch) : p));
-      // Optimize365 ticked for Ramp: the ramp becomes its only allowed shape (13 months → 1 free, 14 → 2 free).
-      const ticked = state.products.find((p) => p.uid === action.uid);
-      const optimize = optimizeRampRule(state.setup);
-      if (action.patch.ramp === true && ticked && ticked.family === 'optimize365' && optimize.allowed) {
-        return Object.assign({}, state, { products, ramp: { stages: [{ months: optimize.months, mode: 'free', percent: 50 }] } });
-      }
-      // First product ticked for Ramp: start the ramp at the default length for this agreement (16 months → 4).
-      if (action.patch.ramp === true && !state.products.some((p) => p.ramp)) {
-        return Object.assign({}, state, { products, ramp: { stages: [{ months: defaultRampMonths(state.setup.agreementLength), mode: 'free', percent: 50 }] } });
-      }
+      const products = state.products.map((p) => {
+        if (p.uid !== action.uid) return p;
+        const next = Object.assign({}, p, action.patch);
+        // Ticking Ramp gives the product its own ramp at the default; unticking drops it.
+        if (action.patch.ramp === true && !p.ramp) next.rampStages = defaultProductStages(state.setup, p.family);
+        if (action.patch.ramp === false) delete next.rampStages;
+        return next;
+      });
       return Object.assign({}, state, { products });
     }
     case 'removeProduct':
       return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid) });
     case 'clearRamp':
-      return Object.assign({}, state, { products: state.products.map((p) => (p.ramp ? Object.assign({}, p, { ramp: false }) : p)) });
-    case 'rampStage':
       return Object.assign({}, state, {
-        ramp: { stages: state.ramp.stages.map((st, i) => (i === action.index ? Object.assign({}, st, action.patch) : st)) },
+        products: state.products.map((p) => {
+          if (!p.ramp) return p;
+          const next = Object.assign({}, p, { ramp: false });
+          delete next.rampStages;
+          return next;
+        }),
       });
-    case 'addRampStage': {
-      if (state.ramp.stages.length >= MAX_RAMP_STAGES) return state;
-      /** @type {any} */
-      const last = state.ramp.stages[state.ramp.stages.length - 1] || { months: 1, mode: 'free', percent: 100 };
-      // Next step down: half the previous discount (free → 50% off).
-      const prev = last.mode === 'percent' ? Number(last.percent) || 50 : 100;
-      return Object.assign({}, state, { ramp: { stages: state.ramp.stages.concat([{ months: 1, mode: 'percent', percent: Math.max(1, Math.round(prev / 2)) }]) } });
-    }
+    case 'rampStage':
+      return mapStages(state, action.uid, (stages) => stages.map((st, i) => (i === action.index ? Object.assign({}, st, action.patch) : st)));
+    case 'addRampStage':
+      return mapStages(state, action.uid, (stages) => {
+        if (stages.length >= MAX_RAMP_STAGES) return stages;
+        /** @type {any} */
+        const last = stages[stages.length - 1] || { months: 1, mode: 'free', percent: 100 };
+        // Next step down: half the previous discount (free → 50% off).
+        const prev = last.mode === 'percent' ? Number(last.percent) || 50 : 100;
+        return stages.concat([{ months: 1, mode: 'percent', percent: Math.max(1, Math.round(prev / 2)) }]);
+      });
     case 'removeRampStage':
-      return Object.assign({}, state, { ramp: { stages: state.ramp.stages.filter((_, i) => i !== action.index) } });
+      return mapStages(state, action.uid, (stages) => (stages.length > 1 ? stages.filter((_, i) => i !== action.index) : stages));
     case 'primary':
       return Object.assign({}, state, { primary: action.value });
     case 'loadState': {
       // Start a new option from a saved builder quote: same inputs, fresh dates, not primary.
       const saved = action.state;
-      const products = (saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 }));
+      const products = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
       return Object.assign({}, state, {
         step: 1,
         setup: Object.assign({}, state.setup, saved.setup, { expirationDate: state.setup.expirationDate, quoteName: '' }),
         products,
         nextUid: products.length + 1,
-        ramp: { stages: rampStages(saved.ramp) },
         primary: false,
         editing: null,
       });
@@ -150,13 +170,12 @@ export function reducer(state, action) {
       // Edit an existing builder quote in place: its saved inputs, its own name and expiry.
       const q = action.quote;
       const saved = q.state || {};
-      const products = (saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 }));
+      const products = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
       return Object.assign({}, state, {
         step: 0,
         setup: Object.assign({}, state.setup, saved.setup, { quoteName: q.title || '', expirationDate: q.expirationDate || (saved.setup && saved.setup.expirationDate) || state.setup.expirationDate }),
         products,
         nextUid: products.length + 1,
-        ramp: { stages: rampStages(saved.ramp) },
         primary: !!q.primary,
         editing: { id: q.id, title: q.title, primary: !!q.primary },
       });
@@ -227,7 +246,7 @@ export function QuoteBuilderApp() {
       templateType: template ? template.templateType : 'CPQ_QUOTE',
     });
     return buildQuote(setup, state.products, rampFor(state), data.catalog);
-  }, [data, state.setup, state.products, state.ramp, template]);
+  }, [data, state.setup, state.products, template]);
   // Deal properties the quote template prints as tokens (validated against live options).
   const writes = useMemo(() => (quote ? dealWrites(quote, { setup: state.setup }, data.dealOptions) : null), [quote, state.setup, data]);
 
@@ -411,9 +430,9 @@ export function QuoteBuilderApp() {
           onUpdate={(uid, patch) => dispatch({ type: 'updateProduct', uid, patch })}
           onRemove={(uid) => dispatch({ type: 'removeProduct', uid })}
           ramp={rampFor(state)}
-          onStage={(index, patch) => dispatch({ type: 'rampStage', index, patch })}
-          onAddStage={() => dispatch({ type: 'addRampStage' })}
-          onRemoveStage={(index) => dispatch({ type: 'removeRampStage', index })}
+          onStage={(uid, index, patch) => dispatch({ type: 'rampStage', uid, index, patch })}
+          onAddStage={(uid) => dispatch({ type: 'addRampStage', uid })}
+          onRemoveStage={(uid, index) => dispatch({ type: 'removeRampStage', uid, index })}
           onClearRamp={() => dispatch({ type: 'clearRamp' })}
         />
       )}

@@ -87,11 +87,11 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
 
   // Ramp controls are on the same step as the products.
   // Ramp & schedule only appears once a product's Ramp box is ticked.
-  assert.equal(r.maybeFind(Select, { name: 'rampMonths-1' }), null);
+  assert.equal(r.maybeFind(Select, { name: 'rampMonths-1-1' }), null);
   assert.equal(r.find(Checkbox, { name: 'ramp-1' }).text, 'Ramp');
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
-  r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 3);
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1-1' })));
+  r.find(Select, { name: 'rampMonths-1-1' }).trigger('onChange', 3);
   await r.waitFor(() => assert.match(text(r.getRootNode()), /Auto-approves/)); // 3 months is under the 4+ month rule
   const stats = r.findAll(StatisticsItem).map((s) => [s.props.label, s.props.number]);
   assert.deepEqual(stats, [['MRR (full plan)', '$1,181.25'], ['First 12 months', '$10,631'], ['Total contract value', '$14,175'], ['Savings vs list', '$5,513']]);
@@ -120,7 +120,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   const submit = calls.find((c) => c.name === 'quote_builder_submit');
   assert.equal(submit.parameters.setup.templateId, '10');
   assert.equal(submit.parameters.products[0].quantity, 1250);
-  assert.equal(submit.parameters.ramp.stages[0].months, 3);
+  assert.equal(submit.parameters.products[0].rampStages[0].months, 3);
   assert.equal(submit.parameters.builder.email, 'fake_email@example.com');
   assert.equal(r.mocks.actions.addAlert.callCount, 1);
   assert.equal(r.mocks.actions.addAlert.calls[0][0].type, 'success');
@@ -260,11 +260,11 @@ test('remove a product, untick Ramp, Remove ramp clears every Ramp box', async (
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
   r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', true);
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1-1' })));
   r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', false);
   await r.waitFor(() => assert.equal(r.find(Checkbox, { name: 'ramp-2' }).props.checked, false));
-  r.find(Button, (n) => /"Remove ramp"/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-1' }), null));
+  r.find(Button, (n) => /"Remove all ramps"/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-1-1' }), null));
   assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.checked, false);
   const removes = () => r.findAll(Button, (n) => /"Remove"/.test(text(n)));
   assert.equal(removes().length, 2);
@@ -306,9 +306,9 @@ test('edit an existing draft quote in place; ramp goes up to 12 months', async (
   assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '15 Months');
 
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
-  assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.options.length, 12);
-  assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 9);
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1-1' })));
+  assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.options.length, 12);
+  assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 9);
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Button, (n) => /"Update quote"/.test(text(n)))));
@@ -318,7 +318,7 @@ test('edit an existing draft quote in place; ramp goes up to 12 months', async (
   const submit = calls.find((c) => c.name === 'quote_builder_submit');
   assert.equal(submit.parameters.editQuoteId, 'Q5');
   assert.equal(submit.parameters.products[0].quantity, 1250);
-  assert.equal(submit.parameters.ramp.stages[0].months, 9);
+  assert.equal(submit.parameters.products[0].rampStages[0].months, 9);
 });
 
 test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both stages', async () => {
@@ -336,29 +336,29 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1' })));
-  r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 2);
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1-1' })));
+  r.find(Select, { name: 'rampMonths-1-1' }).trigger('onChange', 2);
   r.find(Button, (n) => /"\+ Add ramp stage"/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-2' })));
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1-2' })));
   // Setup's printed fields are shown read-only on this step
   const ref = (label) => r.find(DescriptionListItem, { label }).text;
   assert.equal(ref('Agreement Length'), '15 Months');
   assert.equal(ref('Payment Frequency'), 'Monthly');
   assert.equal(r.maybeFind(DescriptionListItem, { label: 'Promo' }), null);
   assert.equal(r.maybeFind(Select, { name: 'paymentMethod' }), null); // not editable here
-  assert.equal(r.find(Select, { name: 'rampMode-2' }).props.value, 'percent');
-  assert.equal(r.find(NumberInput, { name: 'rampPercent-2' }).props.value, 50);
-  r.find(Select, { name: 'rampMonths-2' }).trigger('onChange', 2);
+  assert.equal(r.find(Select, { name: 'rampMode-1-2' }).props.value, 'percent');
+  assert.equal(r.find(NumberInput, { name: 'rampPercent-1-2' }).props.value, 50);
+  r.find(Select, { name: 'rampMonths-1-2' }).trigger('onChange', 2);
   await r.waitFor(() => assert.match(text(r.getRootNode()), /"Ramp 2"/));
   const root = text(r.getRootNode());
   assert.match(root, /"Ramp 1"/);
   assert.match(root, /"1–2"/);
   assert.match(root, /"3–4"/);
   assert.match(root, /"5–15"/);
-  assert.match(root, /4 months in total/);
+  assert.match(root, /Ramp: 4 months \(2 mo free, then 2 mo 50% off\); plan bills months 5–15/);
   // Removing stage 2 goes back to a single stage
   r.findAll(Button, (n) => /"Remove stage"/.test(text(n)))[1].trigger('onClick');
-  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-2' }), null));
+  await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-1-2' }), null));
   r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
 });
@@ -375,20 +375,20 @@ test('ramp defaults to the months past 12 and follows Agreement Length; Bundles 
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
-  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 4));
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 4));
   // Change the agreement to 18 months: an untouched default ramp follows (6 months)
   r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '18 Months');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 6));
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 6));
   // A ramp length the rep picked is left alone
-  r.find(Select, { name: 'rampMonths-1' }).trigger('onChange', 2);
+  r.find(Select, { name: 'rampMonths-1-1' }).trigger('onChange', 2);
   r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '24 Months');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 2));
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 2));
 });
 
 test('Optimize365 Ramp box is locked on agreements past 14 months', async () => {
@@ -435,7 +435,7 @@ test('Optimize365 ramp on a 14-month agreement is 2 free months, one stage, lock
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 100);
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
-  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 4));
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 4));
   assert.equal(r.find(Checkbox, { name: 'ramp-2' }).props.readOnly, true); // Optimize can't join a 16-month ramp
 
   r.find(StepIndicator).trigger('onClick', 0);
@@ -444,11 +444,57 @@ test('Optimize365 ramp on a 14-month agreement is 2 free months, one stage, lock
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', true);
-  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.value, 2));
-  assert.equal(r.find(Select, { name: 'rampMonths-1' }).props.readOnly, true);
-  assert.equal(r.find(Select, { name: 'rampMode-1' }).props.value, 'free');
-  assert.equal(r.find(Select, { name: 'rampMode-1' }).props.readOnly, true);
-  assert.equal(r.find(Button, (n) => /\+ Add ramp stage/.test(text(n))).props.disabled, true);
+  // Optimize (product 2) has its own ramp, locked at 2 free months; AutoElevate's followed the agreement to 2 months and stays editable.
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-2-1' }).props.value, 2));
+  assert.equal(r.find(Select, { name: 'rampMonths-2-1' }).props.readOnly, true);
+  assert.equal(r.find(Select, { name: 'rampMode-2-1' }).props.value, 'free');
+  assert.equal(r.find(Select, { name: 'rampMode-2-1' }).props.readOnly, true);
+  assert.equal(r.findAll(Button, (n) => /\+ Add ramp stage/.test(text(n)))[1].props.disabled, true);
+  assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 2);
+  assert.equal(r.find(Select, { name: 'rampMode-1-1' }).props.readOnly, false);
   assert.match(text(r.getRootNode()), /fixed at 2 free months/);
   assert.equal(r.maybeFind(Alert, { title: 'Fix before continuing' }), null);
+});
+
+test('per-product ramps: AutoElevate 3 months free, DNS Filtering 2 months at 50% off on a 15-month agreement', async () => {
+  const r = mk();
+  const calls = [];
+  r.mocks.runServerlessFunction.willCall(async (params) => {
+    calls.push(params);
+    if (params.name === 'quote_builder_catalog') return { status: 'SUCCESS', response: CATALOG_RESPONSE };
+    return { status: 'SUCCESS', response: { ok: true, quoteId: '9', quoteUrl: 'u', title: 't', lineCount: 6, approval: { required: false, reasons: [] } } };
+  });
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Select, { name: 'agreementLength' }).trigger('onChange', '15 Months');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
+  r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
+  r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 500);
+  r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
+  r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', true);
+  // Each product gets its own ramp at the default (15 months → 3 months free).
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-2-1' })));
+  assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 3);
+  assert.equal(r.find(Select, { name: 'rampMonths-2-1' }).props.value, 3);
+  // DNS: 2 months at 50% off. AutoElevate stays 3 months free.
+  r.find(Select, { name: 'rampMonths-2-1' }).trigger('onChange', 2);
+  r.find(Select, { name: 'rampMode-2-1' }).trigger('onChange', 'percent');
+  await r.waitFor(() => assert.equal(r.find(NumberInput, { name: 'rampPercent-2-1' }).props.value, 50));
+  assert.equal(r.find(Select, { name: 'rampMode-1-1' }).props.value, 'free');
+  assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 3);
+  // Schedule: months 1–2 both ramping, month 3 only AutoElevate, then the plan.
+  const root = text(r.getRootNode());
+  assert.match(root, /AutoElevate \(free\), DNS Filtering \(50% off\)/);
+  assert.match(root, /AutoElevate \(free\), DNS Filtering"/);
+  assert.match(root, /"4–15"/);
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
+  r.find(Button, (n) => /Create quote/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(calls.find((c) => c.name === 'quote_builder_submit')));
+  const products = calls.find((c) => c.name === 'quote_builder_submit').parameters.products;
+  assert.deepEqual(products.map((p) => p.rampStages.map((s) => [s.months, s.mode])), [[[3, 'free']], [[2, 'percent']]]);
 });

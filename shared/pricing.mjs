@@ -446,11 +446,20 @@ export function optimizeRampRule(setup) {
   return { allowed: true, months: extra, reason: `Optimize365 ramp: ${extra} free month${extra > 1 ? 's' : ''} on top of the 12-month plan.` };
 }
 
+// A product's own ramp. Each product with Ramp ticked carries its stages (input.rampStages), so AutoElevate
+// can be 2 months free while DNS Filtering is 2 months at 50% off. Quotes saved before per-product ramps
+// kept one shared ramp; `fallback` (that shared ramp) is used for any ticked product without its own stages.
+export function productRamp(input, fallback) {
+  if (!input || !input.ramp) return normalizeRamp(null);
+  const own = Array.isArray(input.rampStages) && input.rampStages.length ? { stages: input.rampStages } : null;
+  return normalizeRamp(Object.assign({}, own || fallback || {}, { enabled: true }));
+}
+
 // The rep picks the Agreement Length (what prints on the quote). It includes any ramp:
-// ramped products run RAMP lines for the ramp months, then the plan for the rest;
-// products not on the ramp run the plan for the whole agreement.
+// each ramped product runs RAMP lines for its own ramp months, then its plan for the rest;
+// products not on a ramp run the plan for the whole agreement.
 export function buildQuote(setup, inputs, rampInput, catalog) {
-  const ramp = normalizeRamp(rampInput);
+  const legacyRamp = rampInput && (Array.isArray(rampInput.stages) ? rampInput.stages.length : rampInput.months) ? rampInput : null;
   const billing = effectiveBilling(setup);
   const priceSetup = Object.assign({}, setup, { billing });
   const m2m = billing === 'm2m';
@@ -458,23 +467,32 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
   const agreement = months || 12;
   const conflicts = [];
   if (!m2m && !months) conflicts.push('Pick an Agreement Length on the Setup step.');
-  if (ramp.enabled && ramp.months > MAX_RAMP_MONTHS) {
-    conflicts.push(`The ramp stages add up to ${ramp.months} months; the most is ${MAX_RAMP_MONTHS}.`);
-  }
-  if (!m2m && ramp.enabled && ramp.months >= agreement) {
-    conflicts.push(`The ${ramp.months}-month ramp is as long as the ${agreement}-month Agreement Length. Pick a longer Agreement Length or a shorter ramp.`);
-  }
-  const multiStage = ramp.stages.length > 1;
+  const optimizeRamp = optimizeRampRule(setup);
 
   const rows = (inputs || []).map((input) => {
     const priced = priceProduct(input, priceSetup, catalog);
     const usable = !priced.error && priced.lines.length > 0;
-    const ramped = ramp.enabled && !!input.ramp && usable;
-    const mainTerm = m2m ? 1 : Math.max(1, ramped ? agreement - ramp.months : agreement);
+    const ramp = productRamp(input, legacyRamp);
+    const ramped = ramp.enabled && usable;
+    const label = FAMILIES[input.family] ? FAMILIES[input.family].label : input.family;
+    if (ramped && ramp.months > MAX_RAMP_MONTHS) {
+      conflicts.push(`${label}: the ramp stages add up to ${ramp.months} months; the most is ${MAX_RAMP_MONTHS}.`);
+    }
+    if (ramped && !m2m && ramp.months >= agreement) {
+      conflicts.push(`${label}: the ${ramp.months}-month ramp is as long as the ${agreement}-month Agreement Length. Pick a longer Agreement Length or a shorter ramp.`);
+    }
+    // Optimize365 ramps only as free months on top of 12 (13 → 1, 14 → 2), billed monthly.
+    if (ramped && input.family === OPTIMIZE_RAMP.family) {
+      if (!optimizeRamp.allowed) conflicts.push(`${optimizeRamp.reason} Untick Ramp on Optimize365, or change the Agreement Length / payment on Setup.`);
+      else if (ramp.stages.length > 1 || ramp.stages[0].mode !== 'free' || ramp.months !== optimizeRamp.months) {
+        conflicts.push(`Optimize365's ramp must be ${optimizeRamp.months} free month${optimizeRamp.months > 1 ? 's' : ''} (one stage, 100% off) on this ${agreement}-month agreement.`);
+      }
+    }
+    const rampMonths = ramped ? ramp.months : 0;
+    const multiStage = ramp.stages.length > 1;
+    const mainTerm = m2m ? 1 : Math.max(1, agreement - rampMonths);
     const valueMonths = m2m ? 12 : mainTerm; // months used to value an open-ended M2M quote
-    const mainLines = priced.lines.map((l) =>
-      Object.assign({}, l, { ramp: false, termMonths: mainTerm, startMonth: ramped ? ramp.months + 1 : 1 })
-    );
+    const mainLines = priced.lines.map((l) => Object.assign({}, l, { ramp: false, termMonths: mainTerm, startMonth: rampMonths + 1 }));
     // One RAMP line per product line per stage: "RAMP …" for a single stage, "RAMP 1 …", "RAMP 2 …" for steps.
     const rampLines = ramped
       ? ramp.stages.flatMap((st, si) =>
@@ -485,6 +503,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
               stage: si + 1,
               termMonths: st.months,
               startMonth: st.startMonth,
+              rampTotal: ramp.months, // this product's whole ramp, for approval_ramp_months
             })
           )
         )
@@ -495,13 +514,15 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
       priced,
       usable,
       ramped,
+      ramp,
+      rampMonths,
       mainTerm,
       valueMonths,
       mainLines,
       rampLines,
       mainMrr: sum(mainLines, 'mrr'),
       rampMrr: sum(rampLines.filter((l) => l.stage === 1), 'mrr'),
-      // Per-stage monthly amount for this product (the billing schedule shows one row per stage).
+      // Per-stage monthly amount for this product (the billing schedule uses one value per stage).
       stageMrr: ramp.stages.map((st, si) => sum(rampLines.filter((l) => l.stage === si + 1), 'mrr')),
       rampValue: rampLines.reduce((a, l) => a + l.mrr * l.termMonths, 0),
       listMrr: sum(mainLines, 'listMrr'),
@@ -517,6 +538,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
   lines.forEach((l, i) => (l.position = i + 1));
 
   const anyRamp = rows.some((r) => r.ramped);
+  const longestRamp = rows.reduce((a, r) => Math.max(a, r.rampMonths), 0);
   let mrr = 0;
   let firstYear = 0;
   let tcv = 0;
@@ -525,10 +547,10 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
   let maxDiscountFamily = null;
   for (const r of rows) {
     if (!r.usable) continue;
-    const rm = r.ramped ? ramp.months : 0;
+    const rm = r.rampMonths;
     mrr += r.mainMrr;
     if (r.ramped) {
-      ramp.stages.forEach((st, si) => {
+      r.ramp.stages.forEach((st, si) => {
         firstYear += Math.max(0, Math.min(12, st.startMonth - 1 + st.months) - (st.startMonth - 1)) * r.stageMrr[si];
       });
     }
@@ -553,26 +575,21 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     maxDiscountFamily,
   };
 
+  // Approval looks at the longest ramp on the quote (each RAMP line also carries its own product's total).
   const approval = evaluateApproval({
     maxDiscountPct,
     maxDiscountFamily,
-    rampMonths: anyRamp ? ramp.months : 0,
+    rampMonths: longestRamp,
     salesTeam: setup.salesTeam,
     templateType: setup.templateType,
   });
 
   const blocking = rows.filter((r) => !r.usable).map((r) => ({ uid: r.input.uid, family: r.input.family, error: r.priced.error }));
-  // Optimize365 ramps only as free months on top of 12 (13 → 1, 14 → 2), billed monthly.
-  const optimizeRamp = optimizeRampRule(setup);
-  if (ramp.enabled && rows.some((r) => r.ramped && r.input.family === OPTIMIZE_RAMP.family)) {
-    if (!optimizeRamp.allowed) conflicts.push(`${optimizeRamp.reason} Untick Ramp on Optimize365, or change the Agreement Length / payment on Setup.`);
-    else if (ramp.stages.length > 1 || ramp.stages[0].mode !== 'free' || ramp.months !== optimizeRamp.months) {
-      conflicts.push(`With Optimize365 on the ramp, the ramp must be ${optimizeRamp.months} free month${optimizeRamp.months > 1 ? 's' : ''} (one stage, 100% off) on this ${agreement}-month agreement.`);
-    }
-  }
   const aeFeature = resolveAeFeature(rows);
   if (aeFeature && aeFeature.conflict) conflicts.push(aeFeature.conflict);
 
+  // `ramp` summarises the quote: on when any product ramps; `months` is the longest product ramp.
+  const ramp = { enabled: anyRamp, months: longestRamp };
   return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp };
 }
 
@@ -612,8 +629,8 @@ export function lineItemProperties(line, { billing, rampMonths, sessionId }) {
     hs_position_on_quote: String(line.position),
     ramp: line.ramp ? 'true' : 'false',
     approval_discount: String(line.ramp ? 0 : line.discountPct),
-    // Total ramp length (all stages), so the approval rule sees a 2 + 2 ramp as 4 months.
-    approval_ramp_months: String(line.ramp ? rampMonths || line.termMonths : 0),
+    // This product's total ramp length (all stages), so the approval rule sees a 2 + 2 ramp as 4 months.
+    approval_ramp_months: String(line.ramp ? line.rampTotal || rampMonths || line.termMonths : 0),
     [LINE_SOURCE_PROPERTY]: LINE_SOURCE_VALUE,
     [LINE_SESSION_PROPERTY]: sessionId,
   };
@@ -766,17 +783,21 @@ export function validateSubmission(payload) {
     if (!(q >= 0 && q <= 1000000)) errors.push(`quantity for ${p.family} is out of range`);
     if (p.family === 'autoelevate' && p.featureType && !AE_FEATURE_TYPES.some((f) => f.value === p.featureType)) errors.push(`unknown AE feature type ${p.featureType}`);
   }
-  if (ramp.enabled) {
-    const raw = Array.isArray(ramp.stages) && ramp.stages.length ? ramp.stages : [ramp];
-    if (raw.length > MAX_RAMP_STAGES) errors.push(`at most ${MAX_RAMP_STAGES} ramp stages`);
+  const checkStages = (raw, who) => {
+    if (raw.length > MAX_RAMP_STAGES) errors.push(`${who}: at most ${MAX_RAMP_STAGES} ramp stages`);
     let total = 0;
     for (const st of raw) {
-      const m = toNum(st.months, NaN);
-      if (!(m >= 1 && m <= MAX_RAMP_MONTHS)) errors.push(`ramp stage months must be 1–${MAX_RAMP_MONTHS}`);
-      if (st.mode === 'percent' && !(toNum(st.percent, NaN) >= 1 && toNum(st.percent, NaN) <= 99)) errors.push('ramp stage percent must be 1–99');
+      const m = toNum(st && st.months, NaN);
+      if (!(m >= 1 && m <= MAX_RAMP_MONTHS)) errors.push(`${who}: ramp stage months must be 1–${MAX_RAMP_MONTHS}`);
+      if (st && st.mode === 'percent' && !(toNum(st.percent, NaN) >= 1 && toNum(st.percent, NaN) <= 99)) errors.push(`${who}: ramp stage percent must be 1–99`);
       total += m || 0;
     }
-    if (total > MAX_RAMP_MONTHS) errors.push(`ramp stages add up to ${total} months; the most is ${MAX_RAMP_MONTHS}`);
+    if (total > MAX_RAMP_MONTHS) errors.push(`${who}: ramp stages add up to ${total} months; the most is ${MAX_RAMP_MONTHS}`);
+  };
+  for (const p of products) {
+    if (p.ramp && Array.isArray(p.rampStages) && p.rampStages.length) checkStages(p.rampStages, p.family);
   }
+  // Older cards sent one shared ramp.
+  if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], 'ramp');
   return errors;
 }

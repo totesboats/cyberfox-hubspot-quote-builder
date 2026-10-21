@@ -6,39 +6,116 @@ import { Row } from './Layout.jsx';
 
 const range = (a, b) => (a === b ? `${a}` : `${a}–${b}`);
 
-// Billing schedule across the Agreement Length: one row per ramp stage, then the plan.
-// Products not on the ramp bill the plan from month 1.
+// Billing schedule across the Agreement Length. Each product ramps on its own schedule, so the ramp
+// months are split wherever any product's stage or ramp ends; then the plan, when every product bills
+// at its quoted price. Products not on a ramp bill the plan from month 1.
 export function scheduleRows(quote) {
   const rows = [];
   const usable = quote.rows.filter((r) => r.usable);
   if (!usable.length) return rows;
-  if (quote.anyRamp) {
-    quote.ramp.stages.forEach((st, si) => {
-      const perMonth = usable.reduce((a, r) => a + (r.ramped ? r.stageMrr[si] : r.mainMrr), 0);
-      const what = usable.map((r) => FAMILIES[r.input.family].label + (r.ramped ? ` (${stageLabel(st).toLowerCase()})` : '')).join(', ');
-      const period = quote.ramp.stages.length > 1 ? `Ramp ${si + 1}` : 'Ramp';
-      rows.push({ key: `ramp-${si}`, ramp: true, period, months: range(st.startMonth, st.startMonth + st.months - 1), what, perMonth, total: perMonth * st.months });
+  const longest = quote.ramp.months;
+  if (quote.anyRamp && longest > 0) {
+    const cuts = new Set([1, longest + 1]);
+    for (const r of usable) {
+      if (!r.ramped) continue;
+      for (const st of r.ramp.stages) cuts.add(st.startMonth);
+      cuts.add(r.rampMonths + 1);
+    }
+    const sorted = [...cuts].filter((m) => m >= 1 && m <= longest + 1).sort((a, b) => a - b);
+    const segments = sorted.slice(0, -1).map((a, i) => [a, sorted[i + 1] - 1]);
+    // Which stage (if any) a product is in during a month.
+    const stageAt = (r, month) => (r.ramped && month <= r.rampMonths ? r.ramp.stages.findIndex((st) => month >= st.startMonth && month < st.startMonth + st.months) : -1);
+    segments.forEach(([a, b], n) => {
+      let perMonth = 0;
+      const what = [];
+      for (const r of usable) {
+        const si = stageAt(r, a);
+        perMonth += si >= 0 ? r.stageMrr[si] : r.mainMrr;
+        what.push(FAMILIES[r.input.family].label + (si >= 0 ? ` (${stageLabel(r.ramp.stages[si]).toLowerCase()})` : ''));
+      }
+      const period = segments.length > 1 ? `Ramp ${n + 1}` : 'Ramp';
+      rows.push({ key: `ramp-${n}`, ramp: true, period, months: range(a, b), what: what.join(', '), perMonth, total: perMonth * (b - a + 1) });
     });
   }
-  const start = quote.anyRamp ? quote.ramp.months + 1 : 1;
+  const start = quote.anyRamp ? longest + 1 : 1;
   const what = usable.map((r) => FAMILIES[r.input.family].label).join(', ') + ' at quoted price';
   if (quote.m2m) {
     rows.push({ key: 'term', period: 'Month-to-month', months: `${start}+`, what, perMonth: quote.totals.mrr, total: null });
-  } else {
+  } else if (start <= quote.term) {
     const n = quote.term - start + 1;
     rows.push({ key: 'term', period: 'Plan', months: range(start, quote.term), what, perMonth: quote.totals.mrr, total: quote.totals.mrr * n });
   }
   return rows;
 }
 
-export function RampSection({ quote, ramp, onStage, onAddStage, onRemoveStage, onClear }) {
+// One product's ramp: its stages (length, pricing, discount), shown inside the product's tile.
+// Optimize365 is locked to its only allowed shape (1–2 free months, one stage).
+export function ProductRamp({ row, quote, onStage, onAddStage, onRemoveStage }) {
+  const uid = row.input.uid;
+  const stages = row.input.rampStages && row.input.rampStages.length ? row.input.rampStages : row.ramp.stages;
+  const total = row.ramp.months;
+  const left = MAX_RAMP_MONTHS - total;
+  const locked = row.input.family === 'optimize365' && quote.optimizeRamp && quote.optimizeRamp.allowed;
+  const planText = quote.m2m ? 'then month-to-month' : total < quote.term ? `plan bills months ${total + 1}–${quote.term}` : 'no plan months left';
+  return (
+    <Flex direction="column" gap="small">
+      {locked && (
+        <Text variant="microcopy" format={{ fontWeight: 'demibold' }}>
+          {`Optimize365's ramp is fixed at ${quote.optimizeRamp.months} free month${quote.optimizeRamp.months > 1 ? 's' : ''} (one stage, 100% off).`}
+        </Text>
+      )}
+      {stages.map((st, i) => (
+        <Row key={i} weights={[1, 1, 1, 0.6]}>
+          <Select
+            label={stages.length > 1 ? `Stage ${i + 1} length` : 'Ramp length'}
+            name={`rampMonths-${uid}-${i + 1}`}
+            options={Array.from({ length: MAX_RAMP_MONTHS }, (_, m) => ({ label: `${m + 1} month${m ? 's' : ''}`, value: m + 1 }))}
+            value={Number(st.months) || 1}
+            readOnly={locked}
+            onChange={(v) => onStage(uid, i, { months: Number(v) })}
+          />
+          <Select
+            label={stages.length > 1 ? `Stage ${i + 1} pricing` : 'Ramp pricing'}
+            name={`rampMode-${uid}-${i + 1}`}
+            options={[
+              { label: 'Free (100% off)', value: 'free' },
+              { label: 'Percent off', value: 'percent' },
+            ]}
+            value={st.mode === 'percent' ? 'percent' : 'free'}
+            readOnly={locked}
+            onChange={(v) => onStage(uid, i, { mode: String(v) })}
+          />
+          <NumberInput
+            label="Discount %"
+            name={`rampPercent-${uid}-${i + 1}`}
+            min={1}
+            max={99}
+            precision={0}
+            readOnly={st.mode !== 'percent'}
+            value={st.mode === 'percent' ? Number(st.percent) || 50 : 100}
+            onChange={(v) => onStage(uid, i, { percent: v })}
+          />
+          <Button variant="secondary" size="sm" disabled={stages.length < 2} onClick={() => onRemoveStage(uid, i)}>
+            Remove stage
+          </Button>
+        </Row>
+      ))}
+      <Flex justify="between" align="center" gap="medium">
+        <Text variant="microcopy">
+          {`Ramp: ${total} month${total === 1 ? '' : 's'}${row.ramp.stages.length > 1 ? ` (${row.ramp.stages.map((s) => `${s.months} mo ${stageLabel(s).toLowerCase()}`).join(', then ')})` : ''}; ${planText}.`}
+        </Text>
+        <Button variant="secondary" size="sm" disabled={locked || stages.length >= MAX_RAMP_STAGES || left < 1} onClick={() => onAddStage(uid)}>
+          + Add ramp stage
+        </Button>
+      </Flex>
+    </Flex>
+  );
+}
+
+// Below the products: the combined billing schedule for every product's ramp.
+export function RampSection({ quote, onClear }) {
   const schedule = scheduleRows(quote);
   const length = quote.m2m ? 'month-to-month' : `${quote.term}-month agreement`;
-  const stages = ramp.stages || [];
-  const total = quote.ramp.months;
-  const left = MAX_RAMP_MONTHS - total;
-  // Optimize365 on the ramp fixes it: one free stage, as long as the agreement runs past 12 (13 → 1, 14 → 2).
-  const optimizeLocked = quote.rows.some((r) => r.ramped && r.input.family === 'optimize365') && quote.optimizeRamp && quote.optimizeRamp.allowed;
   return (
     <Tile>
       <Flex direction="column" gap="medium">
@@ -46,63 +123,11 @@ export function RampSection({ quote, ramp, onStage, onAddStage, onRemoveStage, o
           <Flex direction="column" gap="extra-small">
             <Heading>Ramp & schedule</Heading>
             <Text variant="microcopy">
-              {`Products with Ramp ticked get RAMP line items for the first months of the ${length}; their plan bills for the rest. Add stages to step the discount down (e.g. 2 months free, then 2 months at 50% off). Ramps of ${APPROVAL.rampMonthsThreshold}+ months in total route for approval.`}
+              {`Each product with Ramp ticked has its own ramp (set it in the product above): RAMP line items for its first months of the ${length}, then its plan for the rest. Ramps of ${APPROVAL.rampMonthsThreshold}+ months in total route for approval.`}
             </Text>
           </Flex>
           <Button variant="secondary" size="sm" onClick={onClear}>
-            Remove ramp
-          </Button>
-        </Flex>
-
-        {optimizeLocked && (
-          <Text variant="microcopy" format={{ fontWeight: 'demibold' }}>
-            {`Optimize365 is on this ramp, so it's fixed at ${quote.optimizeRamp.months} free month${quote.optimizeRamp.months > 1 ? 's' : ''} (one stage, 100% off). Untick Ramp on Optimize365 to change it.`}
-          </Text>
-        )}
-
-        {stages.map((st, i) => (
-          <Row key={i} weights={[1, 1, 1, 0.6]}>
-            <Select
-              label={stages.length > 1 ? `Stage ${i + 1} length` : 'Ramp length'}
-              name={`rampMonths-${i + 1}`}
-              options={Array.from({ length: MAX_RAMP_MONTHS }, (_, m) => ({ label: `${m + 1} month${m ? 's' : ''}`, value: m + 1 }))}
-              value={Number(st.months) || 1}
-              readOnly={optimizeLocked}
-              onChange={(v) => onStage(i, { months: Number(v) })}
-            />
-            <Select
-              label={stages.length > 1 ? `Stage ${i + 1} pricing` : 'Ramp pricing'}
-              name={`rampMode-${i + 1}`}
-              options={[
-                { label: 'Free (100% off)', value: 'free' },
-                { label: 'Percent off', value: 'percent' },
-              ]}
-              value={st.mode === 'percent' ? 'percent' : 'free'}
-              readOnly={optimizeLocked}
-              onChange={(v) => onStage(i, { mode: String(v) })}
-            />
-            <NumberInput
-              label="Discount %"
-              name={`rampPercent-${i + 1}`}
-              min={1}
-              max={99}
-              precision={0}
-              readOnly={st.mode !== 'percent'}
-              value={st.mode === 'percent' ? Number(st.percent) || 50 : 100}
-              onChange={(v) => onStage(i, { percent: v })}
-            />
-            <Button variant="secondary" size="sm" disabled={stages.length < 2} onClick={() => onRemoveStage(i)}>
-              Remove stage
-            </Button>
-          </Row>
-        ))}
-
-        <Flex justify="between" align="center" gap="medium">
-          <Text variant="microcopy">
-            {`Ramp: ${total} month${total === 1 ? '' : 's'} in total${quote.ramp.stages.length > 1 ? ` (${quote.ramp.stages.map((s) => `${s.months} mo ${stageLabel(s).toLowerCase()}`).join(', then ')})` : ''}${left > 0 ? `; up to ${left} more available` : ''}.`}
-          </Text>
-          <Button variant="secondary" size="sm" disabled={optimizeLocked || stages.length >= MAX_RAMP_STAGES || left < 1} onClick={onAddStage}>
-            + Add ramp stage
+            Remove all ramps
           </Button>
         </Flex>
 

@@ -422,3 +422,56 @@ test('Optimize365 ramp is blocked past 14 months, on annual payment, and when th
   assert.deepEqual(q.conflicts, []);
   assert.equal(q.lines.filter((l) => l.ramp).length, 2); // AE lines only
 });
+
+// ---------------------------------------------------------------------------
+// Per-product ramps
+const dnsRow = (over = {}) => Object.assign({ uid: 3, family: 'dns', edition: 'standard', quantity: 500, discountPct: 0, ramp: true }, over);
+
+test('each product has its own ramp: AutoElevate 2 months free, DNS 2 months at 50% off', () => {
+  const s = Object.assign({}, MSP, { agreementLength: '14 Months' });
+  const q = P.buildQuote(s, [ae({ rampStages: [{ months: 2, mode: 'free' }] }), dnsRow({ rampStages: [{ months: 2, mode: 'percent', percent: 50 }] })], { enabled: true }, CATALOG);
+  assert.deepEqual(q.conflicts, []);
+  const ramps = q.lines.filter((l) => l.ramp);
+  assert.deepEqual(ramps.filter((l) => /AE/.test(l.sku)).map((l) => l.discountPct), [100, 100]);
+  assert.deepEqual(ramps.filter((l) => /DNS/.test(l.sku)).map((l) => l.discountPct), [50]);
+  assert.ok(q.lines.filter((l) => !l.ramp).every((l) => l.termMonths === 12));
+});
+
+test('products can ramp for different lengths; approval uses the longest; each RAMP line carries its own total', () => {
+  const s = Object.assign({}, MSP, { agreementLength: '16 Months' });
+  const q = P.buildQuote(s, [ae({ rampStages: [{ months: 4, mode: 'free' }] }), dnsRow({ rampStages: [{ months: 2, mode: 'percent', percent: 50 }] })], { enabled: true }, CATALOG);
+  assert.deepEqual(q.conflicts, []);
+  assert.equal(q.ramp.months, 4);
+  assert.equal(q.approval.required, true); // 4-month AE ramp
+  const aePlan = q.lines.find((l) => !l.ramp && /AE/.test(l.sku));
+  const dnsPlan = q.lines.find((l) => !l.ramp && /DNS/.test(l.sku));
+  assert.deepEqual([aePlan.termMonths, aePlan.startMonth, dnsPlan.termMonths, dnsPlan.startMonth], [12, 5, 14, 3]);
+  const props = (l) => P.lineItemProperties(l, { billing: 'monthly', sessionId: 's' });
+  assert.equal(props(q.lines.find((l) => l.ramp && /AE/.test(l.sku))).approval_ramp_months, '4');
+  assert.equal(props(q.lines.find((l) => l.ramp && /DNS/.test(l.sku))).approval_ramp_months, '2');
+  // DNS only: a 2-month ramp alone auto-approves.
+  assert.equal(P.buildQuote(s, [dnsRow({ rampStages: [{ months: 2, mode: 'free' }] })], { enabled: true }, CATALOG).approval.required, false);
+});
+
+test('a product ramp that is too long is reported against that product', () => {
+  const s = Object.assign({}, MSP, { agreementLength: '12 Months' });
+  const q = P.buildQuote(s, [ae({ rampStages: [{ months: 2, mode: 'free' }] }), dnsRow({ rampStages: [{ months: 12, mode: 'free' }] })], { enabled: true }, CATALOG);
+  assert.equal(q.conflicts.length, 1);
+  assert.match(q.conflicts[0], /^DNS Filtering: the 12-month ramp is as long as the 12-month Agreement Length/);
+});
+
+test('Optimize365 keeps its own 2 free months while AutoElevate ramps 4 on a 14-month agreement', () => {
+  const s = Object.assign({}, MSP, { agreementLength: '14 Months' });
+  const q = P.buildQuote(s, [ae({ rampStages: [{ months: 4, mode: 'free' }] }), opt({ rampStages: [{ months: 2, mode: 'free' }] })], { enabled: true }, OPT_CATALOG);
+  assert.deepEqual(q.conflicts, []);
+  const bad = P.buildQuote(s, [opt({ rampStages: [{ months: 2, mode: 'percent', percent: 50 }] })], { enabled: true }, OPT_CATALOG);
+  assert.match(bad.conflicts[0], /Optimize365's ramp must be 2 free months/);
+});
+
+test('submission checks each product ramp', () => {
+  const base = { setup: { segment: 'MSP', billing: 'monthly', agreementLength: '14 Months', templateId: '1', expirationDate: '2026-11-30' } };
+  const ok = P.validateSubmission(Object.assign({}, base, { products: [ae({ rampStages: [{ months: 2, mode: 'percent', percent: 50 }] })] }));
+  assert.deepEqual(ok, []);
+  const bad = P.validateSubmission(Object.assign({}, base, { products: [dnsRow({ rampStages: [{ months: 2, mode: 'percent', percent: 150 }] })] }));
+  assert.match(bad.join(' '), /dns: ramp stage percent must be 1–99/);
+});

@@ -9,7 +9,7 @@ export function SummaryPanel({ quote, template, dealQuoteCount }) {
   const t = quote.totals;
   const a = quote.approval;
   const usable = quote.rows.filter((r) => r.usable);
-  const length = t.contractMonths == null ? 'Month-to-month' : `${t.contractMonths} months${quote.anyRamp ? ` incl. ${quote.ramp.months}-mo ramp` : ''}`;
+  const length = t.contractMonths == null ? 'Month-to-month' : `${t.contractMonths} months${quote.anyRamp ? ` incl. ${new Set(quote.rows.filter((r) => r.ramped).map((r) => r.rampMonths)).size > 1 ? 'up to ' : ''}${quote.ramp.months}-mo ramp` : ''}`;
 
   const header = (
     <Flex gap="small" align="center" wrap>

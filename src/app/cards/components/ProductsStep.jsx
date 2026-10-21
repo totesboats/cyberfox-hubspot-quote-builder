@@ -4,7 +4,7 @@ import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, SEGMENTS } from '../lib/config.js';
 import { formatMoney } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
-import { RampSection } from './RampSection.jsx';
+import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
 function StandardFields({ input, priced, family, onUpdate }) {
@@ -112,7 +112,8 @@ function TimusFields({ input, priced, onUpdate }) {
   );
 }
 
-function ProductTile({ row, optimizeRamp, onUpdate, onRemove }) {
+function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRemoveStage }) {
+  const optimizeRamp = quote.optimizeRamp;
   const { input, priced } = row;
   const family = FAMILIES[input.family];
   const edition =
@@ -128,7 +129,7 @@ function ProductTile({ row, optimizeRamp, onUpdate, onRemove }) {
           <Flex gap="small" align="center">
             <Heading>{family.label}</Heading>
             <Tag>{edition.label}</Tag>
-            {row.ramped && <Tag variant="warning">{row.rampLines[0] ? `${row.rampLines[0].termMonths}-mo ramp` : 'Ramp'}</Tag>}
+            {row.ramped && <Tag variant="warning">{`${row.rampMonths}-mo ramp`}</Tag>}
           </Flex>
           <Flex gap="small" align="center">
             <Text format={{ fontWeight: 'demibold' }}>{mrr}</Text>
@@ -163,12 +164,14 @@ function ProductTile({ row, optimizeRamp, onUpdate, onRemove }) {
           description={
             input.family === 'optimize365' && optimizeRamp
               ? optimizeRamp.reason
-              : 'Adds RAMP line items for the first months; set the length and pricing under Ramp & schedule.'
+              : 'Gives this product its own ramp: RAMP line items for its first months, at the length and discount you set below.'
           }
           onChange={(checked) => update({ ramp: checked })}
         >
           Ramp
         </Checkbox>
+
+        {input.ramp && <ProductRamp row={row} quote={quote} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />}
 
         {row.mainLines.length > 0 && <LineTable lines={row.rampLines.concat(row.mainLines)} />}
       </Flex>
@@ -197,7 +200,7 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
       ))}
 
       {quote.rows.map((row) => (
-        <ProductTile key={row.input.uid} row={row} optimizeRamp={quote.optimizeRamp} onUpdate={onUpdate} onRemove={onRemove} />
+        <ProductTile key={row.input.uid} row={row} quote={quote} onUpdate={onUpdate} onRemove={onRemove} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />
       ))}
 
       <Tile compact>
@@ -213,7 +216,7 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
         </Flex>
       </Tile>
 
-      {ramp.enabled && <RampSection quote={quote} ramp={ramp} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} onClear={onClearRamp} />}
+      {quote.anyRamp && <RampSection quote={quote} onClear={onClearRamp} />}
     </Flex>
   );
 }

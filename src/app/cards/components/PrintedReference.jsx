@@ -17,8 +17,15 @@ export function PrintedReference({ writes, dealOptions, ramp, quote, onEdit }) {
     const o = ((dealOptions && dealOptions[name]) || []).find((x) => x.value === value);
     return o ? o.label : value;
   };
-  const planStart = ramp && ramp.enabled && quote.anyRamp ? quote.ramp.months + 1 : 1;
-  const split = quote.m2m ? 'Month-to-month: plans renew monthly.' : quote.anyRamp ? `Ramp months 1–${quote.ramp.months}, plan months ${planStart}–${quote.term}.` : `Plan runs months 1–${quote.term}.`;
+  // Products can ramp for different lengths; say so when they do.
+  const lengths = [...new Set(quote.rows.filter((r) => r.ramped).map((r) => r.rampMonths))];
+  const split = quote.m2m
+    ? 'Month-to-month: plans renew monthly.'
+    : !quote.anyRamp
+      ? `Plan runs months 1–${quote.term}.`
+      : lengths.length === 1
+        ? `Ramp months 1–${lengths[0]}, plan months ${lengths[0] + 1}–${quote.term}.`
+        : `Ramps run up to ${quote.ramp.months} months; each product's plan bills after its own ramp, through month ${quote.term}.`;
   return (
     <Tile compact>
       <Flex direction="column" gap="small">
