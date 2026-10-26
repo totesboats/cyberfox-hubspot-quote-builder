@@ -2,7 +2,7 @@
 'use strict';
 // Pure pricing, ramp and approval logic shared by the card (live preview) and the
 // submit function (authoritative rebuild). No HubSpot calls in here.
-const { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP } = require('./config.js');
+const { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS } = require('./config.js');
 
 function toNum(v, fallback = 0) {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -44,20 +44,35 @@ function normalizeProduct(record) {
     billing: p.qb_billing || 'monthly',
     tier: tierRaw != null && tierRaw !== '' ? toNum(tierRaw, null) : null,
     component: p.qb_component || 'base',
+    folder: (p.hs_folder || '').replace(/ \(auto_generated.*$/, '').trim(),
+    frequency: p.recurringbillingfrequency || '',
   };
+}
+
+// The product family a one-off SKU belongs to (by its name/SKU), and its edition (Advanced in the name → advanced).
+function oneOffFamily(p) {
+  const text = `${p.name || ''} ${p.sku || ''}`;
+  const hit = ONE_OFF_FAMILY_PATTERNS.find(([, re]) => re.test(text));
+  return { baseFamily: hit ? hit[0] : null, baseEdition: /advanced/i.test(text) ? 'advanced' : 'standard' };
 }
 
 function catalogKey(family, edition, segment, billing) {
   return [family, edition, segment, billing].join('|');
 }
 
-// Builds { tiers: { key: { tier: { base, additional } } }, timus: { minimum, satgat }, issues }
+// Builds { tiers: { key: { tier: { base, additional } } }, timus: { minimum, satgat }, oneOffs, issues }
 function indexCatalog(records) {
   const tiers = {};
   const timus = { minimum: null, satgat: {} };
+  const oneOffs = [];
   const issues = [];
   for (const record of records || []) {
     const p = normalizeProduct(record);
+    // One-off SKUs are picked by the rep from their folder, never by tier.
+    if (p.folder === ONE_OFF_FOLDER) {
+      oneOffs.push(Object.assign(p, oneOffFamily(p)));
+      continue;
+    }
     if (!p.family || !FAMILIES[p.family]) continue;
     if (p.family === 'timus') {
       if (p.component === 'minimum') timus.minimum = p;
@@ -78,7 +93,8 @@ function indexCatalog(records) {
     }
     tiers[key][p.tier][slot] = p;
   }
-  return { tiers, timus, issues };
+  oneOffs.sort((a, b) => a.name.localeCompare(b.name));
+  return { tiers, timus, oneOffs, issues };
 }
 
 // Quote templates from /crm/v3/objects/quote_templates → rep-facing list.
@@ -180,6 +196,7 @@ function priceProduct(input, setup, catalog) {
     return result;
   }
   if (input.family === 'timus') return priceTimus(input, setup, catalog, result);
+  if (input.family === 'oneoff') return priceOneOff(input, catalog, result);
 
   const edition = effectiveEdition(input);
   const key = catalogKey(input.family, edition, setup.segment, setup.billing);
@@ -257,6 +274,47 @@ function priceProduct(input, setup, catalog) {
 // agreements use a SATGAT SKU. The rep enters the per-user and per-gateway prices, which print on the
 // quote through the deal properties Timus Price Per User / Timus Price Per Gateway.
 const entered = (v) => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v));
+
+// A one-off SKU: the product the rep picked, at its own price and billing frequency, × quantity.
+const ONE_OFF_FREQUENCIES = { monthly: false, annually: true };
+function priceOneOff(input, catalog, result) {
+  const p = ((catalog && catalog.oneOffs) || []).find((o) => o.id === String(input.productId || ''));
+  if (!input.productId) {
+    result.error = 'Pick a one-off SKU.';
+    return result;
+  }
+  if (!p) {
+    result.error = `That one-off SKU is no longer active in the ${ONE_OFF_FOLDER} folder. Pick another.`;
+    return result;
+  }
+  Object.assign(result, { baseFamily: p.baseFamily, baseEdition: p.baseEdition, productName: p.name });
+  if (!(p.frequency in ONE_OFF_FREQUENCIES)) {
+    result.error = `${p.name} has billing frequency "${p.frequency || 'none'}". One-off SKUs need Monthly or Annually (one-time charges aren't supported yet).`;
+    return result;
+  }
+  if (!result.quantity) {
+    result.error = 'Enter a quantity.';
+    return result;
+  }
+  const annual = ONE_OFF_FREQUENCIES[p.frequency];
+  result.annual = annual;
+  result.lines.push(
+    makeLine({ family: 'oneoff', kind: 'base', productId: p.id, name: p.name, sku: p.sku, quantity: result.quantity, unitPrice: p.price, discountPct: result.discountPct, annual })
+  );
+  result.hint = `${p.name}: ${formatMoney(p.price)}${annual ? '/yr' : '/mo'} each, from the product library.`;
+  return result;
+}
+
+// The family a row counts as for product rules and wording: a one-off SKU counts as its product's family.
+function rowFamily(row) {
+  return row.input.family === 'oneoff' ? row.priced.baseFamily || 'oneoff' : row.input.family;
+}
+
+// What to call a row on screen: the family, or a one-off's product name.
+function rowLabel(row) {
+  if (row.input.family === 'oneoff') return row.priced.productName || FAMILIES.oneoff.label;
+  return FAMILIES[row.input.family] ? FAMILIES[row.input.family].label : row.input.family;
+}
 
 function priceTimus(input, setup, catalog, result) {
   const gateways = Math.max(0, Math.round(toNum(input.gateways)));
@@ -340,16 +398,22 @@ function effectiveEdition(input) {
   return ft ? ft.edition : input.edition;
 }
 
+// The AE Feature Type a row implies: the rep's pick, or for a one-off AutoElevate SKU its edition.
+function rowFeatureType(r) {
+  if (r.input.family === 'oneoff') return AE_FEATURE_TYPES.find((f) => f.edition === r.priced.baseEdition) || AE_FEATURE_TYPES[0];
+  return aeFeatureTypeFor(r.input);
+}
+
 function resolveAeFeature(rows) {
-  const aeRows = (rows || []).filter((r) => r.input.family === 'autoelevate');
+  const aeRows = (rows || []).filter((r) => r.input.family === 'autoelevate' || (r.input.family === 'oneoff' && r.priced.baseFamily === 'autoelevate'));
   if (!aeRows.length) return null;
-  const types = Array.from(new Set(aeRows.map((r) => aeFeatureTypeFor(r.input).value)));
+  const types = Array.from(new Set(aeRows.map((r) => rowFeatureType(r).value)));
   if (types.length > 1) {
     return {
       conflict: `AutoElevate lines use different feature types (${types.join(', ')}). The deal holds one AE Feature Type, so the quote can only print one. Use one feature type, or split into separate quotes.`,
     };
   }
-  const ft = aeFeatureTypeFor(aeRows[0].input);
+  const ft = rowFeatureType(aeRows[0]);
   const priced = aeRows.find((r) => r.usable) || aeRows[0];
   const tier = priced.priced.chosenTier;
   return { type: ft.value, details: ft.details.replace('{tier}', tier ? formatInt(tier) : '[commit tier]'), tier };
@@ -453,7 +517,7 @@ function buildQuote(setup, inputs, rampInput, catalog) {
     const usable = !priced.error && priced.lines.length > 0;
     const ramp = productRamp(input, legacyRamp);
     const ramped = ramp.enabled && usable;
-    const label = FAMILIES[input.family] ? FAMILIES[input.family].label : input.family;
+    const label = rowLabel({ input, priced });
     if (ramped && ramp.months > MAX_RAMP_MONTHS) {
       conflicts.push(`${label}: the ramp stages add up to ${ramp.months} months; the most is ${MAX_RAMP_MONTHS}.`);
     }
@@ -461,7 +525,7 @@ function buildQuote(setup, inputs, rampInput, catalog) {
       conflicts.push(`${label}: the ${ramp.months}-month ramp is as long as the ${agreement}-month Agreement Length. Pick a longer Agreement Length or a shorter ramp.`);
     }
     // Optimize365 ramps only as free months on top of 12 (13 → 1, 14 → 2), billed monthly.
-    if (ramped && input.family === OPTIMIZE_RAMP.family) {
+    if (ramped && rowFamily({ input, priced }) === OPTIMIZE_RAMP.family) {
       if (!optimizeRamp.allowed) conflicts.push(`${optimizeRamp.reason} Untick Ramp on Optimize365, or change the Agreement Length / payment on Setup.`);
       else if (ramp.stages.length > 1 || ramp.stages[0].mode !== 'free' || ramp.months !== optimizeRamp.months) {
         conflicts.push(`Optimize365's ramp must be ${optimizeRamp.months} free month${optimizeRamp.months > 1 ? 's' : ''} (one stage, 100% off) on this ${agreement}-month agreement.`);
@@ -490,6 +554,8 @@ function buildQuote(setup, inputs, rampInput, catalog) {
     const sum = (ls, k) => ls.reduce((a, l) => a + l[k], 0);
     return {
       input,
+      family: rowFamily({ input, priced }),
+      label,
       priced,
       usable,
       ramped,
@@ -538,7 +604,7 @@ function buildQuote(setup, inputs, rampInput, catalog) {
     listTcv += (rm + r.valueMonths) * r.listMrr;
     if (r.priced.discountPct > maxDiscountPct) {
       maxDiscountPct = r.priced.discountPct;
-      maxDiscountFamily = r.input.family;
+      maxDiscountFamily = r.family;
     }
   }
 
@@ -569,7 +635,7 @@ function buildQuote(setup, inputs, rampInput, catalog) {
 
   // `ramp` summarises the quote: on when any product ramps; `months` is the longest product ramp.
   const ramp = { enabled: anyRamp, months: longestRamp };
-  return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp };
+  return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [] };
 }
 
 function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
@@ -732,10 +798,13 @@ function parseBuilderState(value) {
   }
 }
 
-function autoQuoteName(companyName, inputs, rampMonths) {
+function autoQuoteName(companyName, inputs, rampMonths, catalog) {
   const seen = [];
   for (const i of inputs || []) {
-    const label = FAMILIES[i.family] ? FAMILIES[i.family].label : null;
+    // A one-off SKU is named by its product's family (AutoElevate, Optimize365 …) when known.
+    const one = i.family === 'oneoff' && catalog && (catalog.oneOffs || []).find((o) => o.id === String(i.productId || ''));
+    const fam = i.family === 'oneoff' ? (one && one.baseFamily) || 'oneoff' : i.family;
+    const label = FAMILIES[fam] ? FAMILIES[fam].label : null;
     if (label && !seen.includes(label)) seen.push(label);
   }
   const base = `${companyName || 'Quote'} - ${seen.join(' + ') || 'Quote'}`;
@@ -761,6 +830,7 @@ function validateSubmission(payload) {
     const q = toNum(p.quantity, NaN);
     if (!(q >= 0 && q <= 1000000)) errors.push(`quantity for ${p.family} is out of range`);
     if (p.family === 'autoelevate' && p.featureType && !AE_FEATURE_TYPES.some((f) => f.value === p.featureType)) errors.push(`unknown AE feature type ${p.featureType}`);
+    if (p.family === 'oneoff' && p.productId != null && typeof p.productId !== 'string' && typeof p.productId !== 'number') errors.push('one-off productId must be an id');
   }
   const checkStages = (raw, who) => {
     if (raw.length > MAX_RAMP_STAGES) errors.push(`${who}: at most ${MAX_RAMP_STAGES} ramp stages`);
@@ -781,4 +851,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, rowFamily, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };

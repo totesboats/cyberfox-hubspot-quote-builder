@@ -46,6 +46,33 @@ function StandardFields({ input, priced, family, onUpdate }) {
   );
 }
 
+// One-off SKU: pick the product from the One-Off SKUs folder; its price and billing come from HubSpot.
+function OneOffFields({ input, priced, oneOffs, onUpdate }) {
+  const options = oneOffs.length
+    ? [{ label: 'Choose a one-off SKU', value: NONE }].concat(
+        oneOffs.map((o) => ({ label: `${o.name} — ${formatMoney(o.price)}${o.frequency === 'annually' ? '/yr' : '/mo'}`, value: o.id }))
+      )
+    : [{ label: 'No active products in the One-Off SKUs folder', value: NONE }];
+  return (
+    <Row weights={[3, 1, 1]}>
+      <Select
+        label="One-off SKU"
+        name={`oneoff-${input.uid}`}
+        tooltip="Products in the One-Off SKUs folder of the product library. Price and billing frequency come from the product."
+        options={options}
+        value={toSelect(input.productId)}
+        onChange={(v) => {
+          const id = fromSelect(v);
+          const picked = oneOffs.find((o) => o.id === id);
+          onUpdate({ productId: id, baseFamily: picked ? picked.baseFamily : null });
+        }}
+      />
+      <NumberInput label="Quantity" name={`qty-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
+      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
+    </Row>
+  );
+}
+
 function TimusFields({ input, priced, onUpdate }) {
   const t = priced.timus || { satgatTiers: [] };
   const satgat = input.agreement === 'satgat';
@@ -119,7 +146,9 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
   const edition =
     input.family === 'autoelevate'
       ? { label: input.featureType || 'Standard' }
-      : family.editions.find((e) => e.value === input.edition) || family.editions[0];
+      : input.family === 'oneoff'
+        ? { label: priced.baseFamily && FAMILIES[priced.baseFamily] ? `One-off · ${FAMILIES[priced.baseFamily].label}` : 'One-off' }
+        : family.editions.find((e) => e.value === input.edition) || family.editions[0];
   const mrr = row.mainLines.length ? `${formatMoney(row.mainMrr)}/mo` : '—';
   const update = (patch) => onUpdate(input.uid, patch);
   return (
@@ -127,7 +156,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
       <Flex direction="column" gap="medium">
         <Flex justify="between" align="center" gap="medium">
           <Flex gap="small" align="center">
-            <Heading>{family.label}</Heading>
+            <Heading>{input.family === 'oneoff' ? priced.productName || family.label : family.label}</Heading>
             <Tag>{edition.label}</Tag>
             {row.ramped && <Tag variant="warning">{`${row.rampMonths}-mo ramp`}</Tag>}
           </Flex>
@@ -141,6 +170,8 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
 
         {input.family === 'timus' ? (
           <TimusFields input={input} priced={priced} onUpdate={update} />
+        ) : input.family === 'oneoff' ? (
+          <OneOffFields input={input} priced={priced} oneOffs={quote.oneOffs || []} onUpdate={update} />
         ) : (
           <StandardFields input={input} priced={priced} family={family} onUpdate={update} />
         )}
@@ -160,9 +191,9 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         <Checkbox
           name={`ramp-${input.uid}`}
           checked={!!input.ramp}
-          readOnly={input.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp}
+          readOnly={row.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp}
           description={
-            input.family === 'optimize365' && optimizeRamp
+            row.family === 'optimize365' && optimizeRamp
               ? optimizeRamp.reason
               : 'Gives this product its own ramp: RAMP line items for its first months, at the length and discount you set below.'
           }

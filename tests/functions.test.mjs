@@ -15,6 +15,8 @@ const PRODUCTS = [
   prod('Standard-AE-1000-Agent-Commit-2026', 1050, 'autoelevate', 'standard', 'MSP', 'monthly', 1000),
   prod('Standard-AE-1000-Agent-Commit-Additional-Agents+2026', 1.05, 'autoelevate', 'standard', 'MSP', 'monthly', 1000, 'additional'),
   prod('Timus SASE - Monthly Minimum', 250, 'timus', 'advanced', 'MSP', 'monthly', null, 'minimum'),
+  // A one-off SKU: untagged, lives in the One-Off SKUs folder.
+  { id: '9900', properties: { name: 'Optimize365 4000 User Plan', hs_sku: 'Optimize365-4000-User-Commit', hs_price_usd: '4800', hs_folder: 'One-Off SKUs', recurringbillingfrequency: 'monthly' } },
 ];
 
 function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
@@ -128,7 +130,7 @@ test('catalog function returns tagged products, templates and deal context', asy
   fakeHubSpot();
   const res = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 2585282 });
   assert.equal(res.ok, true);
-  assert.equal(res.products.length, 3);
+  assert.equal(res.products.length, 4); // 3 tagged + 1 one-off SKU
   assert.deepEqual(res.templates.map((t) => t.templateType), ['CPQ_QUOTE', 'CUSTOMIZABLE_QUOTE_TEMPLATE']);
   assert.equal(res.deal.company.name, 'Example MSP');
   assert.deepEqual(res.dealOptions.payment_method.map((o) => o.value), ['ACH', 'Credit Card']); // hidden options are dropped
@@ -425,4 +427,20 @@ test('HubSpot Quote Notes is never written (reps keep their own verbiage there)'
   const res = await submitFn().main({ parameters: payload({ notes: 'should be ignored' }), accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   assert.ok(!('hubspot_quote_notes' in store.dealPatch));
+});
+
+test('one-off SKUs: catalog reads the One-Off SKUs folder; submit writes the picked product at its own price', async () => {
+  const { log, store } = fakeHubSpot();
+  const cat = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
+  const search = log.find((l) => l.path === '/crm/v3/objects/products/search');
+  assert.ok(search.body.filterGroups.some((g) => g.filters.some((f) => f.propertyName === 'hs_folder' && f.value === 'One-Off SKUs')));
+  assert.ok(cat.products.some((p) => p.id === '9900'));
+  const res = await submitFn().main({
+    parameters: payload({ products: [{ uid: 1, family: 'oneoff', productId: '9900', quantity: 1, discountPct: 0, ramp: false }], ramp: { enabled: false } }),
+    accountId: 1,
+  });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.equal(res.title, 'Example MSP - Optimize365');
+  const created = log.filter((l) => l.path === '/crm/v3/objects/line_items/batch/create').flatMap((l) => l.body.inputs.map((i) => i.properties));
+  assert.ok(created.length >= 1 && created.every((p) => p.hs_product_id === '9900' && p.price === '4800' && p.hs_recurring_billing_period === 'P15M'));
 });

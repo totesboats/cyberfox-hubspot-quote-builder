@@ -64,7 +64,7 @@ export function SummaryPanel({ quote, template, dealQuoteCount }) {
         {usable.length > 0 && (
           <Flex gap="small" wrap>
             {usable.map((r) => (
-              <Tag key={r.input.uid}>{`${FAMILIES[r.input.family].label} ${formatMoney(r.mainMrr)}/mo`}</Tag>
+              <Tag key={r.input.uid}>{`${r.label} ${formatMoney(r.mainMrr)}/mo`}</Tag>
             ))}
           </Flex>
         )}

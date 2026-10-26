@@ -91,6 +91,7 @@ Create company **TEST – Quote Builder**, a contact with a job title, and a dea
 | 5 | Enterprise + Annual SKUs, Password Manager + DNS | Annual SKUs; Payment Frequency Annual Payments |
 | 6 | Timus: 150 users, 2 gateways, Price Per User 4.50, Price Per Gateway 50, minimum $1,000; then SATGAT II | Monthly Minimum line at $1,000 (SATGAT II line at $500); Timus Price Per User / Per Gateway / New Minimum Commitment set on the deal and printed; Timus Price List untouched; check the legacy Timus template too |
 | 7 | Publish #1 → New option from this → 250 agents, not primary → Make primary | #1 keeps its printed values; deal amount switches on Make primary |
+| 8 | + One-off SKU → pick a product from the One-Off SKUs folder, quantity 1 | One line at the product's own price; product name on the tile and line; an AutoElevate one-off sets AE Feature Type |
 
 For each: preview the quote (tokens print correctly) and check the deal's line items and fields.
 

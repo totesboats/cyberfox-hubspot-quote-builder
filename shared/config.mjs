@@ -40,6 +40,14 @@ export const FAMILIES = {
     unitSingular: 'User',
     editions: [{ value: 'standard', label: 'Standard' }],
   },
+  // One-off SKUs: custom products built for a single deal, kept in the "One-Off SKUs" product folder.
+  // The rep picks the product; price and billing frequency come from the product itself.
+  oneoff: {
+    label: 'One-off SKU',
+    unit: 'units',
+    unitSingular: 'Unit',
+    editions: [{ value: 'standard', label: 'One-off' }],
+  },
   bundle: {
     label: 'CyberFOX Bundle',
     unit: 'users',
@@ -55,7 +63,19 @@ export const OPTIMIZE_RAMP = { family: 'optimize365', planMonths: 12, maxMonths:
 
 // Products reps can add (in this order). CyberFOX Bundles are being retired (SKUs off Jan 1), so they
 // can't be added to new quotes; saved quotes that already include a bundle still load and edit.
-export const FAMILY_ORDER = ['autoelevate', 'password', 'dns', 'timus', 'optimize365'];
+export const FAMILY_ORDER = ['autoelevate', 'password', 'dns', 'timus', 'optimize365', 'oneoff'];
+// Product folder whose active products reps can quote as one-off SKUs (read live; no tagging needed).
+export const ONE_OFF_FOLDER = 'One-Off SKUs';
+// Which product family a one-off SKU belongs to, read from its name/SKU (for quote wording, templates and
+// product rules such as Optimize365 ramps). First match wins.
+/** @type {Array<[string, RegExp]>} */
+export const ONE_OFF_FAMILY_PATTERNS = [
+  ['autoelevate', /autoelevate|(^|[^a-z])ae([^a-z]|$)/i],
+  ['optimize365', /optimize/i],
+  ['dns', /dns/i],
+  ['password', /password|(^|[^a-z])pb([^a-z]|$)/i],
+  ['timus', /timus/i],
+];
 
 export const SEGMENTS = [
   { value: 'MSP', label: 'MSP' },

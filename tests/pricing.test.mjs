@@ -476,3 +476,57 @@ test('submission checks each product ramp', () => {
   const bad = P.validateSubmission(Object.assign({}, base, { products: [dnsRow({ rampStages: [{ months: 2, mode: 'percent', percent: 150 }] })] }));
   assert.match(bad.join(' '), /dns: ramp stage percent must be 1–99/);
 });
+
+// ---------------------------------------------------------------------------
+// One-off SKUs
+const oneOffRec = (id, name, sku, price, frequency = 'monthly') => ({ id, properties: { name, hs_sku: sku, hs_price_usd: String(price), hs_folder: 'One-Off SKUs', recurringbillingfrequency: frequency } });
+const ONE_OFF_CATALOG = P.indexCatalog(RECORDS.concat([
+  oneOffRec('7001', 'Advanced-AE-35000-Agent-Commit-2026', 'AutoElevate 35000 Agent Plan Advanced 2026', 17500),
+  oneOffRec('7002', 'Optimize365 4000 User Plan', 'Optimize365-4000-User-Commit', 4800),
+  oneOffRec('7003', 'Custom DNS Annual', 'DNS-Custom-Annual', 12000, 'annually'),
+  oneOffRec('7004', 'Onboarding Fee', 'ONBOARD-1', 500, ''),
+]));
+const one = (productId, over = {}) => Object.assign({ uid: 9, family: 'oneoff', productId, quantity: 1, discountPct: 0, ramp: false }, over);
+
+test('one-off SKUs come from their folder, untagged, with the family read from the name/SKU', () => {
+  assert.deepEqual(ONE_OFF_CATALOG.issues, []);
+  const byId = Object.fromEntries(ONE_OFF_CATALOG.oneOffs.map((o) => [o.id, o]));
+  assert.deepEqual([byId['7001'].baseFamily, byId['7001'].baseEdition], ['autoelevate', 'advanced']);
+  assert.deepEqual([byId['7002'].baseFamily, byId['7002'].baseEdition], ['optimize365', 'standard']);
+  assert.equal(byId['7003'].baseFamily, 'dns');
+  assert.equal(byId['7004'].baseFamily, null);
+});
+
+test('a one-off SKU prices at its own price × quantity, runs the agreement, and sets AE wording', () => {
+  const s = Object.assign({}, MSP, { agreementLength: '12 Months' });
+  const q = P.buildQuote(s, [one('7001', { discountPct: 10 })], {}, ONE_OFF_CATALOG);
+  assert.deepEqual(q.conflicts, []);
+  assert.equal(q.lines.length, 1);
+  assert.deepEqual([q.lines[0].productId, q.lines[0].unitPrice, q.lines[0].net, q.lines[0].termMonths], ['7001', 17500, 15750, 12]);
+  assert.equal(q.rows[0].label, 'Advanced-AE-35000-Agent-Commit-2026');
+  const w = P.dealWrites(q, { setup: s }, OPTIONS).properties;
+  assert.equal(w.sku_type, 'Advanced');
+  assert.match(w.ae_feature_type_details, /^Elevation, Blocker, and Just-In-Time Admin Login/);
+  assert.equal(P.autoQuoteName('Northwind', [one('7001')], 0, ONE_OFF_CATALOG), 'Northwind - AutoElevate');
+  // An AE one-off (Advanced) next to a Standard AE row is the same feature-type conflict as two AE rows.
+  assert.equal(P.buildQuote(s, [ae({ ramp: false }), one('7001')], {}, ONE_OFF_CATALOG).conflicts.length, 1);
+});
+
+test('one-off SKUs: annual products bill annually; unsupported or missing products are blocking errors', () => {
+  const s = Object.assign({}, MSP, { agreementLength: '12 Months' });
+  const annual = P.buildQuote(s, [one('7003')], {}, ONE_OFF_CATALOG);
+  assert.equal(annual.lines[0].annual, true);
+  assert.equal(P.lineItemProperties(annual.lines[0], { billing: 'monthly', sessionId: 's' }).recurringbillingfrequency, 'annually');
+  assert.match(P.buildQuote(s, [one('7004')], {}, ONE_OFF_CATALOG).blocking[0].error, /one-time charges aren't supported yet/);
+  assert.match(P.buildQuote(s, [one('')], {}, ONE_OFF_CATALOG).blocking[0].error, /Pick a one-off SKU/);
+  assert.match(P.buildQuote(s, [one('9999')], {}, ONE_OFF_CATALOG).blocking[0].error, /no longer active in the One-Off SKUs folder/);
+});
+
+test('one-off SKUs ramp like other products, and an Optimize365 one-off follows the Optimize ramp rule', () => {
+  const free2 = { ramp: true, rampStages: [{ months: 2, mode: 'free' }] };
+  assert.deepEqual(P.buildQuote(Object.assign({}, MSP, { agreementLength: '14 Months' }), [one('7002', free2)], {}, ONE_OFF_CATALOG).conflicts, []);
+  assert.match(P.buildQuote(Object.assign({}, MSP, { agreementLength: '16 Months' }), [one('7002', { ramp: true, rampStages: [{ months: 4, mode: 'free' }] })], {}, ONE_OFF_CATALOG).conflicts[0], /Optimize365 can only ramp/);
+  const ae4 = P.buildQuote(Object.assign({}, MSP, { agreementLength: '16 Months' }), [one('7001', { ramp: true, rampStages: [{ months: 4, mode: 'free' }] })], {}, ONE_OFF_CATALOG);
+  assert.deepEqual(ae4.conflicts, []);
+  assert.deepEqual(ae4.lines.map((l) => [l.ramp, l.termMonths, l.discountPct]), [[true, 4, 100], [false, 12, 0]]);
+});

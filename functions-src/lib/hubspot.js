@@ -10,6 +10,7 @@ const {
   LINE_SESSION_PROPERTY,
   QUOTE_SESSION_PROPERTY,
   QUOTE_STATE_PROPERTY,
+  ONE_OFF_FOLDER,
 } = require('./config.js');
 const { normalizeTemplates, quoteLockState, parseBuilderState } = require('./pricing.js');
 
@@ -82,11 +83,18 @@ async function batchArchive(objectType, ids) {
 // Loaders used by both functions
 // ---------------------------------------------------------------------------
 
-const PRODUCT_PROPERTIES = ['name', 'hs_sku', 'price', 'hs_price_usd', 'qb_family', 'qb_edition', 'qb_segment', 'qb_billing', 'qb_tier', 'qb_component'];
+const PRODUCT_PROPERTIES = ['name', 'hs_sku', 'price', 'hs_price_usd', 'qb_family', 'qb_edition', 'qb_segment', 'qb_billing', 'qb_tier', 'qb_component', 'hs_folder', 'recurringbillingfrequency'];
 
+// Tagged price-book products, plus every active product in the One-Off SKUs folder (read live, no tagging).
 async function loadProducts() {
+  const active = { propertyName: 'hs_status', operator: 'EQ', value: 'active' };
   return searchAll('products', {
-    filterGroups: [{ filters: [{ propertyName: 'qb_family', operator: 'HAS_PROPERTY' }, { propertyName: 'hs_status', operator: 'EQ', value: 'active' }] }],
+    filterGroups: [
+      { filters: [{ propertyName: 'qb_family', operator: 'HAS_PROPERTY' }, active] },
+      { filters: [{ propertyName: 'hs_folder', operator: 'EQ', value: ONE_OFF_FOLDER }, active] },
+      // Belt and braces in case the folder name is stored with a suffix; indexCatalog keeps exact matches only.
+      { filters: [{ propertyName: 'hs_folder', operator: 'CONTAINS_TOKEN', value: 'One-Off' }, active] },
+    ],
     properties: PRODUCT_PROPERTIES,
   });
 }

@@ -84,7 +84,7 @@ exports.main = async (context) => {
   // An edited quote keeps whatever option status it had.
   const primary = editing ? editing.primary : payload.primary !== false || !deal.quotes.some((q) => q.builder);
   const affected = openQuoteConflicts(deal.quotes.filter((q) => !editing || q.id !== editing.id), deal.properties, writes.properties).quotes;
-  const title = (payload.setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, payload.products, quote.anyRamp ? quote.ramp.months : 0);
+  const title = (payload.setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, payload.products, quote.anyRamp ? quote.ramp.months : 0, catalog);
   const quoteProps = {
     hs_title: title.slice(0, 250),
     hs_expiration_date: payload.setup.expirationDate,

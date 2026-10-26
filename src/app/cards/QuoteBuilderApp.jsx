@@ -102,8 +102,8 @@ export function reducer(state, action) {
       // Agreement Length changed: a product ramp still at its default single stage follows the new default.
       const products = state.products.map((p) => {
         const st = p.rampStages || [];
-        if (!p.ramp || st.length !== 1 || st[0].months !== defaultProductStages(state.setup, p.family)[0].months) return p;
-        return Object.assign({}, p, { rampStages: [Object.assign({}, st[0], { months: defaultProductStages(setup, p.family)[0].months })] });
+        if (!p.ramp || st.length !== 1 || st[0].months !== defaultProductStages(state.setup, p.family === 'oneoff' ? p.baseFamily : p.family)[0].months) return p;
+        return Object.assign({}, p, { rampStages: [Object.assign({}, st[0], { months: defaultProductStages(setup, p.family === 'oneoff' ? p.baseFamily : p.family)[0].months })] });
       });
       return Object.assign({}, state, { setup, products });
     }
@@ -119,6 +119,7 @@ export function reducer(state, action) {
         ramp: false,
       };
       if (action.family === 'autoelevate') row.featureType = offeredFeatureType(action.defaultAeFeatureType);
+      if (action.family === 'oneoff') Object.assign(row, { quantity: 1, productId: '', baseFamily: null });
       if (action.family === 'timus') {
         // Rates start from the deal's current values (if any) so an existing Timus deal re-quotes as-is.
         const t = action.timusDefaults || {};
@@ -131,7 +132,7 @@ export function reducer(state, action) {
         if (p.uid !== action.uid) return p;
         const next = Object.assign({}, p, action.patch);
         // Ticking Ramp gives the product its own ramp at the default; unticking drops it.
-        if (action.patch.ramp === true && !p.ramp) next.rampStages = defaultProductStages(state.setup, p.family);
+        if (action.patch.ramp === true && !p.ramp) next.rampStages = defaultProductStages(state.setup, p.family === 'oneoff' ? p.baseFamily : p.family);
         if (action.patch.ramp === false) delete next.rampStages;
         return next;
       });
@@ -245,7 +246,8 @@ export function QuoteBuilderApp() {
     if (dealId) load();
   }, [dealId, load]);
 
-  const families = state.products.map((p) => p.family);
+  // One-off SKUs count as their product's family (AutoElevate, Optimize365 …) for the template suggestion.
+  const families = state.products.map((p) => (p.family === 'oneoff' ? p.baseFamily || 'oneoff' : p.family));
   const suggested = useMemo(() => (data ? suggestTemplate(data.templates, families) : null), [data, families.join(',')]);
   const template = data ? data.templates.find((t) => t.id === state.setup.templateId) || suggested : null;
 

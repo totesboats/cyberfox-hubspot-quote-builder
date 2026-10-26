@@ -511,3 +511,25 @@ test('a deal still on Advanced (GrandFathered) starts new AutoElevate rows as St
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'feature-1' })));
   assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
 });
+
+test('one-off SKU: pick a product from the One-Off SKUs folder; it prices at its own price', async () => {
+  const r = mk();
+  const withOneOff = Object.assign({}, CATALOG_RESPONSE, {
+    products: CATALOG_RESPONSE.products.concat([
+      { id: '8801', properties: { name: 'Optimize365 4000 User Plan', hs_sku: 'Optimize365-4000-User-Commit', hs_price_usd: '4800', hs_folder: 'One-Off SKUs', recurringbillingfrequency: 'monthly' } },
+    ]),
+  });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: withOneOff }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ One-off SKU/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'oneoff-1' })));
+  assert.deepEqual(r.find(Select, { name: 'oneoff-1' }).props.options.map((o) => o.label), ['Choose a one-off SKU', 'Optimize365 4000 User Plan — $4,800.00/mo']);
+  assert.match(text(r.getRootNode()), /Pick a one-off SKU/);
+  r.find(Select, { name: 'oneoff-1' }).trigger('onChange', '8801');
+  await r.waitFor(() => assert.match(text(r.getRootNode()), /\$4,800\.00\/mo/));
+  assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 1);
+  assert.match(text(r.getRootNode()), /One-off · Optimize365/);
+});

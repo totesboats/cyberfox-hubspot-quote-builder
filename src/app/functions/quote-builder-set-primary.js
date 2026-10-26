@@ -46,6 +46,14 @@ var require_config = __commonJS({
         unitSingular: "User",
         editions: [{ value: "standard", label: "Standard" }]
       },
+      // One-off SKUs: custom products built for a single deal, kept in the "One-Off SKUs" product folder.
+      // The rep picks the product; price and billing frequency come from the product itself.
+      oneoff: {
+        label: "One-off SKU",
+        unit: "units",
+        unitSingular: "Unit",
+        editions: [{ value: "standard", label: "One-off" }]
+      },
       bundle: {
         label: "CyberFOX Bundle",
         unit: "users",
@@ -54,7 +62,15 @@ var require_config = __commonJS({
       }
     };
     var OPTIMIZE_RAMP = { family: "optimize365", planMonths: 12, maxMonths: 2 };
-    var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365"];
+    var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365", "oneoff"];
+    var ONE_OFF_FOLDER = "One-Off SKUs";
+    var ONE_OFF_FAMILY_PATTERNS = [
+      ["autoelevate", /autoelevate|(^|[^a-z])ae([^a-z]|$)/i],
+      ["optimize365", /optimize/i],
+      ["dns", /dns/i],
+      ["password", /password|(^|[^a-z])pb([^a-z]|$)/i],
+      ["timus", /timus/i]
+    ];
     var SEGMENTS = [
       { value: "MSP", label: "MSP" },
       { value: "ENT", label: "Enterprise" }
@@ -178,7 +194,7 @@ var require_config = __commonJS({
     var AE_FEATURE_TYPES_RETIRED = ["Advanced (GrandFathered)"];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
+    module2.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
   }
 });
 
@@ -186,7 +202,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP } = require_config();
+    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -217,8 +233,15 @@ var require_pricing = __commonJS({
         segment: p.qb_segment || "MSP",
         billing: p.qb_billing || "monthly",
         tier: tierRaw != null && tierRaw !== "" ? toNum(tierRaw, null) : null,
-        component: p.qb_component || "base"
+        component: p.qb_component || "base",
+        folder: (p.hs_folder || "").replace(/ \(auto_generated.*$/, "").trim(),
+        frequency: p.recurringbillingfrequency || ""
       };
+    }
+    function oneOffFamily(p) {
+      const text = `${p.name || ""} ${p.sku || ""}`;
+      const hit = ONE_OFF_FAMILY_PATTERNS.find(([, re]) => re.test(text));
+      return { baseFamily: hit ? hit[0] : null, baseEdition: /advanced/i.test(text) ? "advanced" : "standard" };
     }
     function catalogKey(family, edition, segment, billing) {
       return [family, edition, segment, billing].join("|");
@@ -226,9 +249,14 @@ var require_pricing = __commonJS({
     function indexCatalog(records) {
       const tiers = {};
       const timus = { minimum: null, satgat: {} };
+      const oneOffs = [];
       const issues = [];
       for (const record of records || []) {
         const p = normalizeProduct(record);
+        if (p.folder === ONE_OFF_FOLDER) {
+          oneOffs.push(Object.assign(p, oneOffFamily(p)));
+          continue;
+        }
         if (!p.family || !FAMILIES[p.family]) continue;
         if (p.family === "timus") {
           if (p.component === "minimum") timus.minimum = p;
@@ -249,7 +277,8 @@ var require_pricing = __commonJS({
         }
         tiers[key][p.tier][slot] = p;
       }
-      return { tiers, timus, issues };
+      oneOffs.sort((a, b) => a.name.localeCompare(b.name));
+      return { tiers, timus, oneOffs, issues };
     }
     function normalizeTemplates(records) {
       const typeMap = { cpq_template: "CPQ_QUOTE", customizable_quote_template: "CUSTOMIZABLE_QUOTE_TEMPLATE" };
@@ -331,6 +360,7 @@ var require_pricing = __commonJS({
         return result;
       }
       if (input.family === "timus") return priceTimus(input, setup, catalog, result);
+      if (input.family === "oneoff") return priceOneOff(input, catalog, result);
       const edition = effectiveEdition(input);
       const key = catalogKey(input.family, edition, setup.segment, setup.billing);
       const tiersForKey = catalog.tiers[key];
@@ -399,6 +429,41 @@ var require_pricing = __commonJS({
       return result;
     }
     var entered = (v) => v !== "" && v !== null && v !== void 0 && Number.isFinite(Number(v));
+    var ONE_OFF_FREQUENCIES = { monthly: false, annually: true };
+    function priceOneOff(input, catalog, result) {
+      const p = (catalog && catalog.oneOffs || []).find((o) => o.id === String(input.productId || ""));
+      if (!input.productId) {
+        result.error = "Pick a one-off SKU.";
+        return result;
+      }
+      if (!p) {
+        result.error = `That one-off SKU is no longer active in the ${ONE_OFF_FOLDER} folder. Pick another.`;
+        return result;
+      }
+      Object.assign(result, { baseFamily: p.baseFamily, baseEdition: p.baseEdition, productName: p.name });
+      if (!(p.frequency in ONE_OFF_FREQUENCIES)) {
+        result.error = `${p.name} has billing frequency "${p.frequency || "none"}". One-off SKUs need Monthly or Annually (one-time charges aren't supported yet).`;
+        return result;
+      }
+      if (!result.quantity) {
+        result.error = "Enter a quantity.";
+        return result;
+      }
+      const annual = ONE_OFF_FREQUENCIES[p.frequency];
+      result.annual = annual;
+      result.lines.push(
+        makeLine({ family: "oneoff", kind: "base", productId: p.id, name: p.name, sku: p.sku, quantity: result.quantity, unitPrice: p.price, discountPct: result.discountPct, annual })
+      );
+      result.hint = `${p.name}: ${formatMoney(p.price)}${annual ? "/yr" : "/mo"} each, from the product library.`;
+      return result;
+    }
+    function rowFamily(row) {
+      return row.input.family === "oneoff" ? row.priced.baseFamily || "oneoff" : row.input.family;
+    }
+    function rowLabel(row) {
+      if (row.input.family === "oneoff") return row.priced.productName || FAMILIES.oneoff.label;
+      return FAMILIES[row.input.family] ? FAMILIES[row.input.family].label : row.input.family;
+    }
     function priceTimus(input, setup, catalog, result) {
       const gateways = Math.max(0, Math.round(toNum(input.gateways)));
       const userRate = round2(toNum(input.userRate));
@@ -469,16 +534,20 @@ var require_pricing = __commonJS({
       const ft = aeFeatureTypeFor(input);
       return ft ? ft.edition : input.edition;
     }
+    function rowFeatureType(r) {
+      if (r.input.family === "oneoff") return AE_FEATURE_TYPES.find((f) => f.edition === r.priced.baseEdition) || AE_FEATURE_TYPES[0];
+      return aeFeatureTypeFor(r.input);
+    }
     function resolveAeFeature(rows) {
-      const aeRows = (rows || []).filter((r) => r.input.family === "autoelevate");
+      const aeRows = (rows || []).filter((r) => r.input.family === "autoelevate" || r.input.family === "oneoff" && r.priced.baseFamily === "autoelevate");
       if (!aeRows.length) return null;
-      const types = Array.from(new Set(aeRows.map((r) => aeFeatureTypeFor(r.input).value)));
+      const types = Array.from(new Set(aeRows.map((r) => rowFeatureType(r).value)));
       if (types.length > 1) {
         return {
           conflict: `AutoElevate lines use different feature types (${types.join(", ")}). The deal holds one AE Feature Type, so the quote can only print one. Use one feature type, or split into separate quotes.`
         };
       }
-      const ft = aeFeatureTypeFor(aeRows[0].input);
+      const ft = rowFeatureType(aeRows[0]);
       const priced = aeRows.find((r) => r.usable) || aeRows[0];
       const tier = priced.priced.chosenTier;
       return { type: ft.value, details: ft.details.replace("{tier}", tier ? formatInt(tier) : "[commit tier]"), tier };
@@ -553,14 +622,14 @@ var require_pricing = __commonJS({
         const usable = !priced.error && priced.lines.length > 0;
         const ramp2 = productRamp(input, legacyRamp);
         const ramped = ramp2.enabled && usable;
-        const label = FAMILIES[input.family] ? FAMILIES[input.family].label : input.family;
+        const label = rowLabel({ input, priced });
         if (ramped && ramp2.months > MAX_RAMP_MONTHS) {
           conflicts.push(`${label}: the ramp stages add up to ${ramp2.months} months; the most is ${MAX_RAMP_MONTHS}.`);
         }
         if (ramped && !m2m && ramp2.months >= agreement) {
           conflicts.push(`${label}: the ${ramp2.months}-month ramp is as long as the ${agreement}-month Agreement Length. Pick a longer Agreement Length or a shorter ramp.`);
         }
-        if (ramped && input.family === OPTIMIZE_RAMP.family) {
+        if (ramped && rowFamily({ input, priced }) === OPTIMIZE_RAMP.family) {
           if (!optimizeRamp.allowed) conflicts.push(`${optimizeRamp.reason} Untick Ramp on Optimize365, or change the Agreement Length / payment on Setup.`);
           else if (ramp2.stages.length > 1 || ramp2.stages[0].mode !== "free" || ramp2.months !== optimizeRamp.months) {
             conflicts.push(`Optimize365's ramp must be ${optimizeRamp.months} free month${optimizeRamp.months > 1 ? "s" : ""} (one stage, 100% off) on this ${agreement}-month agreement.`);
@@ -587,6 +656,8 @@ var require_pricing = __commonJS({
         const sum = (ls, k) => ls.reduce((a, l) => a + l[k], 0);
         return {
           input,
+          family: rowFamily({ input, priced }),
+          label,
           priced,
           usable,
           ramped,
@@ -633,7 +704,7 @@ var require_pricing = __commonJS({
         listTcv += (rm + r.valueMonths) * r.listMrr;
         if (r.priced.discountPct > maxDiscountPct) {
           maxDiscountPct = r.priced.discountPct;
-          maxDiscountFamily = r.input.family;
+          maxDiscountFamily = r.family;
         }
       }
       const totals = {
@@ -658,7 +729,7 @@ var require_pricing = __commonJS({
       const aeFeature = resolveAeFeature(rows);
       if (aeFeature && aeFeature.conflict) conflicts.push(aeFeature.conflict);
       const ramp = { enabled: anyRamp, months: longestRamp };
-      return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp };
+      return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: catalog && catalog.oneOffs || [] };
     }
     function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
       const reasons = [];
@@ -784,10 +855,12 @@ var require_pricing = __commonJS({
         return null;
       }
     }
-    function autoQuoteName(companyName, inputs, rampMonths) {
+    function autoQuoteName(companyName, inputs, rampMonths, catalog) {
       const seen = [];
       for (const i of inputs || []) {
-        const label = FAMILIES[i.family] ? FAMILIES[i.family].label : null;
+        const one = i.family === "oneoff" && catalog && (catalog.oneOffs || []).find((o) => o.id === String(i.productId || ""));
+        const fam = i.family === "oneoff" ? one && one.baseFamily || "oneoff" : i.family;
+        const label = FAMILIES[fam] ? FAMILIES[fam].label : null;
         if (label && !seen.includes(label)) seen.push(label);
       }
       const base = `${companyName || "Quote"} - ${seen.join(" + ") || "Quote"}`;
@@ -811,6 +884,7 @@ var require_pricing = __commonJS({
         const q = toNum(p.quantity, NaN);
         if (!(q >= 0 && q <= 1e6)) errors.push(`quantity for ${p.family} is out of range`);
         if (p.family === "autoelevate" && p.featureType && !AE_FEATURE_TYPES.some((f) => f.value === p.featureType)) errors.push(`unknown AE feature type ${p.featureType}`);
+        if (p.family === "oneoff" && p.productId != null && typeof p.productId !== "string" && typeof p.productId !== "number") errors.push("one-off productId must be an id");
       }
       const checkStages = (raw, who) => {
         if (raw.length > MAX_RAMP_STAGES) errors.push(`${who}: at most ${MAX_RAMP_STAGES} ramp stages`);
@@ -829,7 +903,7 @@ var require_pricing = __commonJS({
       if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], "ramp");
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, tierOptionsFor, priceProduct, rowFamily, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 
@@ -845,7 +919,8 @@ var require_hubspot = __commonJS({
       LINE_SOURCE_VALUE,
       LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2,
       QUOTE_SESSION_PROPERTY,
-      QUOTE_STATE_PROPERTY
+      QUOTE_STATE_PROPERTY,
+      ONE_OFF_FOLDER
     } = require_config();
     var { normalizeTemplates, quoteLockState, parseBuilderState } = require_pricing();
     var BASE = "https://api.hubapi.com";
@@ -906,10 +981,16 @@ var require_hubspot = __commonJS({
         await hs2(`/crm/v3/objects/${objectType}/batch/archive`, { method: "POST", body: { inputs: part.map((id) => ({ id: String(id) })) } });
       }
     }
-    var PRODUCT_PROPERTIES = ["name", "hs_sku", "price", "hs_price_usd", "qb_family", "qb_edition", "qb_segment", "qb_billing", "qb_tier", "qb_component"];
+    var PRODUCT_PROPERTIES = ["name", "hs_sku", "price", "hs_price_usd", "qb_family", "qb_edition", "qb_segment", "qb_billing", "qb_tier", "qb_component", "hs_folder", "recurringbillingfrequency"];
     async function loadProducts() {
+      const active = { propertyName: "hs_status", operator: "EQ", value: "active" };
       return searchAll("products", {
-        filterGroups: [{ filters: [{ propertyName: "qb_family", operator: "HAS_PROPERTY" }, { propertyName: "hs_status", operator: "EQ", value: "active" }] }],
+        filterGroups: [
+          { filters: [{ propertyName: "qb_family", operator: "HAS_PROPERTY" }, active] },
+          { filters: [{ propertyName: "hs_folder", operator: "EQ", value: ONE_OFF_FOLDER }, active] },
+          // Belt and braces in case the folder name is stored with a suffix; indexCatalog keeps exact matches only.
+          { filters: [{ propertyName: "hs_folder", operator: "CONTAINS_TOKEN", value: "One-Off" }, active] }
+        ],
         properties: PRODUCT_PROPERTIES
       });
     }

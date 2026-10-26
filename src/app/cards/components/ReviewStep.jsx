@@ -26,7 +26,7 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
     const shown = labelFor(name, v);
     return { name, label, value: shown === '' ? 'Cleared' : shown };
   });
-  const title = (setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, products, quote.anyRamp ? quote.ramp.months : 0);
+  const title = (setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, products, quote.anyRamp ? quote.ramp.months : 0, { oneOffs: quote.oneOffs });
   const rampCount = quote.lines.filter((l) => l.ramp).length;
   const signer = deal.contacts.find((c) => c.id === setup.signerContactId);
 

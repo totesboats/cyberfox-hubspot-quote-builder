@@ -31,14 +31,14 @@ export function scheduleRows(quote) {
       for (const r of usable) {
         const si = stageAt(r, a);
         perMonth += si >= 0 ? r.stageMrr[si] : r.mainMrr;
-        what.push(FAMILIES[r.input.family].label + (si >= 0 ? ` (${stageLabel(r.ramp.stages[si]).toLowerCase()})` : ''));
+        what.push(r.label + (si >= 0 ? ` (${stageLabel(r.ramp.stages[si]).toLowerCase()})` : ''));
       }
       const period = segments.length > 1 ? `Ramp ${n + 1}` : 'Ramp';
       rows.push({ key: `ramp-${n}`, ramp: true, period, months: range(a, b), what: what.join(', '), perMonth, total: perMonth * (b - a + 1) });
     });
   }
   const start = quote.anyRamp ? longest + 1 : 1;
-  const what = usable.map((r) => FAMILIES[r.input.family].label).join(', ') + ' at quoted price';
+  const what = usable.map((r) => r.label).join(', ') + ' at quoted price';
   if (quote.m2m) {
     rows.push({ key: 'term', period: 'Month-to-month', months: `${start}+`, what, perMonth: quote.totals.mrr, total: null });
   } else if (start <= quote.term) {
@@ -55,7 +55,7 @@ export function ProductRamp({ row, quote, onStage, onAddStage, onRemoveStage }) 
   const stages = row.input.rampStages && row.input.rampStages.length ? row.input.rampStages : row.ramp.stages;
   const total = row.ramp.months;
   const left = MAX_RAMP_MONTHS - total;
-  const locked = row.input.family === 'optimize365' && quote.optimizeRamp && quote.optimizeRamp.allowed;
+  const locked = row.family === 'optimize365' && quote.optimizeRamp && quote.optimizeRamp.allowed;
   const planText = quote.m2m ? 'then month-to-month' : total < quote.term ? `plan bills months ${total + 1}–${quote.term}` : 'no plan months left';
   return (
     <Flex direction="column" gap="small">
