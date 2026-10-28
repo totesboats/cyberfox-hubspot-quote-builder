@@ -533,3 +533,30 @@ test('one-off SKU: pick a product from the One-Off SKUs folder; it prices at its
   assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 1);
   assert.match(text(r.getRootNode()), /One-off · Optimize365/);
 });
+
+test('MSP Optimize365: per-tenant row with a TDR users add-on', async () => {
+  const r = mk();
+  const t = (id, name, price, edition, component, tier) => ({ id, properties: { name, hs_sku: name, hs_price_usd: String(price), qb_family: 'optimize365', qb_edition: edition, qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: String(tier), qb_component: component } });
+  const withO365 = Object.assign({}, CATALOG_RESPONSE, {
+    products: CATALOG_RESPONSE.products.concat([
+      t('o1', 'Optimize365 – Tenant Base', 500, 'standard', 'base', 10),
+      t('o2', 'Optimize365 – Additional Tenant', 50, 'standard', 'additional', 10),
+      t('o3', 'TDR – User Base', 200, 'tdr', 'base', 100),
+      t('o4', 'TDR – Additional User', 2, 'tdr', 'additional', 100),
+    ]),
+  });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: withO365 }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ Optimize365/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'tdr-1' })));
+  assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.label, 'Total tenants');
+  assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 10);
+  await r.waitFor(() => assert.match(text(r.getRootNode()), /\$500\.00\/mo/));
+  r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 12);
+  r.find(NumberInput, { name: 'tdr-1' }).trigger('onChange', 150);
+  // 500 + 2×50 + 200 + 50×2 = 900
+  await r.waitFor(() => assert.match(text(r.getRootNode()), /\$900\.00\/mo/));
+});

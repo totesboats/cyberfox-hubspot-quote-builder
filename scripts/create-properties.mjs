@@ -14,6 +14,7 @@ const PRODUCT_PROPS = [
     ['advanced', 'Advanced'],
     ['pack', 'User Pack'],
     ['commit', 'User Commit'],
+    ['tdr', 'TDR (Optimize365 add-on)'],
   ]),
   enumProp('qb_segment', 'Quote Builder: segment', [
     ['MSP', 'MSP'],
@@ -52,7 +53,16 @@ async function ensure(objectType, props) {
   for (const p of props) {
     const existing = await hs(`/crm/v3/properties/${objectType}/${p.name}`, { allow: [404] });
     if (existing.status !== 404) {
-      console.log(`${objectType}.${p.name}: exists, skipped`);
+      // Dropdowns: add any options the builder now needs (e.g. a new edition), keeping the existing ones.
+      const have = ((existing.data && existing.data.options) || []).map((o) => o.value);
+      const missing = (p.options || []).filter((o) => !have.includes(o.value));
+      if (!missing.length) {
+        console.log(`${objectType}.${p.name}: exists, skipped`);
+        continue;
+      }
+      console.log(`${objectType}.${p.name}: ${apply ? 'adding' : 'would add'} option(s) ${missing.map((o) => o.value).join(', ')}`);
+      const options = existing.data.options.concat(missing.map((o, i) => Object.assign({}, o, { displayOrder: existing.data.options.length + i })));
+      if (apply) await hs(`/crm/v3/properties/${objectType}/${p.name}`, { method: 'PATCH', body: { options } });
       continue;
     }
     console.log(`${objectType}.${p.name}: ${apply ? 'creating' : 'would create'}`);

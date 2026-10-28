@@ -26,6 +26,7 @@ import {
   OPTIMIZE_RAMP,
   ONE_OFF_FOLDER,
   ONE_OFF_FAMILY_PATTERNS,
+  OPTIMIZE_MSP,
 } from './config.js';
 
 export function toNum(v, fallback = 0) {
@@ -157,6 +158,13 @@ export function suggestTemplate(templates, families) {
 // Pricing one product row
 // ---------------------------------------------------------------------------
 
+// What a family counts in for a segment: MSP Optimize365 counts tenants, everything else its usual unit.
+export function unitsFor(familyKey, segment) {
+  const fam = FAMILIES[familyKey] || {};
+  const over = (fam.unitBySegment && fam.unitBySegment[segment]) || {};
+  return { unit: over.unit || fam.unit, unitSingular: over.unitSingular || fam.unitSingular };
+}
+
 function makeLine(fields) {
   const gross = round2(fields.quantity * fields.unitPrice);
   const net = round2(gross * (1 - fields.discountPct / 100));
@@ -222,6 +230,7 @@ export function priceProduct(input, setup, catalog) {
   if (input.family === 'timus') return priceTimus(input, setup, catalog, result);
   if (input.family === 'oneoff') return priceOneOff(input, catalog, result);
 
+  const units = unitsFor(input.family, setup.segment);
   const edition = effectiveEdition(input);
   const key = catalogKey(input.family, edition, setup.segment, setup.billing);
   const tiersForKey = catalog.tiers[key];
@@ -244,7 +253,7 @@ export function priceProduct(input, setup, catalog) {
   const chosen = options.find((o) => o.tier === requested) || best;
   result.tierOptions = options.map((o) => ({
     value: String(o.tier),
-    label: `${formatInt(o.tier)} ${family.unit} — ${formatMoney(o.cost)}${per}${o === best ? ' (best price)' : ''}`,
+    label: `${formatInt(o.tier)} ${units.unit} — ${formatMoney(o.cost)}${per}${o === best ? ' (best price)' : ''}`,
     cost: o.cost,
   }));
   result.chosenTier = chosen.tier;
@@ -280,15 +289,32 @@ export function priceProduct(input, setup, catalog) {
   }
 
   if (quantity === 0) {
-    result.error = `Enter how many ${family.unit} to quote.`;
+    result.error = `Enter how many ${units.unit} to quote.`;
   } else if (chosen !== best) {
-    result.hint = `The ${formatInt(best.tier)} tier covers ${formatInt(quantity)} ${family.unit} for ${formatMoney(best.cost)}${per}, ${formatMoney(chosen.cost - best.cost)}${per} less than the tier selected.`;
+    result.hint = `The ${formatInt(best.tier)} tier covers ${formatInt(quantity)} ${units.unit} for ${formatMoney(best.cost)}${per}, ${formatMoney(chosen.cost - best.cost)}${per} less than the tier selected.`;
     result.hintLevel = 'warning';
   } else if (chosen.additional) {
-    const extra = chosen.addQty > 0 ? ` + ${formatInt(chosen.addQty)} additional ${family.unit}` : '';
-    result.hint = `${formatInt(chosen.tier)}-${family.unitSingular.toLowerCase()} commit${extra} is the lowest list price for ${formatInt(quantity)} ${family.unit}.`;
+    const extra = chosen.addQty > 0 ? ` + ${formatInt(chosen.addQty)} additional ${units.unit}` : '';
+    result.hint = `${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} ${input.family === 'optimize365' && setup.segment === 'MSP' ? 'base' : 'commit'}${extra} is the lowest list price for ${formatInt(quantity)} ${units.unit}.`;
   } else {
-    result.hint = `${formatInt(chosen.baseQty)} × ${formatInt(chosen.tier)}-${family.unitSingular.toLowerCase()} pack${chosen.baseQty > 1 ? 's' : ''} covers ${formatInt(quantity)} ${family.unit} at the lowest list price.`;
+    result.hint = `${formatInt(chosen.baseQty)} × ${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} pack${chosen.baseQty > 1 ? 's' : ''} covers ${formatInt(quantity)} ${units.unit} at the lowest list price.`;
+  }
+
+  // MSP Optimize365 can add TDR on the same row: TDR User Base (100 users) + TDR Additional User above it.
+  const tdrUsers = Math.max(0, Math.round(toNum(input.tdrUsers)));
+  if (input.family === 'optimize365' && setup.segment === 'MSP' && tdrUsers > 0) {
+    const tdrKey = catalogKey('optimize365', OPTIMIZE_MSP.tdrEdition, setup.segment, setup.billing);
+    const tdr = tierOptionsFor(catalog.tiers[tdrKey], tdrUsers).best;
+    if (!tdr) {
+      result.error = result.error || `No ${setup.segment} ${billingLabel.toLowerCase()} TDR SKUs exist (TDR – User Base / TDR – Additional User). Set TDR users to 0 or change billing.`;
+      return result;
+    }
+    result.tdrUsers = tdrUsers;
+    result.lines.push(makeLine({ family: input.family, kind: 'tdr-base', productId: tdr.base.id, name: tdr.base.name, sku: tdr.base.sku, quantity: tdr.baseQty, unitPrice: tdr.base.price, discountPct, annual }));
+    if (tdr.additional && tdr.addQty > 0) {
+      result.lines.push(makeLine({ family: input.family, kind: 'tdr-additional', productId: tdr.additional.id, name: tdr.additional.name, sku: tdr.additional.sku, quantity: tdr.addQty, unitPrice: tdr.additional.price, discountPct, annual }));
+    }
+    result.hint = `${result.hint} TDR: ${formatInt(tdr.tier)}-user base${tdr.addQty > 0 ? ` + ${formatInt(tdr.addQty)} additional users` : ''} for ${formatInt(tdrUsers)} users.`.trim();
   }
   return result;
 }
@@ -659,7 +685,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
 
   // `ramp` summarises the quote: on when any product ramps; `months` is the longest product ramp.
   const ramp = { enabled: anyRamp, months: longestRamp };
-  return { ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [] };
+  return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [] };
 }
 
 export function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
@@ -854,6 +880,8 @@ export function validateSubmission(payload) {
     const q = toNum(p.quantity, NaN);
     if (!(q >= 0 && q <= 1000000)) errors.push(`quantity for ${p.family} is out of range`);
     if (p.family === 'autoelevate' && p.featureType && !AE_FEATURE_TYPES.some((f) => f.value === p.featureType)) errors.push(`unknown AE feature type ${p.featureType}`);
+    const tdr = toNum(p.tdrUsers, 0);
+    if (!(tdr >= 0 && tdr <= 1000000)) errors.push(`TDR users for ${p.family} is out of range`);
     if (p.family === 'oneoff' && p.productId != null && typeof p.productId !== 'string' && typeof p.productId !== 'number') errors.push('one-off productId must be an id');
   }
   const checkStages = (raw, who) => {

@@ -17,7 +17,7 @@ import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
 import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, rampStages, suggestTemplate } from './lib/pricing.js';
-import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
+import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, OPTIMIZE_MSP, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
 
@@ -120,6 +120,8 @@ export function reducer(state, action) {
       };
       if (action.family === 'autoelevate') row.featureType = offeredFeatureType(action.defaultAeFeatureType);
       if (action.family === 'oneoff') Object.assign(row, { quantity: 1, productId: '', baseFamily: null });
+      // MSP Optimize365 is quoted per tenant (Tenant Base covers 10) with an optional TDR add-on.
+      if (action.family === 'optimize365' && state.setup.segment === 'MSP') Object.assign(row, { quantity: OPTIMIZE_MSP.tenantsIncluded, tdrUsers: 0 });
       if (action.family === 'timus') {
         // Rates start from the deal's current values (if any) so an existing Timus deal re-quotes as-is.
         const t = action.timusDefaults || {};

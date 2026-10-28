@@ -5,7 +5,7 @@
 // HubSpot (or tag by hand) and re-run. Safe to re-run any time.
 import { writeFileSync } from 'node:fs';
 import { hs, searchAll, apply, csv } from './lib/api.mjs';
-import { TIMUS } from '../shared/config.mjs';
+import { TIMUS, OPTIMIZE_MSP } from '../shared/config.mjs';
 
 // The price book the builder sells from. For a new price book (e.g. the 2027 SKUs) change this one
 // value and run tag-products (dry run, then Apply): the new folders get tagged and the previous
@@ -42,6 +42,20 @@ export function classify(p) {
     else if (SATGAT_TIER[sku]) Object.assign(tags, { qb_component: 'satgat', qb_tier: String(SATGAT_TIER[sku]) });
     else return { tags, status: 'skip', note: 'unrecognised Timus SKU' };
     return { tags: Object.assign(tags, { qb_segment: 'MSP', qb_billing: 'monthly' }), status: 'ok', note: '' };
+  }
+
+  // MSP Optimize365 (Oct 2026): per-tenant base/additional SKUs plus the TDR add-on SKUs. Their names carry no
+  // tier number, so the included counts come from OPTIMIZE_MSP in shared/config.mjs.
+  if (rule.family === 'optimize365' && (/^TDR\b/i.test(name) || /tenant/i.test(name))) {
+    const tdr = /^TDR\b/i.test(name);
+    Object.assign(tags, {
+      qb_edition: tdr ? OPTIMIZE_MSP.tdrEdition : 'standard',
+      qb_component: /additional/i.test(name) ? 'additional' : 'base',
+      qb_segment: 'MSP',
+      qb_billing: p.recurringbillingfrequency === 'annually' ? 'annual' : 'monthly',
+      qb_tier: String(tdr ? OPTIMIZE_MSP.tdrUsersIncluded : OPTIMIZE_MSP.tenantsIncluded),
+    });
+    return { tags, status: 'ok', note: tdr ? 'TDR add-on (MSP Optimize365)' : 'MSP Optimize365 per tenant' };
   }
 
   tags.qb_component = /additional/i.test(name) ? 'additional' : 'base';

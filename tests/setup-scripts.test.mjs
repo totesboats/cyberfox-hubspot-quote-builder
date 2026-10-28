@@ -59,3 +59,14 @@ test('price book change: new folders tagged, last year untagged, untouched produ
   assert.deepEqual(rows.map((r) => [r.id, r.status]), [['1', 'ok'], ['2', 'untag']]);
   assert.equal(rows[1].qb_family, '');
 });
+
+test('classify: MSP Optimize365 per-tenant and TDR add-on SKUs (names carry no tier number)', () => {
+  const t = (name) => classify(P(name, name, 'Optimize365')).tags;
+  assert.deepEqual(t('Optimize365 – Tenant Base'), { qb_family: 'optimize365', qb_edition: 'standard', qb_component: 'base', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '10' });
+  assert.deepEqual(t('Optimize365 – Additional Tenant'), { qb_family: 'optimize365', qb_edition: 'standard', qb_component: 'additional', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '10' });
+  assert.deepEqual(t('TDR – User Base'), { qb_family: 'optimize365', qb_edition: 'tdr', qb_component: 'base', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '100' });
+  assert.deepEqual(t('TDR – Additional User'), { qb_family: 'optimize365', qb_edition: 'tdr', qb_component: 'additional', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '100' });
+  // Enterprise Optimize365 is unchanged: per-user tiers.
+  const ent = classify(P('Optimize365 100 User Plan Enterprise Monthly', 'Optimize365-100-User-Commit-Monthly-E', 'Optimize365')).tags;
+  assert.deepEqual([ent.qb_segment, ent.qb_tier, ent.qb_edition], ['ENT', '100', 'standard']);
+});

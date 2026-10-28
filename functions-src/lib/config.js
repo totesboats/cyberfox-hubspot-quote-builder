@@ -40,6 +40,8 @@ const FAMILIES = {
     label: 'Optimize365',
     unit: 'users',
     unitSingular: 'User',
+    // MSP Optimize365 is sold per tenant (Tenant Base + Additional Tenant); Enterprise stays per user.
+    unitBySegment: { MSP: { unit: 'tenants', unitSingular: 'Tenant' } },
     editions: [{ value: 'standard', label: 'Standard' }],
   },
   // One-off SKUs: custom products built for a single deal, kept in the "One-Off SKUs" product folder.
@@ -66,6 +68,11 @@ const OPTIMIZE_RAMP = { family: 'optimize365', planMonths: 12, maxMonths: 2 };
 // Products reps can add (in this order). CyberFOX Bundles are being retired (SKUs off Jan 1), so they
 // can't be added to new quotes; saved quotes that already include a bundle still load and edit.
 const FAMILY_ORDER = ['autoelevate', 'password', 'dns', 'timus', 'optimize365', 'oneoff'];
+// MSP Optimize365 (from Oct 2026): "Optimize365 – Tenant Base" covers this many tenants, "Additional Tenant"
+// each one above it. TDR is an add-on on the same row: "TDR – User Base" covers tdrUsersIncluded users,
+// "TDR – Additional User" each one above. TDR SKUs are tagged qb_edition = tdr (see tag-products).
+const OPTIMIZE_MSP = { tenantsIncluded: 10, tdrUsersIncluded: 100, tdrEdition: 'tdr' };
+
 // Product folder whose active products reps can quote as one-off SKUs (read live; no tagging needed).
 const ONE_OFF_FOLDER = 'One-Off SKUs';
 // Which product family a one-off SKU belongs to, read from its name/SKU (for quote wording, templates and
@@ -246,4 +253,4 @@ const RAMP_NAME_PREFIX = 'RAMP ';
 // With payments on, HubSpot requires every invoice to be $35+, which blocks ramp months.
 const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30, paymentEnabled: false };
 
-module.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
+module.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_MSP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };

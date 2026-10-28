@@ -1,14 +1,17 @@
 import React from 'react';
 import { Alert, Button, Checkbox, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
-import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, SEGMENTS } from '../lib/config.js';
-import { formatMoney } from '../lib/pricing.js';
+import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, OPTIMIZE_MSP, SEGMENTS } from '../lib/config.js';
+import { formatMoney, unitsFor } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
-function StandardFields({ input, priced, family, onUpdate }) {
+function StandardFields({ input, priced, family, segment, onUpdate }) {
   const per = priced.annual ? '/yr' : '/mo';
+  const units = unitsFor(input.family, segment);
+  // MSP Optimize365 is per tenant and can carry the TDR add-on on the same row.
+  const tdrField = input.family === 'optimize365' && segment === 'MSP';
   const tierOptions = priced.tierOptions.length
     ? [{ label: `Best price${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
     : [{ label: 'No tiers for this combination', value: NONE }];
@@ -32,7 +35,7 @@ function StandardFields({ input, priced, family, onUpdate }) {
           onChange={(v) => onUpdate({ edition: String(v), tier: '' })}
         />
       )}
-      <NumberInput label={`Total ${family.unit}`} name={`qty-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
+      <NumberInput label={`Total ${units.unit}`} name={`qty-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
       <Select
         label="Commit tier"
         name={`tier-${input.uid}`}
@@ -41,6 +44,17 @@ function StandardFields({ input, priced, family, onUpdate }) {
         value={toSelect(input.tier)}
         onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
       />
+      {tdrField && (
+        <NumberInput
+          label="TDR users"
+          name={`tdr-${input.uid}`}
+          tooltip={`Optional TDR add-on. The TDR User Base covers ${OPTIMIZE_MSP.tdrUsersIncluded} users; each user above that is a TDR Additional User. 0 = no TDR.`}
+          min={0}
+          precision={0}
+          value={Number(input.tdrUsers) || 0}
+          onChange={(v) => onUpdate({ tdrUsers: v })}
+        />
+      )}
       <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
     </Row>
   );
@@ -173,7 +187,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         ) : input.family === 'oneoff' ? (
           <OneOffFields input={input} priced={priced} oneOffs={quote.oneOffs || []} onUpdate={update} />
         ) : (
-          <StandardFields input={input} priced={priced} family={family} onUpdate={update} />
+          <StandardFields input={input} priced={priced} family={family} segment={quote.segment} onUpdate={update} />
         )}
 
         {priced.error ? (
