@@ -28,6 +28,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# HubSpot's deploy step puts the commit message inside single quotes in a shell command, so an
+# apostrophe (deal's) or other quote breaks the upload. Strip those characters from the message.
+$CleanMessage = ($Message -replace '[''"`$\\]', '').Trim()
+if ($CleanMessage -ne $Message) {
+  Write-Host "Note: removed quotes/apostrophes from the message (HubSpot's upload can't handle them)." -ForegroundColor Yellow
+  $Message = $CleanMessage
+}
+if (-not $Message) { $Message = "Update from Claude" }
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
