@@ -1145,6 +1145,8 @@ var ASSOC = {
   quoteToDeal: 64,
   quoteToLineItem: 67,
   quoteToContact: 69,
+  quoteToCompany: 71,
+  // the buyer company: its name and address print on the quote
   quoteToTemplate: 286,
   quoteToSigner: 702,
   lineItemToQuote: 68
@@ -1234,11 +1236,12 @@ exports.main = async (context) => {
     dealProperties: writes.properties,
     warnings: writes.warnings
   });
-  if (editing) return editInPlace({ editing, dealId, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result });
+  if (editing) return editInPlace({ editing, dealId, deal, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result });
   try {
     if (primary) created.dealLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties, associations: [link(dealId, ASSOC.lineItemToDeal)] })));
     created.quoteLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties })));
     const associations = [link(dealId, ASSOC.quoteToDeal), link(template.id, ASSOC.quoteToTemplate)].concat(created.quoteLines.map((li) => link(li.id, ASSOC.quoteToLineItem)));
+    if (deal.company) associations.push(link(deal.company.id, ASSOC.quoteToCompany));
     if (signerId) {
       associations.push(link(signerId, ASSOC.quoteToContact));
       if (isCpq && payload.setup.acceptance === "esignature") associations.push(link(signerId, ASSOC.quoteToSigner));
@@ -1262,7 +1265,7 @@ exports.main = async (context) => {
     return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
   }
 };
-async function editInPlace({ editing, dealId, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result }) {
+async function editInPlace({ editing, dealId, deal, template, signerId, isCpq, payload, lineProps, quoteProps, primary, writes, result }) {
   const quoteId = editing.id;
   const created = { dealLines: [], quoteLines: [] };
   let before = null;
@@ -1281,6 +1284,9 @@ async function editInPlace({ editing, dealId, template, signerId, isCpq, payload
     const contacts = await associatedIds("quotes", quoteId, "contacts");
     for (const id of contacts) await unassociate("quotes", quoteId, "contacts", id);
     if (signerId) await associate("quotes", quoteId, "contacts", signerId, isCpq && payload.setup.acceptance === "esignature" ? [ASSOC.quoteToContact, ASSOC.quoteToSigner] : [ASSOC.quoteToContact]);
+    if (deal.company && !(await associatedIds("quotes", quoteId, "companies")).includes(String(deal.company.id))) {
+      await associate("quotes", quoteId, "companies", deal.company.id, [ASSOC.quoteToCompany]);
+    }
     if (oldQuoteLines.length) await batchArchive("line_items", oldQuoteLines);
     await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: "PATCH", body: { properties: writes.properties } });
     let replaced = 0;

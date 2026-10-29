@@ -82,10 +82,10 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
     }
     if (p === '/crm/v4/objects/deals/123/associations/line_items') return ok({ results: Object.keys(store.lineItems).map((id) => ({ toObjectId: id })) });
     if (p === '/crm/v3/objects/quotes/batch/read') return ok({ results: store.quotes.map((q) => ({ id: q.id, properties: q.properties })) });
-    const qa = p.match(/^\/crm\/v4\/objects\/quotes\/(\w+)\/associations\/(line_items|quote_template|contacts)(?:\/(\w+))?$/);
+    const qa = p.match(/^\/crm\/v4\/objects\/quotes\/(\w+)\/associations\/(line_items|quote_template|contacts|companies)(?:\/(\w+))?$/);
     if (qa) {
       const q = store.quotes.find((x) => x.id === qa[1]);
-      const key = { line_items: 'lineIds', quote_template: 'templateIds', contacts: 'contactIds' }[qa[2]];
+      const key = { line_items: 'lineIds', quote_template: 'templateIds', contacts: 'contactIds', companies: 'companyIds' }[qa[2]];
       q[key] = q[key] || [];
       if (method === 'GET') return ok({ results: q[key].map((id) => ({ toObjectId: id })) });
       if (method === 'DELETE') q[key] = q[key].filter((id) => id !== qa[3]);
@@ -163,7 +163,8 @@ test('submit writes deal lines, quote copies, quote and deal fields; replaces on
   assert.equal(q.properties.hs_acceptance_method, 'esignature');
   assert.equal(q.properties.hs_status, undefined);
   const types = q.associations.map((a) => a.types[0].associationTypeId).sort((a, b) => a - b);
-  assert.deepEqual(types, [286, 64, 67, 67, 67, 67, 69, 702].sort((a, b) => a - b));
+  assert.deepEqual(types, [286, 64, 67, 67, 67, 67, 69, 702, 71].sort((a, b) => a - b)); // 71 = the deal's company, so its address prints
+  assert.equal(q.associations.find((a) => a.types[0].associationTypeId === 71).to.id, '7');
   const quoteLineIds = q.associations.filter((a) => a.types[0].associationTypeId === 67).map((a) => a.to.id);
   const dealLineIds = Object.keys(store.lineItems).filter((id) => store.lineItems[id].hs_position_on_quote && !quoteLineIds.includes(id));
   assert.equal(dealLineIds.length, 4);
@@ -386,7 +387,7 @@ test('edit in place: same quote, new lines replace old ones, primary deal lines 
   assert.ok(store.archived.includes('QL5a') && store.archived.includes('QL5b')); // old quote lines
   assert.ok(store.archived.includes('L-old-builder')); // old primary deal lines
   assert.ok(!store.archived.includes('L-manual'));
-  assert.deepEqual(store.assocCalls, ['DELETE contacts 501', 'PUT contacts 501 69+702']); // template unchanged
+  assert.deepEqual(store.assocCalls, ['DELETE contacts 501', 'PUT contacts 501 69+702', 'PUT companies 7 71']); // template unchanged; company added to an older quote
   assert.equal(store.dealPatch.agreement_length, '15 Months');
 });
 
