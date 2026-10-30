@@ -36,6 +36,7 @@ functions-src/                         app function source: catalog (products + 
                                        (rebuilds the quote server-side and writes it), set-primary; lib/hubspot.js
 shared/config.mjs, shared/pricing.mjs  business rules + pricing (single source of truth)
 scripts/                               one-time setup (properties, product tagging)
+quote-modules/                         separate HubSpot project: CPQ quote template module (one table per product), see quote-modules/README.md
 tests/                                 unit, function (fake HubSpot API) and card render tests
 ```
 

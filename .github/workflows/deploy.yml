@@ -5,6 +5,9 @@ name: Test and deploy to HubSpot
 on:
   push:
     branches: [main]
+    # The quote template module has its own workflow (deploy-quote-modules.yml).
+    paths-ignore:
+      - 'quote-modules/**'
   workflow_dispatch:
 
 concurrency:

@@ -112,7 +112,9 @@ function Get-LocalFiles {
   Get-ChildItem -Path $Root -Recurse -File -Force | ForEach-Object {
     $rel = $_.FullName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
     foreach ($d in $ExcludeDirs) { if ($rel -eq $d -or $rel.StartsWith("$d/")) { return } }
+    if ($rel -like "*/node_modules/*") { return }   # nested installs (quote-modules)
     foreach ($p in $ExcludeFiles) { if ($_.Name -like $p) { return } }
+    if ($rel -like ".github/workflows/*" -and (Test-Path (Join-Path $Root ("github-workflows/" + $rel.Substring(".github/workflows/".Length))))) { return }   # github-workflows\ copy wins
     if ($rel -like "github-workflows/*") { $rel = ".github/workflows/" + $rel.Substring("github-workflows/".Length) }
     $map[$rel] = $_.FullName
   }

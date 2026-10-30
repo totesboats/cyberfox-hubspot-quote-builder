@@ -1,0 +1,8 @@
+{
+  "uid": "cyberfox-quote-modules",
+  "type": "cms-assets",
+  "config": {
+    "themePath": "cyberfox-quote-modules",
+    "secretNames": []
+  }
+}

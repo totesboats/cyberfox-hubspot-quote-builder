@@ -1,0 +1,44 @@
+# Tests and uploads the CPQ quote template module ("Line items by product") when anything in
+# quote-modules/ changes. Separate HubSpot project from the Quote Builder card, same secrets:
+# HUBSPOT_ACCOUNT_ID and HUBSPOT_PERSONAL_ACCESS_KEY.
+name: Deploy quote template module
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'quote-modules/**'
+      - 'tests/quote-modules.test.mjs'
+  workflow_dispatch:
+
+concurrency:
+  group: hubspot-deploy-quote-modules
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Grouping tests
+        run: node --test tests/quote-modules.test.mjs
+      - name: Typecheck module
+        working-directory: quote-modules/src/cms-assets/cyberfox-quote-modules
+        run: |
+          npm ci
+          npm run typecheck
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_ACCOUNT_ID: ${{ secrets.HUBSPOT_ACCOUNT_ID }}
+      DEFAULT_PERSONAL_ACCESS_KEY: ${{ secrets.HUBSPOT_PERSONAL_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: HubSpot/hubspot-project-actions@v1.1.0
+        with:
+          project_dir: ./quote-modules
