@@ -17,9 +17,9 @@ Prints one line item table per product, in this order:
 There is no Bundle table: CyberFOX Bundles aren't quoted.
 
 A product's table only appears when the quote has lines for it, so an AutoElevate-only quote
-shows one table. Ramp lines (RAMP 1, RAMP 2 …) stay in their product's table. Columns are the
-same as the standard table (Product, Quantity, Unit price, Discount, Term, Amount) with no
-per-table subtotal. The quote's totals print once under the last table (this can be turned off).
+shows one table. Ramp lines (RAMP 1, RAMP 2 …) stay in their product's table. Each table looks
+like HubSpot's own line items table: Product name, Quantity, Term, Unit discount, Net Price, with
+no subtotals or totals.
 
 ### How lines are matched to a product
 
@@ -51,7 +51,8 @@ exactly like Quote Builder quotes. The Quote Builder isn't needed for the templa
 3. Hide the default **Line items** module, but don't delete it. HubSpot needs it on the
    template to edit a quote's line items.
 4. Optional: in the module's settings, rename any table heading, add a heading above the
-   tables, turn totals off, or change the header colours (Style tab).
+   tables, or change the space at the left and right edges (default 32px, to line up with the
+   rest of the quote).
 5. Preview with a real multi-product quote before switching the team's default template.
 
 **After every push that changes this module, open the template and update it by hand.** A

@@ -64,7 +64,7 @@ test('cells are formatted like the standard table', () => {
   assert.equal(c.unitPrice, '$1,050.00');
   assert.equal(c.discount, '10%');
   assert.equal(c.term, '12 months');
-  assert.equal(c.amount, '$945.00/mo');
+  assert.equal(c.amount, '$945.00');
   assert.equal(c.ramp, false);
   assert.equal(rowCells(line('RAMP 1 AutoElevate Plan')).ramp, true);
 });
@@ -76,7 +76,7 @@ test('term and discount text', () => {
   assert.equal(termText(line('x', { recurringbillingfrequency: 'annually', hs_recurring_billing_period: 'P1Y' })), '1 year');
   assert.equal(discountText(line('x', { hs_discount_percentage: 100 })), '100%');
   assert.equal(discountText(line('x', { discount: 25 }), 'USD'), '$25.00');
-  assert.equal(discountText(line('x')), '—');
+  assert.equal(discountText(line('x')), '');
 });
 
 test('template editor sample shows AutoElevate and DNS tables', () => {

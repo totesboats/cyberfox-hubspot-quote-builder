@@ -51,8 +51,6 @@ export function groupLineItems(lineItems, labels = {}) {
 // ---------------------------------------------------------------------------
 // Cell formatting
 
-const PER = { monthly: '/mo', annually: '/yr', quarterly: '/qtr', per_six_months: '/6 mo', weekly: '/wk', biweekly: '/2 wk' };
-
 export function money(value, currency = 'USD') {
   const n = Number(value) || 0;
   try {
@@ -74,17 +72,12 @@ export function termText(item) {
   return '';
 }
 
-/** "10%", "$25.00" or "—". */
+/** "10%", "$25.00", or blank when there's no discount (like HubSpot's own table). */
 export function discountText(item, currency) {
   const pct = Number(item.hs_discount_percentage) || 0;
   if (pct > 0) return `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%`;
   const amount = Number(item.discount) || 0;
-  return amount > 0 ? money(amount, currency) : '—';
-}
-
-/** Billing suffix for an amount, e.g. "/mo". Empty for one-time lines. */
-export function perText(item) {
-  return PER[item.recurringbillingfrequency] || '';
+  return amount > 0 ? money(amount, currency) : '';
 }
 
 /** One table row's cells, already formatted. */
@@ -97,7 +90,7 @@ export function rowCells(item, currency) {
     unitPrice: money(item.price, currency),
     discount: discountText(item, currency),
     term: termText(item),
-    amount: `${money(item.amount, currency)}${perText(item)}`,
+    amount: money(item.amount, currency), // HubSpot's Net Price: no /mo suffix
   };
 }
 
