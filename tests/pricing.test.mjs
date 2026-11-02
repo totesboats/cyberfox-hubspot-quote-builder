@@ -46,7 +46,7 @@ test('catalog reports duplicate SKUs for the same slot', () => {
   assert.match(dup.issues[0], /Two base SKUs/);
 });
 
-test('picks the cheapest tier: 1,250 agents = 1,000 commit + 250 additional', () => {
+test('default tier: 1,250 agents = 1,000 commit + 250 additional', () => {
   const r = P.priceProduct(ae(), MSP, CATALOG);
   assert.equal(r.error, '');
   assert.equal(r.chosenTier, 1000);
@@ -62,6 +62,35 @@ test('warns when the rep forces a pricier tier', () => {
   assert.equal(r.lines.length, 1);
   assert.equal(r.hintLevel, 'warning');
   assert.match(r.hint, /\$157\.50\/mo less/);
+});
+
+test('default is the highest tier at or below the count, even when the next tier lists less (900 agents)', () => {
+  // Live 2026 MSP prices: 750 tier $877.50 + $1.17/agent; 1,000 tier $1,050.
+  const cat = P.indexCatalog([
+    prod('Standard-AE-750-Agent-Commit-2026', 877.5, 'autoelevate', 'standard', 'MSP', 'monthly', 750),
+    prod('Standard-AE-750-Agent-Commit-Additional-Agents+2026', 1.17, 'autoelevate', 'standard', 'MSP', 'monthly', 750, 'additional'),
+    prod('Standard-AE-1000-Agent-Commit-2026', 1050, 'autoelevate', 'standard', 'MSP', 'monthly', 1000),
+    prod('Standard-AE-1000-Agent-Commit-Additional-Agents+2026', 1.05, 'autoelevate', 'standard', 'MSP', 'monthly', 1000, 'additional'),
+  ]);
+  const r = P.priceProduct(ae({ quantity: 900, discountPct: 0 }), MSP, cat);
+  assert.equal(r.chosenTier, 750);
+  assert.equal(r.cheapestTier, 1000);
+  assert.deepEqual(r.lines.map((l) => [l.sku, l.quantity]), [['Standard-AE-750-Agent-Commit-2026', 1], ['Standard-AE-750-Agent-Commit-Additional-Agents+2026', 150]]);
+  assert.equal(r.hintLevel, 'info');
+  assert.match(r.hint, /1,000 tier lists \$3\.00\/mo less/);
+  assert.match(r.tierOptions.find((o) => o.value === '1000').label, /lowest price/);
+  // The rep can still round up to 1,000; that's cheaper, so it's an info note, not a warning.
+  const up = P.priceProduct(ae({ quantity: 900, discountPct: 0, tier: 1000 }), MSP, cat);
+  assert.equal(up.chosenTier, 1000);
+  assert.equal(up.lines.length, 1);
+  assert.equal(up.hintLevel, 'info');
+  assert.match(up.hint, /rounded up from the default 750 tier/);
+  // Below the smallest tier: the smallest tier, no overage.
+  const small = P.priceProduct(ae({ quantity: 600, discountPct: 0 }), MSP, cat);
+  assert.equal(small.chosenTier, 750);
+  assert.equal(small.lines.length, 1);
+  // Exactly on a tier: that tier.
+  assert.equal(P.priceProduct(ae({ quantity: 1000, discountPct: 0 }), MSP, cat).chosenTier, 1000);
 });
 
 test('pack SKUs buy enough packs: 300 users = one 500-user pack', () => {

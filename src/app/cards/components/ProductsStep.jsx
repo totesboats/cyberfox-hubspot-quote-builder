@@ -13,7 +13,7 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
   // MSP Optimize365 is per tenant and can carry the TDR add-on on the same row.
   const tdrField = input.family === 'optimize365' && segment === 'MSP';
   const tierOptions = priced.tierOptions.length
-    ? [{ label: `Best price${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
+    ? [{ label: `Default${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
     : [{ label: 'No tiers for this combination', value: NONE }];
   return (
     <Row>
@@ -39,7 +39,7 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
       <Select
         label="Commit tier"
         name={`tier-${input.uid}`}
-        tooltip={`Prices are list ${per}. Best price picks the cheapest tier for the count.`}
+        tooltip={`Prices are list ${per}. Default is the highest tier at or below the count, plus additional ${units.unit}. Pick a bigger tier to round up.`}
         options={tierOptions}
         value={toSelect(input.tier)}
         onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
@@ -231,7 +231,7 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
       <Flex direction="column" gap="extra-small">
         <Heading>Products & ramp</Heading>
         <Text variant="microcopy">
-          Enter the total count. The builder picks the commit tier with the lowest list price and adds the overage SKU above it. Showing {segment} ·{' '}
+          Enter the total count. The builder uses the highest commit tier at or below the count and adds the overage SKU above it. Showing {segment} ·{' '}
           {BILLING[quote.billing].label.toLowerCase()} SKUs.
         </Text>
       </Flex>

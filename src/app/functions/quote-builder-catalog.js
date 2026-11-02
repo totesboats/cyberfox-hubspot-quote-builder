@@ -340,9 +340,15 @@ var require_pricing = __commonJS({
         }
         return { tier: t, base, additional, baseQty, addQty, cost: round2(cost) };
       });
-      let best = options[0] || null;
-      for (const o of options) if (o.cost < best.cost - 1e-9) best = o;
-      return { options, best };
+      let cheapest = options[0] || null;
+      for (const o of options) if (o.cost < cheapest.cost - 1e-9) cheapest = o;
+      const withOverage = options.filter((o) => o.additional);
+      let best = cheapest;
+      if (withOverage.length) {
+        const atOrBelow = withOverage.filter((o) => o.tier <= quantity);
+        best = atOrBelow.length ? atOrBelow[atOrBelow.length - 1] : withOverage[0];
+      }
+      return { options, best, cheapest };
     }
     function priceProduct(input, setup, catalog) {
       const family = FAMILIES[input.family];
@@ -382,7 +388,7 @@ var require_pricing = __commonJS({
       const annual = setup.billing === "annual";
       result.annual = annual;
       const per = annual ? "/yr" : "/mo";
-      const { options, best } = tierOptionsFor(tiersForKey, quantity);
+      const { options, best, cheapest } = tierOptionsFor(tiersForKey, quantity);
       if (!best) {
         result.error = `No base SKU found for ${family.label} (${key}).`;
         return result;
@@ -391,11 +397,12 @@ var require_pricing = __commonJS({
       const chosen = options.find((o) => o.tier === requested) || best;
       result.tierOptions = options.map((o) => ({
         value: String(o.tier),
-        label: `${formatInt(o.tier)} ${units.unit} \u2014 ${formatMoney(o.cost)}${per}${o === best ? " (best price)" : ""}`,
+        label: `${formatInt(o.tier)} ${units.unit} \u2014 ${formatMoney(o.cost)}${per}${o === cheapest && cheapest !== best ? " (lowest price)" : ""}`,
         cost: o.cost
       }));
       result.chosenTier = chosen.tier;
       result.bestTier = best.tier;
+      result.cheapestTier = cheapest.tier;
       result.lines.push(
         makeLine({
           family: input.family,
@@ -426,12 +433,19 @@ var require_pricing = __commonJS({
       }
       if (quantity === 0) {
         result.error = `Enter how many ${units.unit} to quote.`;
-      } else if (chosen !== best) {
-        result.hint = `The ${formatInt(best.tier)} tier covers ${formatInt(quantity)} ${units.unit} for ${formatMoney(best.cost)}${per}, ${formatMoney(chosen.cost - best.cost)}${per} less than the tier selected.`;
+      } else if (chosen !== best && chosen.cost > cheapest.cost + 1e-9) {
+        result.hint = `The ${formatInt(cheapest.tier)} tier covers ${formatInt(quantity)} ${units.unit} for ${formatMoney(cheapest.cost)}${per}, ${formatMoney(chosen.cost - cheapest.cost)}${per} less than the tier selected.`;
         result.hintLevel = "warning";
       } else if (chosen.additional) {
         const extra = chosen.addQty > 0 ? ` + ${formatInt(chosen.addQty)} additional ${units.unit}` : "";
-        result.hint = `${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} ${input.family === "optimize365" && setup.segment === "MSP" ? "base" : "commit"}${extra} is the lowest list price for ${formatInt(quantity)} ${units.unit}.`;
+        const what = `${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} ${input.family === "optimize365" && setup.segment === "MSP" ? "base" : "commit"}${extra}`;
+        if (chosen !== best) {
+          result.hint = `${what} covers ${formatInt(quantity)} ${units.unit}, rounded up from the default ${formatInt(best.tier)} tier (${formatMoney(best.cost - chosen.cost)}${per} less).`;
+        } else if (cheapest !== best) {
+          result.hint = `${what} for ${formatInt(quantity)} ${units.unit}. The ${formatInt(cheapest.tier)} tier lists ${formatMoney(best.cost - cheapest.cost)}${per} less if you'd rather round up.`;
+        } else {
+          result.hint = `${what} for ${formatInt(quantity)} ${units.unit}.`;
+        }
       } else {
         result.hint = `${formatInt(chosen.baseQty)} \xD7 ${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} pack${chosen.baseQty > 1 ? "s" : ""} covers ${formatInt(quantity)} ${units.unit} at the lowest list price.`;
       }
