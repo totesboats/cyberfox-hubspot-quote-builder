@@ -561,44 +561,71 @@ test('one-off SKUs ramp like other products, and an Optimize365 one-off follows 
 });
 
 // ---------------------------------------------------------------------------
-// MSP Optimize365: per tenant + TDR add-on (Oct 2026). Enterprise stays per user.
+// MSP Optimize365 (Nov 2026): per user or per tenant (5–500 tenant plans), with the volume-priced Optimize TDR
+// add-on on per-tenant rows. Enterprise stays per user.
 const tagged = (id, name, price, edition, component, tier, segment = 'MSP') => ({ id, properties: { name, hs_sku: name, hs_price_usd: String(price), qb_family: 'optimize365', qb_edition: edition, qb_segment: segment, qb_billing: 'monthly', qb_tier: String(tier), qb_component: component } });
 const O365_CATALOG = P.indexCatalog([
-  tagged('o1', 'Optimize365 – Tenant Base', 500, 'standard', 'base', 10),
-  tagged('o2', 'Optimize365 – Additional Tenant', 50, 'standard', 'additional', 10),
-  tagged('o3', 'TDR – User Base', 200, 'tdr', 'base', 100),
-  tagged('o4', 'TDR – Additional User', 2, 'tdr', 'additional', 100),
+  tagged('t5', 'Optimize365 5 Tenant Plan', 250, 'tenant', 'base', 5),
+  tagged('t5a', 'Optimize365 5 Tenant Plan Additional Tenants', 50, 'tenant', 'additional', 5),
+  tagged('t25', 'Optimize365 25 Tenant Plan', 1125, 'tenant', 'base', 25),
+  tagged('t25a', 'Optimize365 25 Tenant Plan Additional Tenants', 45, 'tenant', 'additional', 25),
+  tagged('tdr', 'Optimize TDR', 0, 'tdr', 'base', 1),
+  tagged('u100', 'Optimize365 100 User Plan', 240, 'standard', 'base', 100),
+  tagged('u100a', 'Optimize 365 100 User Plan Additional Users', 2.4, 'standard', 'additional', 100),
   tagged('e1', 'Optimize365 100 User Plan Enterprise Monthly', 336, 'standard', 'base', 100, 'ENT'),
   tagged('e2', 'Optimize 365 100 User Plan Additional Users Enterprise Monthly', 3.36, 'standard', 'additional', 100, 'ENT'),
 ]);
-const o365 = (over = {}) => Object.assign({ uid: 4, family: 'optimize365', edition: 'standard', quantity: 15, tdrUsers: 120, discountPct: 10, ramp: false }, over);
+const o365 = (over = {}) => Object.assign({ uid: 4, family: 'optimize365', edition: 'tenant', quantity: 30, tdrUsers: 6000, discountPct: 10, ramp: false }, over);
 
-test('MSP Optimize365: 15 tenants + 120 TDR users = Tenant Base + 5 Additional Tenants + TDR User Base + 20 TDR Additional Users', () => {
+test('MSP Optimize365 per tenant: 30 tenants = 25-tenant plan + 5 additional; TDR 6,000 users = one line at $0.85', () => {
   const q = P.buildQuote(Object.assign({}, MSP, { agreementLength: '12 Months' }), [o365()], {}, O365_CATALOG);
   assert.deepEqual(q.conflicts, []);
+  assert.deepEqual(q.blocking, []);
   assert.deepEqual(q.lines.map((l) => [l.name, l.quantity, l.unitPrice, l.discountPct]), [
-    ['Optimize365 – Tenant Base', 1, 500, 10],
-    ['Optimize365 – Additional Tenant', 5, 50, 10],
-    ['TDR – User Base', 1, 200, 10],
-    ['TDR – Additional User', 20, 2, 10],
+    ['Optimize365 25 Tenant Plan', 1, 1125, 10],
+    ['Optimize365 25 Tenant Plan Additional Tenants', 5, 45, 10],
+    ['Optimize TDR', 6000, 0.85, 10],
   ]);
-  assert.equal(q.totals.mrr, 891); // (500 + 250 + 200 + 40) × 0.9
-  assert.match(q.rows[0].priced.hint, /10-tenant base \+ 5 additional tenants .* TDR: 100-user base \+ 20 additional users/);
-  // No TDR, and TDR under 100 users (base only).
+  assert.equal(q.totals.mrr, 5805); // (1125 + 225 + 5100) × 0.9
+  assert.match(q.rows[0].priced.hint, /25-tenant commit \+ 5 additional tenants for 30 tenants\. TDR: 6,000 users at \$0\.85 \(5,000–7,499 tier\)/);
+  // No TDR: tenant lines only.
   assert.equal(P.buildQuote(MSP, [o365({ tdrUsers: 0 })], {}, O365_CATALOG).lines.length, 2);
-  assert.deepEqual(P.buildQuote(MSP, [o365({ quantity: 8, tdrUsers: 40 })], {}, O365_CATALOG).lines.map((l) => [l.name, l.quantity]), [['Optimize365 – Tenant Base', 1], ['TDR – User Base', 1]]);
 });
 
-test('MSP Optimize365 ramp (Optimize rule) covers the TDR lines too; Enterprise ignores TDR and stays per user', () => {
+test('Optimize TDR volume tiers: every user at the rate of the tier the total falls into', () => {
+  const rate = (n) => (P.tdrTier(n) || {}).price;
+  assert.deepEqual([1, 4999, 5000, 7499, 7500, 14999, 15000, 49999, 50000, 250000].map(rate), [1, 1, 0.85, 0.85, 0.7, 0.7, 0.5, 0.5, 0.5, 0.5]);
+  assert.equal(P.tdrTier(0), null);
+  const line = (n) => P.buildQuote(MSP, [o365({ quantity: 5, tdrUsers: n, discountPct: 0 })], {}, O365_CATALOG).lines.find((l) => l.kind === 'tdr');
+  assert.equal(line(4999).gross, 4999);
+  assert.equal(line(7500).gross, 5250);
+});
+
+test('MSP Optimize365 per user still prices the per-user SKUs and never adds TDR', () => {
+  const q = P.buildQuote(MSP, [o365({ edition: 'standard', quantity: 120, tdrUsers: 500 })], {}, O365_CATALOG);
+  assert.deepEqual(q.lines.map((l) => [l.name, l.quantity]), [['Optimize365 100 User Plan', 1], ['Optimize 365 100 User Plan Additional Users', 20]]);
+  assert.match(q.rows[0].priced.hint, /100-user commit \+ 20 additional users/);
+});
+
+test('Optimize TDR missing from the catalog is a clear blocking error (until tag-products runs)', () => {
+  const noTdr = P.indexCatalog([tagged('t5', 'Optimize365 5 Tenant Plan', 250, 'tenant', 'base', 5)]);
+  assert.match(P.buildQuote(MSP, [o365({ quantity: 5, tdrUsers: 10 })], {}, noTdr).blocking[0].error, /Optimize TDR product isn't available/);
+  assert.deepEqual(P.buildQuote(MSP, [o365({ quantity: 5, tdrUsers: 0 })], {}, noTdr).blocking, []);
+});
+
+test('MSP Optimize365 ramp (Optimize rule) covers the TDR line too; per tenant is MSP only; Enterprise stays per user', () => {
   const q = P.buildQuote(Object.assign({}, MSP, { agreementLength: '14 Months' }), [o365({ ramp: true, rampStages: [{ months: 2, mode: 'free' }] })], {}, O365_CATALOG);
   assert.deepEqual(q.conflicts, []);
   assert.deepEqual(q.lines.filter((l) => l.ramp).map((l) => [l.name.replace(/^RAMP /, ''), l.termMonths, l.discountPct]), [
-    ['Optimize365 – Tenant Base', 2, 100],
-    ['Optimize365 – Additional Tenant', 2, 100],
-    ['TDR – User Base', 2, 100],
-    ['TDR – Additional User', 2, 100],
+    ['Optimize365 25 Tenant Plan', 2, 100],
+    ['Optimize365 25 Tenant Plan Additional Tenants', 2, 100],
+    ['Optimize TDR', 2, 100],
   ]);
   assert.match(P.buildQuote(Object.assign({}, MSP, { agreementLength: '16 Months' }), [o365({ ramp: true, rampStages: [{ months: 4, mode: 'free' }] })], {}, O365_CATALOG).conflicts[0], /Optimize365 can only ramp/);
-  const ent = P.buildQuote(Object.assign({}, MSP, { segment: 'ENT' }), [o365({ quantity: 120 })], {}, O365_CATALOG);
+  const ENT = Object.assign({}, MSP, { segment: 'ENT' });
+  assert.match(P.buildQuote(ENT, [o365()], {}, O365_CATALOG).blocking[0].error, /per tenant is MSP only/);
+  const ent = P.buildQuote(ENT, [o365({ edition: 'standard', quantity: 120 })], {}, O365_CATALOG);
   assert.deepEqual(ent.lines.map((l) => [l.name, l.quantity]), [['Optimize365 100 User Plan Enterprise Monthly', 1], ['Optimize 365 100 User Plan Additional Users Enterprise Monthly', 20]]);
+  assert.deepEqual(P.editionsFor('optimize365', 'ENT').map((e) => e.value), ['standard']);
+  assert.deepEqual(P.editionsFor('optimize365', 'MSP').map((e) => e.label), ['Per user', 'Per tenant']);
 });

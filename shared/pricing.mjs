@@ -25,7 +25,7 @@ import {
   OPTIMIZE_RAMP,
   ONE_OFF_FOLDER,
   ONE_OFF_FAMILY_PATTERNS,
-  OPTIMIZE_MSP,
+  OPTIMIZE_TDR,
 } from './config.mjs';
 
 export function toNum(v, fallback = 0) {
@@ -157,11 +157,24 @@ export function suggestTemplate(templates, families) {
 // Pricing one product row
 // ---------------------------------------------------------------------------
 
-// What a family counts in for a segment: MSP Optimize365 counts tenants, everything else its usual unit.
-export function unitsFor(familyKey, segment) {
+// What a row counts in: the edition's unit when it has one (Optimize365 per tenant), else the family's.
+export function unitsFor(familyKey, edition) {
   const fam = FAMILIES[familyKey] || {};
-  const over = (fam.unitBySegment && fam.unitBySegment[segment]) || {};
-  return { unit: over.unit || fam.unit, unitSingular: over.unitSingular || fam.unitSingular };
+  const ed = (fam.editions || []).find((e) => e.value === edition) || {};
+  return { unit: ed.unit || fam.unit, unitSingular: ed.unitSingular || fam.unitSingular };
+}
+
+// The editions a segment can quote (Optimize365 per tenant is MSP only).
+export function editionsFor(familyKey, segment) {
+  const fam = FAMILIES[familyKey] || {};
+  return (fam.editions || []).filter((e) => !e.segments || e.segments.includes(segment));
+}
+
+// Optimize TDR volume price for a user count: the rate of the tier the total falls into.
+export function tdrTier(users) {
+  const n = Math.max(0, Math.round(toNum(users)));
+  if (!n) return null;
+  return OPTIMIZE_TDR.tiers.find((t) => n >= t.from && (t.to == null || n <= t.to)) || null;
 }
 
 function makeLine(fields) {
@@ -238,13 +251,18 @@ export function priceProduct(input, setup, catalog) {
   if (input.family === 'timus') return priceTimus(input, setup, catalog, result);
   if (input.family === 'oneoff') return priceOneOff(input, catalog, result);
 
-  const units = unitsFor(input.family, setup.segment);
   const edition = effectiveEdition(input);
+  const units = unitsFor(input.family, edition);
+  const editionDef = family.editions.find((e) => e.value === edition);
+  if (editionDef && editionDef.segments && !editionDef.segments.includes(setup.segment)) {
+    result.error = `${family.label} ${editionDef.label.toLowerCase()} is ${editionDef.segments.join('/')} only. Change ${(family.pickerLabel || 'edition').toLowerCase()} to ${family.editions[0].label}.`;
+    return result;
+  }
   const key = catalogKey(input.family, edition, setup.segment, setup.billing);
   const tiersForKey = catalog.tiers[key];
   const billingLabel = (BILLING[setup.billing] || {}).label || setup.billing;
   if (!tiersForKey) {
-    const ed = family.editions.length > 1 ? ` ${edition}` : '';
+    const ed = family.editions.length > 1 ? ` ${editionDef ? editionDef.label.toLowerCase() : edition}` : '';
     result.error = `No ${setup.segment} ${billingLabel.toLowerCase()} SKUs exist for ${family.label}${ed}. Change billing or edition.`;
     return result;
   }
@@ -304,7 +322,7 @@ export function priceProduct(input, setup, catalog) {
     result.hintLevel = 'warning';
   } else if (chosen.additional) {
     const extra = chosen.addQty > 0 ? ` + ${formatInt(chosen.addQty)} additional ${units.unit}` : '';
-    const what = `${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} ${input.family === 'optimize365' && setup.segment === 'MSP' ? 'base' : 'commit'}${extra}`;
+    const what = `${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} commit${extra}`;
     if (chosen !== best) {
       result.hint = `${what} covers ${formatInt(quantity)} ${units.unit}, rounded up from the default ${formatInt(best.tier)} tier (${formatMoney(best.cost - chosen.cost)}${per} less).`;
     } else if (cheapest !== best) {
@@ -316,21 +334,21 @@ export function priceProduct(input, setup, catalog) {
     result.hint = `${formatInt(chosen.baseQty)} × ${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} pack${chosen.baseQty > 1 ? 's' : ''} covers ${formatInt(quantity)} ${units.unit} at the lowest list price.`;
   }
 
-  // MSP Optimize365 can add TDR on the same row: TDR User Base (100 users) + TDR Additional User above it.
+  // Optimize TDR: an add-on to per-tenant Optimize365 on the same row. One line, volume priced.
   const tdrUsers = Math.max(0, Math.round(toNum(input.tdrUsers)));
-  if (input.family === 'optimize365' && setup.segment === 'MSP' && tdrUsers > 0) {
-    const tdrKey = catalogKey('optimize365', OPTIMIZE_MSP.tdrEdition, setup.segment, setup.billing);
-    const tdr = tierOptionsFor(catalog.tiers[tdrKey], tdrUsers).best;
-    if (!tdr) {
-      result.error = result.error || `No ${setup.segment} ${billingLabel.toLowerCase()} TDR SKUs exist (TDR – User Base / TDR – Additional User). Set TDR users to 0 or change billing.`;
+  if (input.family === 'optimize365' && edition === OPTIMIZE_TDR.withEdition && tdrUsers > 0) {
+    const tdrTiers = catalog.tiers[catalogKey('optimize365', OPTIMIZE_TDR.edition, setup.segment, setup.billing)] || {};
+    const slot = Object.values(tdrTiers).find((t) => t.base);
+    const product = slot && slot.base;
+    const tier = tdrTier(tdrUsers);
+    if (!product) {
+      result.error = result.error || `The ${OPTIMIZE_TDR.sku} product isn't available for ${setup.segment} ${billingLabel.toLowerCase()} (run Setup scripts → tag-products). Set TDR users to 0 to quote without it.`;
       return result;
     }
     result.tdrUsers = tdrUsers;
-    result.lines.push(makeLine({ family: input.family, kind: 'tdr-base', productId: tdr.base.id, name: tdr.base.name, sku: tdr.base.sku, quantity: tdr.baseQty, unitPrice: tdr.base.price, discountPct, annual }));
-    if (tdr.additional && tdr.addQty > 0) {
-      result.lines.push(makeLine({ family: input.family, kind: 'tdr-additional', productId: tdr.additional.id, name: tdr.additional.name, sku: tdr.additional.sku, quantity: tdr.addQty, unitPrice: tdr.additional.price, discountPct, annual }));
-    }
-    result.hint = `${result.hint} TDR: ${formatInt(tdr.tier)}-user base${tdr.addQty > 0 ? ` + ${formatInt(tdr.addQty)} additional users` : ''} for ${formatInt(tdrUsers)} users.`.trim();
+    result.lines.push(makeLine({ family: input.family, kind: 'tdr', productId: product.id, name: product.name, sku: product.sku, quantity: tdrUsers, unitPrice: tier.price, discountPct, annual }));
+    const range = `${formatInt(tier.from)}${tier.to == null ? '+' : `–${formatInt(tier.to)}`}`;
+    result.hint = `${result.hint} TDR: ${formatInt(tdrUsers)} users at ${formatMoney(tier.price)} (${range} tier).`.trim();
   }
   return result;
 }

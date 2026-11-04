@@ -1,17 +1,19 @@
 import React from 'react';
 import { Alert, Button, Checkbox, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
-import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, OPTIMIZE_MSP, SEGMENTS } from '../lib/config.js';
-import { formatMoney, unitsFor } from '../lib/pricing.js';
+import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, OPTIMIZE_TDR, SEGMENTS } from '../lib/config.js';
+import { editionsFor, formatMoney, unitsFor } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
 function StandardFields({ input, priced, family, segment, onUpdate }) {
   const per = priced.annual ? '/yr' : '/mo';
-  const units = unitsFor(input.family, segment);
-  // MSP Optimize365 is per tenant and can carry the TDR add-on on the same row.
-  const tdrField = input.family === 'optimize365' && segment === 'MSP';
+  const units = unitsFor(input.family, input.edition);
+  const editions = editionsFor(input.family, segment);
+  // Per-tenant Optimize365 can carry the Optimize TDR add-on on the same row.
+  const tdrField = input.family === 'optimize365' && input.edition === OPTIMIZE_TDR.withEdition;
+  const tdrTiers = OPTIMIZE_TDR.tiers.map((t) => `${t.from.toLocaleString('en-US')}${t.to == null ? '+' : `–${t.to.toLocaleString('en-US')}`}: ${formatMoney(t.price)}`).join(', ');
   const tierOptions = priced.tierOptions.length
     ? [{ label: `Default${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
     : [{ label: 'No tiers for this combination', value: NONE }];
@@ -26,11 +28,11 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
           value={input.featureType || 'Standard'}
           onChange={(v) => onUpdate({ featureType: String(v), tier: '' })}
         />
-      ) : family.editions.length > 1 && (
+      ) : editions.length > 1 && (
         <Select
-          label="Edition"
+          label={family.pickerLabel || 'Edition'}
           name={`edition-${input.uid}`}
-          options={family.editions}
+          options={editions.map((e) => ({ label: e.label, value: e.value }))}
           value={input.edition}
           onChange={(v) => onUpdate({ edition: String(v), tier: '' })}
         />
@@ -48,7 +50,7 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
         <NumberInput
           label="TDR users"
           name={`tdr-${input.uid}`}
-          tooltip={`Optional TDR add-on. The TDR User Base covers ${OPTIMIZE_MSP.tdrUsersIncluded} users; each user above that is a TDR Additional User. 0 = no TDR.`}
+          tooltip={`Optional Optimize TDR add-on, volume priced per user per month (every user at the rate of the tier the total falls into): ${tdrTiers}. 0 = no TDR.`}
           min={0}
           precision={0}
           value={Number(input.tdrUsers) || 0}

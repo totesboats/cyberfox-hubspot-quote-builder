@@ -55,9 +55,13 @@ var require_config = __commonJS({
         label: "Optimize365",
         unit: "users",
         unitSingular: "User",
-        // MSP Optimize365 is sold per tenant (Tenant Base + Additional Tenant); Enterprise stays per user.
-        unitBySegment: { MSP: { unit: "tenants", unitSingular: "Tenant" } },
-        editions: [{ value: "standard", label: "Standard" }]
+        // MSP reps pick the pricing: per user (the original MSP SKUs) or per tenant (5–500 tenant plans, Nov 2026).
+        // Enterprise is per user only. An edition can set its own unit and the segments it's sold in.
+        pickerLabel: "Pricing",
+        editions: [
+          { value: "standard", label: "Per user" },
+          { value: "tenant", label: "Per tenant", unit: "tenants", unitSingular: "Tenant", segments: ["MSP"] }
+        ]
       },
       // One-off SKUs: custom products built for a single deal, kept in the "One-Off SKUs" product folder.
       // The rep picks the product; price and billing frequency come from the product itself.
@@ -76,7 +80,18 @@ var require_config = __commonJS({
     };
     var OPTIMIZE_RAMP = { family: "optimize365", planMonths: 12, maxMonths: 2 };
     var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365", "oneoff"];
-    var OPTIMIZE_MSP = { tenantsIncluded: 10, tdrUsersIncluded: 100, tdrEdition: "tdr" };
+    var OPTIMIZE_TDR = {
+      edition: "tdr",
+      withEdition: "tenant",
+      sku: "Optimize TDR",
+      tiers: [
+        { from: 1, to: 4999, price: 1 },
+        { from: 5e3, to: 7499, price: 0.85 },
+        { from: 7500, to: 14999, price: 0.7 },
+        { from: 15e3, to: 49999, price: 0.5 },
+        { from: 5e4, to: null, price: 0.5 }
+      ]
+    };
     var ONE_OFF_FOLDER = "One-Off SKUs";
     var ONE_OFF_FAMILY_PATTERNS = [
       ["autoelevate", /autoelevate|(^|[^a-z])ae([^a-z]|$)/i],
@@ -208,7 +223,7 @@ var require_config = __commonJS({
     var AE_FEATURE_TYPES_RETIRED = ["Advanced (GrandFathered)"];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS2 = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_MSP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
+    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
   }
 });
 
@@ -216,7 +231,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_MSP } = require_config();
+    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -319,10 +334,19 @@ var require_pricing = __commonJS({
       }
       return best;
     }
-    function unitsFor(familyKey, segment) {
+    function unitsFor(familyKey, edition) {
       const fam = FAMILIES[familyKey] || {};
-      const over = fam.unitBySegment && fam.unitBySegment[segment] || {};
-      return { unit: over.unit || fam.unit, unitSingular: over.unitSingular || fam.unitSingular };
+      const ed = (fam.editions || []).find((e) => e.value === edition) || {};
+      return { unit: ed.unit || fam.unit, unitSingular: ed.unitSingular || fam.unitSingular };
+    }
+    function editionsFor(familyKey, segment) {
+      const fam = FAMILIES[familyKey] || {};
+      return (fam.editions || []).filter((e) => !e.segments || e.segments.includes(segment));
+    }
+    function tdrTier(users) {
+      const n = Math.max(0, Math.round(toNum(users)));
+      if (!n) return null;
+      return OPTIMIZE_TDR.tiers.find((t) => n >= t.from && (t.to == null || n <= t.to)) || null;
     }
     function makeLine(fields) {
       const gross = round2(fields.quantity * fields.unitPrice);
@@ -386,13 +410,18 @@ var require_pricing = __commonJS({
       }
       if (input.family === "timus") return priceTimus(input, setup, catalog, result);
       if (input.family === "oneoff") return priceOneOff(input, catalog, result);
-      const units = unitsFor(input.family, setup.segment);
       const edition = effectiveEdition(input);
+      const units = unitsFor(input.family, edition);
+      const editionDef = family.editions.find((e) => e.value === edition);
+      if (editionDef && editionDef.segments && !editionDef.segments.includes(setup.segment)) {
+        result.error = `${family.label} ${editionDef.label.toLowerCase()} is ${editionDef.segments.join("/")} only. Change ${(family.pickerLabel || "edition").toLowerCase()} to ${family.editions[0].label}.`;
+        return result;
+      }
       const key = catalogKey(input.family, edition, setup.segment, setup.billing);
       const tiersForKey = catalog.tiers[key];
       const billingLabel = (BILLING[setup.billing] || {}).label || setup.billing;
       if (!tiersForKey) {
-        const ed = family.editions.length > 1 ? ` ${edition}` : "";
+        const ed = family.editions.length > 1 ? ` ${editionDef ? editionDef.label.toLowerCase() : edition}` : "";
         result.error = `No ${setup.segment} ${billingLabel.toLowerCase()} SKUs exist for ${family.label}${ed}. Change billing or edition.`;
         return result;
       }
@@ -449,7 +478,7 @@ var require_pricing = __commonJS({
         result.hintLevel = "warning";
       } else if (chosen.additional) {
         const extra = chosen.addQty > 0 ? ` + ${formatInt(chosen.addQty)} additional ${units.unit}` : "";
-        const what = `${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} ${input.family === "optimize365" && setup.segment === "MSP" ? "base" : "commit"}${extra}`;
+        const what = `${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} commit${extra}`;
         if (chosen !== best) {
           result.hint = `${what} covers ${formatInt(quantity)} ${units.unit}, rounded up from the default ${formatInt(best.tier)} tier (${formatMoney(best.cost - chosen.cost)}${per} less).`;
         } else if (cheapest !== best) {
@@ -461,19 +490,19 @@ var require_pricing = __commonJS({
         result.hint = `${formatInt(chosen.baseQty)} \xD7 ${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} pack${chosen.baseQty > 1 ? "s" : ""} covers ${formatInt(quantity)} ${units.unit} at the lowest list price.`;
       }
       const tdrUsers = Math.max(0, Math.round(toNum(input.tdrUsers)));
-      if (input.family === "optimize365" && setup.segment === "MSP" && tdrUsers > 0) {
-        const tdrKey = catalogKey("optimize365", OPTIMIZE_MSP.tdrEdition, setup.segment, setup.billing);
-        const tdr = tierOptionsFor(catalog.tiers[tdrKey], tdrUsers).best;
-        if (!tdr) {
-          result.error = result.error || `No ${setup.segment} ${billingLabel.toLowerCase()} TDR SKUs exist (TDR \u2013 User Base / TDR \u2013 Additional User). Set TDR users to 0 or change billing.`;
+      if (input.family === "optimize365" && edition === OPTIMIZE_TDR.withEdition && tdrUsers > 0) {
+        const tdrTiers = catalog.tiers[catalogKey("optimize365", OPTIMIZE_TDR.edition, setup.segment, setup.billing)] || {};
+        const slot = Object.values(tdrTiers).find((t) => t.base);
+        const product = slot && slot.base;
+        const tier = tdrTier(tdrUsers);
+        if (!product) {
+          result.error = result.error || `The ${OPTIMIZE_TDR.sku} product isn't available for ${setup.segment} ${billingLabel.toLowerCase()} (run Setup scripts \u2192 tag-products). Set TDR users to 0 to quote without it.`;
           return result;
         }
         result.tdrUsers = tdrUsers;
-        result.lines.push(makeLine({ family: input.family, kind: "tdr-base", productId: tdr.base.id, name: tdr.base.name, sku: tdr.base.sku, quantity: tdr.baseQty, unitPrice: tdr.base.price, discountPct, annual }));
-        if (tdr.additional && tdr.addQty > 0) {
-          result.lines.push(makeLine({ family: input.family, kind: "tdr-additional", productId: tdr.additional.id, name: tdr.additional.name, sku: tdr.additional.sku, quantity: tdr.addQty, unitPrice: tdr.additional.price, discountPct, annual }));
-        }
-        result.hint = `${result.hint} TDR: ${formatInt(tdr.tier)}-user base${tdr.addQty > 0 ? ` + ${formatInt(tdr.addQty)} additional users` : ""} for ${formatInt(tdrUsers)} users.`.trim();
+        result.lines.push(makeLine({ family: input.family, kind: "tdr", productId: product.id, name: product.name, sku: product.sku, quantity: tdrUsers, unitPrice: tier.price, discountPct, annual }));
+        const range = `${formatInt(tier.from)}${tier.to == null ? "+" : `\u2013${formatInt(tier.to)}`}`;
+        result.hint = `${result.hint} TDR: ${formatInt(tdrUsers)} users at ${formatMoney(tier.price)} (${range} tier).`.trim();
       }
       return result;
     }
@@ -954,7 +983,7 @@ var require_pricing = __commonJS({
       if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], "ramp");
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, tierOptionsFor, priceProduct, rowFamily, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteUrl: quoteUrl2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteUrl: quoteUrl2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
   }
 });
 

@@ -14,7 +14,8 @@ const PRODUCT_PROPS = [
     ['advanced', 'Advanced'],
     ['pack', 'User Pack'],
     ['commit', 'User Commit'],
-    ['tdr', 'TDR (Optimize365 add-on)'],
+    ['tdr', 'Optimize TDR (add-on)'],
+    ['tenant', 'Per tenant (Optimize365 MSP)'],
   ]),
   enumProp('qb_segment', 'Quote Builder: segment', [
     ['MSP', 'MSP'],

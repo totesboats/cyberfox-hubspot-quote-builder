@@ -17,7 +17,7 @@ import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
 import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, rampStages, suggestTemplate } from './lib/pricing.js';
-import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, OPTIMIZE_MSP, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
+import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
 
@@ -98,6 +98,15 @@ export function reducer(state, action) {
       return Object.assign({}, state, { step: Math.max(0, Math.min(STEPS.length - 1, action.step)) });
     case 'setup': {
       const setup = Object.assign({}, state.setup, action.patch);
+      if (action.patch.segment && action.patch.segment !== state.setup.segment) {
+        // An edition the new segment doesn't sell (Optimize365 per tenant on Enterprise) goes back to the first one.
+        const products = state.products.map((p) => {
+          const fam = FAMILIES[p.family];
+          const ed = fam && fam.editions.find((e) => e.value === p.edition);
+          return ed && ed.segments && !ed.segments.includes(setup.segment) ? Object.assign({}, p, { edition: fam.editions[0].value, tier: '' }) : p;
+        });
+        state = Object.assign({}, state, { products });
+      }
       if (!action.patch.agreementLength) return Object.assign({}, state, { setup });
       // Agreement Length changed: a product ramp still at its default single stage follows the new default.
       const products = state.products.map((p) => {
@@ -120,8 +129,8 @@ export function reducer(state, action) {
       };
       if (action.family === 'autoelevate') row.featureType = offeredFeatureType(action.defaultAeFeatureType);
       if (action.family === 'oneoff') Object.assign(row, { quantity: 1, productId: '', baseFamily: null });
-      // MSP Optimize365 is quoted per tenant (Tenant Base covers 10) with an optional TDR add-on.
-      if (action.family === 'optimize365' && state.setup.segment === 'MSP') Object.assign(row, { quantity: OPTIMIZE_MSP.tenantsIncluded, tdrUsers: 0 });
+      // Optimize365 starts per user; MSP reps can switch to per tenant (with the optional TDR add-on).
+      if (action.family === 'optimize365') row.tdrUsers = 0;
       if (action.family === 'timus') {
         // Rates start from the deal's current values (if any) so an existing Timus deal re-quotes as-is.
         const t = action.timusDefaults || {};

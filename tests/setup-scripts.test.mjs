@@ -60,13 +60,21 @@ test('price book change: new folders tagged, last year untagged, untouched produ
   assert.equal(rows[1].qb_family, '');
 });
 
-test('classify: MSP Optimize365 per-tenant and TDR add-on SKUs (names carry no tier number)', () => {
-  const t = (name) => classify(P(name, name, 'Optimize365')).tags;
-  assert.deepEqual(t('Optimize365 – Tenant Base'), { qb_family: 'optimize365', qb_edition: 'standard', qb_component: 'base', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '10' });
-  assert.deepEqual(t('Optimize365 – Additional Tenant'), { qb_family: 'optimize365', qb_edition: 'standard', qb_component: 'additional', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '10' });
-  assert.deepEqual(t('TDR – User Base'), { qb_family: 'optimize365', qb_edition: 'tdr', qb_component: 'base', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '100' });
-  assert.deepEqual(t('TDR – Additional User'), { qb_family: 'optimize365', qb_edition: 'tdr', qb_component: 'additional', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '100' });
-  // Enterprise Optimize365 is unchanged: per-user tiers.
-  const ent = classify(P('Optimize365 100 User Plan Enterprise Monthly', 'Optimize365-100-User-Commit-Monthly-E', 'Optimize365')).tags;
+test('classify: MSP Optimize365 per-tenant plans, Optimize TDR, retired Oct 2026 tenant/TDR SKUs', () => {
+  const t = (name, sku = name, freq = 'monthly') => classify(P(name, sku, 'Optimize365', freq));
+  assert.deepEqual(t('Optimize365 25 Tenant Plan', 'Optimize365-25-Tenant-Commit-Monthly').tags, { qb_family: 'optimize365', qb_edition: 'tenant', qb_component: 'base', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '25' });
+  assert.deepEqual(t('Optimize365 500 Tenant Plan Additional Tenants', 'Optimize365-500-Tenant-Commit-Monthly-Additional-Tenant').tags, { qb_family: 'optimize365', qb_edition: 'tenant', qb_component: 'additional', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '500' });
+  // The 250 Additional Tenants product has no billing frequency in HubSpot: still monthly.
+  assert.equal(t('Optimize365 250 Tenant Plan Additional Tenants', 'Optimize365-250-Tenant-Commit-Monthly-Additional-Tenant', undefined).tags.qb_billing, 'monthly');
+  assert.deepEqual(t('Optimize TDR').tags, { qb_family: 'optimize365', qb_edition: 'tdr', qb_component: 'base', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '1' });
+  for (const old of ['Optimize365 – Tenant Base', 'Optimize365 – Additional Tenant', 'TDR – User Base', 'TDR – Additional User']) {
+    const c = t(old);
+    assert.equal(c.status, 'untag', old);
+    assert.equal(c.tags.qb_family, '', old);
+  }
+  // The reactivated MSP per-user SKUs and Enterprise are unchanged: per-user tiers.
+  const msp = t('Optimize365 250 User Plan', 'Optimize365-250-User-Commit').tags;
+  assert.deepEqual([msp.qb_segment, msp.qb_tier, msp.qb_edition], ['MSP', '250', 'standard']);
+  const ent = t('Optimize365 100 User Plan Enterprise Monthly', 'Optimize365-100-User-Commit-Monthly-E').tags;
   assert.deepEqual([ent.qb_segment, ent.qb_tier, ent.qb_edition], ['ENT', '100', 'standard']);
 });

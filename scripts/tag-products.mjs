@@ -5,7 +5,7 @@
 // HubSpot (or tag by hand) and re-run. Safe to re-run any time.
 import { writeFileSync } from 'node:fs';
 import { hs, searchAll, apply, csv, HS_PATHS } from './lib/api.mjs';
-import { TIMUS, OPTIMIZE_MSP } from '../shared/config.mjs';
+import { TIMUS, OPTIMIZE_TDR } from '../shared/config.mjs';
 
 // The price book the builder sells from. For a new price book (e.g. the 2027 SKUs) change this one
 // value and run tag-products (dry run, then Apply): the new folders get tagged and the previous
@@ -44,18 +44,21 @@ export function classify(p) {
     return { tags: Object.assign(tags, { qb_segment: 'MSP', qb_billing: 'monthly' }), status: 'ok', note: '' };
   }
 
-  // MSP Optimize365 (Oct 2026): per-tenant base/additional SKUs plus the TDR add-on SKUs. Their names carry no
-  // tier number, so the included counts come from OPTIMIZE_MSP in shared/config.mjs.
-  if (rule.family === 'optimize365' && (/^TDR\b/i.test(name) || /tenant/i.test(name))) {
-    const tdr = /^TDR\b/i.test(name);
-    Object.assign(tags, {
-      qb_edition: tdr ? OPTIMIZE_MSP.tdrEdition : 'standard',
-      qb_component: /additional/i.test(name) ? 'additional' : 'base',
-      qb_segment: 'MSP',
-      qb_billing: p.recurringbillingfrequency === 'annually' ? 'annual' : 'monthly',
-      qb_tier: String(tdr ? OPTIMIZE_MSP.tdrUsersIncluded : OPTIMIZE_MSP.tenantsIncluded),
-    });
-    return { tags, status: 'ok', note: tdr ? 'TDR add-on (MSP Optimize365)' : 'MSP Optimize365 per tenant' };
+  if (rule.family === 'optimize365') {
+    // Optimize TDR (Nov 2026): one volume-priced product; its tiers live in OPTIMIZE_TDR (shared/config.mjs).
+    if (sku === OPTIMIZE_TDR.sku || /^Optimize TDR$/i.test(name)) {
+      Object.assign(tags, { qb_edition: OPTIMIZE_TDR.edition, qb_component: 'base', qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: '1' });
+      return { tags, status: 'ok', note: 'Optimize TDR add-on (volume tiers in config)' };
+    }
+    // MSP per-tenant plans (Nov 2026): "Optimize365 25 Tenant Plan" + "... Additional Tenants". Billing defaults
+    // to monthly: the plans are monthly-only and one of them has no billing frequency set in HubSpot.
+    const tenant = name.match(/(\d+) Tenant Plan/i);
+    if (tenant) {
+      Object.assign(tags, { qb_edition: 'tenant', qb_component: /additional/i.test(name) ? 'additional' : 'base', qb_segment: 'MSP', qb_billing: p.recurringbillingfrequency === 'annually' ? 'annual' : 'monthly', qb_tier: tenant[1] });
+      return { tags, status: 'ok', note: 'MSP Optimize365 per tenant' };
+    }
+    // Retired Oct 2026 per-tenant/TDR SKUs (Tenant Base, Additional Tenant, TDR – User Base / Additional User).
+    if (/tenant|^TDR\b/i.test(name)) return { tags: Object.fromEntries(QB_FIELDS.map((f) => [f, ''])), status: 'untag', note: 'retired Oct 2026 Optimize365 tenant/TDR SKU' };
   }
 
   tags.qb_component = /additional/i.test(name) ? 'additional' : 'base';

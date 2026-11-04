@@ -534,15 +534,16 @@ test('one-off SKU: pick a product from the One-Off SKUs folder; it prices at its
   assert.match(text(r.getRootNode()), /One-off · Optimize365/);
 });
 
-test('MSP Optimize365: per-tenant row with a TDR users add-on', async () => {
+test('MSP Optimize365: Pricing picker switches to per tenant, which adds the Optimize TDR users field', async () => {
   const r = mk();
   const t = (id, name, price, edition, component, tier) => ({ id, properties: { name, hs_sku: name, hs_price_usd: String(price), qb_family: 'optimize365', qb_edition: edition, qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: String(tier), qb_component: component } });
   const withO365 = Object.assign({}, CATALOG_RESPONSE, {
     products: CATALOG_RESPONSE.products.concat([
-      t('o1', 'Optimize365 – Tenant Base', 500, 'standard', 'base', 10),
-      t('o2', 'Optimize365 – Additional Tenant', 50, 'standard', 'additional', 10),
-      t('o3', 'TDR – User Base', 200, 'tdr', 'base', 100),
-      t('o4', 'TDR – Additional User', 2, 'tdr', 'additional', 100),
+      t('u1', 'Optimize365 100 User Plan', 240, 'standard', 'base', 100),
+      t('u2', 'Optimize 365 100 User Plan Additional Users', 2.4, 'standard', 'additional', 100),
+      t('o1', 'Optimize365 5 Tenant Plan', 250, 'tenant', 'base', 5),
+      t('o2', 'Optimize365 5 Tenant Plan Additional Tenants', 50, 'tenant', 'additional', 5),
+      t('o3', 'Optimize TDR', 0, 'tdr', 'base', 1),
     ]),
   });
   r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: withO365 }));
@@ -551,12 +552,21 @@ test('MSP Optimize365: per-tenant row with a TDR users add-on', async () => {
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   r.find(Button, (n) => /\+ Optimize365/.test(text(n))).trigger('onClick');
+  // Starts per user: 100 users, no TDR field.
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'edition-1' })));
+  const picker = r.find(Select, { name: 'edition-1' });
+  assert.equal(picker.props.label, 'Pricing');
+  assert.deepEqual(picker.props.options.map((o) => o.label), ['Per user', 'Per tenant']);
+  assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.label, 'Total users');
+  assert.equal(r.maybeFind(NumberInput, { name: 'tdr-1' }), null);
+  await r.waitFor(() => assert.match(text(r.getRootNode()), /\$240\.00\/mo/));
+  // Per tenant: 7 tenants = 5-tenant plan + 2 additional; 100 TDR users at $1.00.
+  picker.trigger('onChange', 'tenant');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'tdr-1' })));
   assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.label, 'Total tenants');
-  assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 10);
-  await r.waitFor(() => assert.match(text(r.getRootNode()), /\$500\.00\/mo/));
-  r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 12);
-  r.find(NumberInput, { name: 'tdr-1' }).trigger('onChange', 150);
-  // 500 + 2×50 + 200 + 50×2 = 900
-  await r.waitFor(() => assert.match(text(r.getRootNode()), /\$900\.00\/mo/));
+  assert.match(r.find(NumberInput, { name: 'tdr-1' }).props.tooltip, /5,000–7,499: \$0\.85/);
+  r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 7);
+  r.find(NumberInput, { name: 'tdr-1' }).trigger('onChange', 100);
+  // 250 + 2×50 + 100×1 = 450
+  await r.waitFor(() => assert.match(text(r.getRootNode()), /\$450\.00\/mo/));
 });
