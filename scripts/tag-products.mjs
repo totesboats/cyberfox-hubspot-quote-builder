@@ -4,7 +4,7 @@
 // Review the CSV first: rows marked "conflict" or "skip" are never written; fix them in
 // HubSpot (or tag by hand) and re-run. Safe to re-run any time.
 import { writeFileSync } from 'node:fs';
-import { hs, searchAll, apply, csv } from './lib/api.mjs';
+import { hs, searchAll, apply, csv, HS_PATHS } from './lib/api.mjs';
 import { TIMUS, OPTIMIZE_MSP } from '../shared/config.mjs';
 
 // The price book the builder sells from. For a new price book (e.g. the 2027 SKUs) change this one
@@ -110,7 +110,7 @@ async function main() {
   const writes = rows.filter((r) => r.status === 'ok' || r.status === 'untag');
   for (let i = 0; i < writes.length; i += 100) {
     const inputs = writes.slice(i, i + 100).map((r) => ({ id: r.id, properties: Object.fromEntries(QB_FIELDS.map((f) => [f, r[f]])) }));
-    await hs('/crm/v3/objects/products/batch/update', { method: 'POST', body: { inputs } });
+    await hs(`${HS_PATHS.objects}/products/batch/update`, { method: 'POST', body: { inputs } });
     console.log(`updated ${Math.min(i + 100, writes.length)}/${writes.length}`);
   }
 }

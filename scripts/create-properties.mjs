@@ -1,7 +1,7 @@
 // Creates the Quote Builder properties. Safe to re-run (existing properties are skipped).
 //   node scripts/create-properties.mjs            # dry run: lists what it would create
 //   node scripts/create-properties.mjs --apply
-import { hs, apply } from './lib/api.mjs';
+import { hs, apply, HS_PATHS } from './lib/api.mjs';
 import { FAMILIES } from '../shared/config.mjs';
 
 const opts = (pairs) => pairs.map(([value, label], i) => ({ value, label, displayOrder: i, hidden: false }));
@@ -45,13 +45,13 @@ const QUOTE_PROPS = [
 ];
 
 async function ensure(objectType, props) {
-  const { data: groups } = await hs(`/crm/v3/properties/${objectType}/groups`);
+  const { data: groups } = await hs(`${HS_PATHS.properties}/${objectType}/groups`);
   if (!groups.results.some((g) => g.name === 'quote_builder')) {
     console.log(`${objectType}: create group quote_builder`);
-    if (apply) await hs(`/crm/v3/properties/${objectType}/groups`, { method: 'POST', body: { name: 'quote_builder', label: 'Quote Builder', displayOrder: -1 } });
+    if (apply) await hs(`${HS_PATHS.properties}/${objectType}/groups`, { method: 'POST', body: { name: 'quote_builder', label: 'Quote Builder', displayOrder: -1 } });
   }
   for (const p of props) {
-    const existing = await hs(`/crm/v3/properties/${objectType}/${p.name}`, { allow: [404] });
+    const existing = await hs(`${HS_PATHS.properties}/${objectType}/${p.name}`, { allow: [404] });
     if (existing.status !== 404) {
       // Dropdowns: add any options the builder now needs (e.g. a new edition), keeping the existing ones.
       const have = ((existing.data && existing.data.options) || []).map((o) => o.value);
@@ -62,11 +62,11 @@ async function ensure(objectType, props) {
       }
       console.log(`${objectType}.${p.name}: ${apply ? 'adding' : 'would add'} option(s) ${missing.map((o) => o.value).join(', ')}`);
       const options = existing.data.options.concat(missing.map((o, i) => Object.assign({}, o, { displayOrder: existing.data.options.length + i })));
-      if (apply) await hs(`/crm/v3/properties/${objectType}/${p.name}`, { method: 'PATCH', body: { options } });
+      if (apply) await hs(`${HS_PATHS.properties}/${objectType}/${p.name}`, { method: 'PATCH', body: { options } });
       continue;
     }
     console.log(`${objectType}.${p.name}: ${apply ? 'creating' : 'would create'}`);
-    if (apply) await hs(`/crm/v3/properties/${objectType}`, { method: 'POST', body: p });
+    if (apply) await hs(`${HS_PATHS.properties}/${objectType}`, { method: 'POST', body: p });
   }
 }
 

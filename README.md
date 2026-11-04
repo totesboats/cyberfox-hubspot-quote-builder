@@ -40,6 +40,7 @@ quote-modules/                         separate HubSpot project: CPQ quote templ
 tests/                                 unit, function (fake HubSpot API) and card render tests
 ```
 
+- **HubSpot API version 2026-09** (date-based). Every call uses the paths in `HS_PATHS` (`shared/config.mjs`); legacy `/v3` and `/v4` paths stop working September 2027. To move to a newer version, change `HS_API_VERSION` and run `npm run check`. Two things differ from v3/v4: a record's associations are read with the associations batch read (`/crm/associations/2026-09/{from}/{to}/batch/read`), and quote templates fall back to v3 if HubSpot ever refuses them on the date-based objects API (they aren't documented there yet). The tests fail on any `/v3` or `/v4` call.
 - **Platform 2026.03 app functions** (HubSpot-hosted, `hubspot.serverless`). Chosen over an external backend because there is nothing to host, the token never leaves HubSpot, and both calls fit the 15-second limit. Requires an Enterprise subscription and a private, static-auth app.
 - **Pricing runs twice.** The card prices live for the preview; the submit function re-reads the product library and rebuilds every line. The card never sends prices, so a tampered request can't change them.
 - **`shared/` is the only place to edit rules.** `npm run sync` writes an ESM copy into `src/app/cards/lib` and a CommonJS copy into `functions-src/lib`, then bundles each function into `src/app/functions/`; tests check the copies behave identically and the bundles are self-contained.

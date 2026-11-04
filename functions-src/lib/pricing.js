@@ -97,7 +97,7 @@ function indexCatalog(records) {
   return { tiers, timus, oneOffs, issues };
 }
 
-// Quote templates from /crm/v3/objects/quote_templates → rep-facing list.
+// Quote templates (CRM objects API, quote_templates) → rep-facing list.
 function normalizeTemplates(records) {
   const typeMap = { cpq_template: 'CPQ_QUOTE', customizable_quote_template: 'CUSTOMIZABLE_QUOTE_TEMPLATE' };
   return (records || [])

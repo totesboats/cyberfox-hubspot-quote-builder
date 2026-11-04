@@ -8,7 +8,7 @@
 // Anything created before a failure is archived again so a failed run leaves no debris.
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
-const { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
+const { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
 const { quoteUrl, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
@@ -132,10 +132,10 @@ exports.main = async (context) => {
       associations.push(link(signerId, ASSOC.quoteToContact));
       if (isCpq && payload.setup.acceptance === 'esignature') associations.push(link(signerId, ASSOC.quoteToSigner));
     }
-    const created_quote = await hs('/crm/v3/objects/quotes', { method: 'POST', body: { properties: quoteProps, associations } });
+    const created_quote = await hs(`${OBJ}/quotes`, { method: 'POST', body: { properties: quoteProps, associations } });
     created.quoteId = String(created_quote.id);
 
-    await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: 'PATCH', body: { properties: writes.properties } });
+    await hs(`${OBJ}/deals/${encodeURIComponent(dealId)}`, { method: 'PATCH', body: { properties: writes.properties } });
 
     let replaced = 0;
     if (primary) {
@@ -148,7 +148,7 @@ exports.main = async (context) => {
   } catch (err) {
     console.error('quote-builder-submit failed; rolling back', err.message, err.details || '');
     const rollbackErrors = [];
-    if (created.quoteId) await hs(`/crm/v3/objects/quotes/${created.quoteId}`, { method: 'DELETE' }).catch((e) => rollbackErrors.push(e.message));
+    if (created.quoteId) await hs(`${OBJ}/quotes/${created.quoteId}`, { method: 'DELETE' }).catch((e) => rollbackErrors.push(e.message));
     const lineIds = created.dealLines.concat(created.quoteLines).map((li) => li.id);
     if (lineIds.length) await batchArchive('line_items', lineIds).catch((e) => rollbackErrors.push(e.message));
     return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
@@ -162,12 +162,12 @@ async function editInPlace({ editing, dealId, deal, template, signerId, isCpq, p
   let before = null;
   try {
     const oldQuoteLines = await associatedIds('quotes', quoteId, 'line_items');
-    const current = (await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}?properties=${Object.keys(quoteProps).join(',')}`)).properties || {};
+    const current = (await hs(`${OBJ}/quotes/${encodeURIComponent(quoteId)}?properties=${Object.keys(quoteProps).join(',')}`)).properties || {};
     before = Object.fromEntries(Object.keys(quoteProps).map((k) => [k, current[k] == null ? '' : current[k]]));
 
     if (primary) created.dealLines = await batchCreate('line_items', lineProps.map((properties) => ({ properties, associations: [link(dealId, ASSOC.lineItemToDeal)] })));
     created.quoteLines = await batchCreate('line_items', lineProps.map((properties) => ({ properties, associations: [link(quoteId, ASSOC.lineItemToQuote)] })));
-    await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: 'PATCH', body: { properties: quoteProps } });
+    await hs(`${OBJ}/quotes/${encodeURIComponent(quoteId)}`, { method: 'PATCH', body: { properties: quoteProps } });
 
     const templates = await associatedIds('quotes', quoteId, 'quote_template');
     if (!templates.includes(String(template.id))) {
@@ -183,7 +183,7 @@ async function editInPlace({ editing, dealId, deal, template, signerId, isCpq, p
     }
 
     if (oldQuoteLines.length) await batchArchive('line_items', oldQuoteLines);
-    await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: 'PATCH', body: { properties: writes.properties } });
+    await hs(`${OBJ}/deals/${encodeURIComponent(dealId)}`, { method: 'PATCH', body: { properties: writes.properties } });
 
     let replaced = 0;
     if (primary) {
@@ -197,7 +197,7 @@ async function editInPlace({ editing, dealId, deal, template, signerId, isCpq, p
     const rollbackErrors = [];
     const lineIds = created.dealLines.concat(created.quoteLines).map((li) => li.id);
     if (lineIds.length) await batchArchive('line_items', lineIds).catch((e) => rollbackErrors.push(e.message));
-    if (before) await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: 'PATCH', body: { properties: before } }).catch((e) => rollbackErrors.push(e.message));
+    if (before) await hs(`${OBJ}/quotes/${encodeURIComponent(quoteId)}`, { method: 'PATCH', body: { properties: before } }).catch((e) => rollbackErrors.push(e.message));
     return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
   }
 }

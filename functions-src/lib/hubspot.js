@@ -11,10 +11,14 @@ const {
   QUOTE_SESSION_PROPERTY,
   QUOTE_STATE_PROPERTY,
   ONE_OFF_FOLDER,
+  HS_PATHS,
 } = require('./config.js');
 const { normalizeTemplates, quoteLockState, parseBuilderState } = require('./pricing.js');
 
 const BASE = 'https://api.hubapi.com';
+// Date-based API paths (see HS_API_VERSION in shared/config.mjs).
+const OBJ = HS_PATHS.objects;
+const enc = encodeURIComponent;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function hs(path, { method = 'GET', body, retries = 2 } = {}) {
@@ -54,7 +58,7 @@ async function searchAll(objectType, body, max = 2000) {
   const out = [];
   let after;
   do {
-    const page = await hs(`/crm/v3/objects/${objectType}/search`, { method: 'POST', body: Object.assign({}, body, { limit: 200, after }) });
+    const page = await hs(`${OBJ}/${objectType}/search`, { method: 'POST', body: Object.assign({}, body, { limit: 200, after }) });
     out.push(...page.results);
     after = page.paging && page.paging.next ? page.paging.next.after : undefined;
   } while (after && out.length < max);
@@ -64,7 +68,7 @@ async function searchAll(objectType, body, max = 2000) {
 async function batchCreate(objectType, inputs) {
   const results = [];
   for (const part of chunk(inputs, 100)) {
-    const res = await hs(`/crm/v3/objects/${objectType}/batch/create`, { method: 'POST', body: { inputs: part } });
+    const res = await hs(`${OBJ}/${objectType}/batch/create`, { method: 'POST', body: { inputs: part } });
     if (res.status && res.status !== 'COMPLETE') throw new Error(`Batch create ${objectType} returned ${res.status}`);
     // HubSpot does not guarantee result order; restore it via the position property when present.
     const sorted = res.results.slice().sort((a, b) => Number(a.properties.hs_position_on_quote || 0) - Number(b.properties.hs_position_on_quote || 0));
@@ -75,7 +79,7 @@ async function batchCreate(objectType, inputs) {
 
 async function batchArchive(objectType, ids) {
   for (const part of chunk(ids, 100)) {
-    await hs(`/crm/v3/objects/${objectType}/batch/archive`, { method: 'POST', body: { inputs: part.map((id) => ({ id: String(id) })) } });
+    await hs(`${OBJ}/${objectType}/batch/archive`, { method: 'POST', body: { inputs: part.map((id) => ({ id: String(id) })) } });
   }
 }
 
@@ -100,14 +104,24 @@ async function loadProducts() {
 }
 
 async function loadTemplates() {
-  const res = await hs('/crm/v3/objects/quote_templates?limit=100&properties=hs_name,hs_type');
+  const query = '?limit=100&properties=hs_name,hs_type';
+  let res;
+  try {
+    res = await hs(`${OBJ}/quote_templates${query}`);
+  } catch (err) {
+    // HubSpot doesn't document quote templates under the date-based objects API yet. If it refuses
+    // them, fall back to v3 (supported until September 2027) so the card keeps working.
+    if (![400, 404].includes(err.status)) throw err;
+    console.warn('quote_templates not available on the date-based API; using v3', err.message);
+    res = await hs(`/crm/v3/objects/quote_templates${query}`);
+  }
   return normalizeTemplates(res.results);
 }
 
 // Live dropdown options for the deal properties the quote prints as tokens.
 async function loadDealOptions() {
   try {
-    const res = await hs('/crm/v3/properties/deals/batch/read', { method: 'POST', body: { archived: false, inputs: ENUM_PROPERTIES.map((name) => ({ name })) } });
+    const res = await hs(`${HS_PATHS.properties}/deals/batch/read`, { method: 'POST', body: { archived: false, dataSensitivity: 'non_sensitive', inputs: ENUM_PROPERTIES.map((name) => ({ name })) } });
     const out = Object.assign({}, FALLBACK_OPTIONS);
     for (const p of res.results || []) out[p.name] = (p.options || []).filter((o) => !o.hidden).map((o) => ({ value: o.value, label: o.label }));
     return { options: out, issue: null };
@@ -120,7 +134,7 @@ async function loadDealOptions() {
 async function loadOwner(ownerId) {
   if (!ownerId) return null;
   try {
-    const o = await hs(`/crm/v3/owners/${encodeURIComponent(ownerId)}`);
+    const o = await hs(`${HS_PATHS.owners}/${enc(ownerId)}`);
     return { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(' '), firstName: o.firstName || '', lastName: o.lastName || '', email: o.email || '' };
   } catch (err) {
     if (err.status === 404) return null;
@@ -131,22 +145,27 @@ async function loadOwner(ownerId) {
 // The HubSpot owner record for a user's email (the person building the quote), or null.
 async function findOwnerByEmail(email) {
   if (!email) return null;
-  const res = await hs(`/crm/v3/owners?email=${encodeURIComponent(email)}&limit=1`);
+  const res = await hs(`${HS_PATHS.owners}?email=${enc(email)}&limit=1`);
   const o = (res.results || [])[0];
   return o ? { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(' '), firstName: o.firstName || '', lastName: o.lastName || '', email: o.email || email } : null;
 }
 
 async function loadDeal(dealId) {
-  const deal = await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(',')}&associations=companies,contacts,quotes`);
-  const assoc = (type) => ((deal.associations && deal.associations[type] && deal.associations[type].results) || []).map((r) => String(r.id));
-  const companyIds = assoc('companies');
-  const contactIds = assoc('contacts').slice(0, 25);
-  const quoteIds = assoc('quotes').slice(0, 50);
+  const [deal, companyLinks, contactIds, allQuoteIds] = await Promise.all([
+    hs(`${OBJ}/deals/${enc(dealId)}?properties=${DEAL_PROPERTIES.join(',')}`),
+    associations('deals', dealId, 'companies'),
+    associatedIds('deals', dealId, 'contacts').then((ids) => ids.slice(0, 25)),
+    associatedIds('deals', dealId, 'quotes'),
+  ]);
+  const quoteIds = allQuoteIds.slice(0, 50);
+  // Primary company first (deal → company type 5), else the first associated company.
+  const primaryCompany = companyLinks.find((l) => l.typeIds.includes(5)) || companyLinks[0];
+  const companyIds = primaryCompany ? [primaryCompany.id] : [];
   const [companies, contacts, quotes, builderLines, owner] = await Promise.all([
-    companyIds.length ? hs('/crm/v3/objects/companies/batch/read', { method: 'POST', body: { inputs: [{ id: companyIds[0] }], properties: ['name'] } }) : { results: [] },
-    contactIds.length ? hs('/crm/v3/objects/contacts/batch/read', { method: 'POST', body: { inputs: contactIds.map((id) => ({ id })), properties: ['firstname', 'lastname', 'jobtitle'] } }) : { results: [] },
+    companyIds.length ? hs(`${OBJ}/companies/batch/read`, { method: 'POST', body: { inputs: [{ id: companyIds[0] }], properties: ['name'] } }) : { results: [] },
+    contactIds.length ? hs(`${OBJ}/contacts/batch/read`, { method: 'POST', body: { inputs: contactIds.map((id) => ({ id })), properties: ['firstname', 'lastname', 'jobtitle'] } }) : { results: [] },
     quoteIds.length
-      ? hs('/crm/v3/objects/quotes/batch/read', {
+      ? hs(`${OBJ}/quotes/batch/read`, {
           method: 'POST',
           body: {
             inputs: quoteIds.map((id) => ({ id })),
@@ -198,10 +217,9 @@ async function loadDeal(dealId) {
 }
 
 async function readBuilderLineItems(dealId) {
-  const res = await hs(`/crm/v4/objects/deals/${encodeURIComponent(dealId)}/associations/line_items?limit=500`);
-  const ids = res.results.map((r) => String(r.toObjectId));
+  const ids = await associatedIds('deals', dealId, 'line_items');
   if (!ids.length) return [];
-  const read = await hs('/crm/v3/objects/line_items/batch/read', {
+  const read = await hs(`${OBJ}/line_items/batch/read`, {
     method: 'POST',
     body: { inputs: ids.map((id) => ({ id })), properties: [LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY] },
   });
@@ -219,19 +237,33 @@ async function findBuilderLineItems(dealId, excludeSessionId, keepIds = []) {
     .map((li) => li.id);
 }
 
-// v4 association helpers (quote ↔ line items / template / contacts).
+// Association helpers. The date-based API has no "list one record's associations" GET, so reads use
+// the associations batch read with a single input, following its per-input paging.
+async function associations(fromType, fromId, toType) {
+  const out = [];
+  let after;
+  do {
+    const input = after ? { id: String(fromId), after } : { id: String(fromId) };
+    const res = await hs(`${HS_PATHS.associations}/${fromType}/${toType}/batch/read`, { method: 'POST', body: { inputs: [input] } });
+    after = undefined;
+    for (const r of (res && res.results) || []) {
+      for (const t of r.to || []) out.push({ id: String(t.toObjectId), typeIds: (t.associationTypes || []).map((a) => Number(a.typeId)) });
+      if (r.paging && r.paging.next && r.paging.next.after) after = r.paging.next.after;
+    }
+  } while (after && out.length < 5000);
+  return out;
+}
 async function associatedIds(fromType, fromId, toType) {
-  const res = await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}?limit=500`);
-  return res.results.map((r) => String(r.toObjectId));
+  return (await associations(fromType, fromId, toType)).map((a) => a.id);
 }
 async function associate(fromType, fromId, toType, toId, typeIds) {
-  await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, {
+  await hs(`${OBJ}/${fromType}/${enc(fromId)}/associations/${toType}/${enc(toId)}`, {
     method: 'PUT',
     body: typeIds.map((associationTypeId) => ({ associationCategory: 'HUBSPOT_DEFINED', associationTypeId })),
   });
 }
 async function unassociate(fromType, fromId, toType, toId) {
-  await hs(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: 'DELETE' });
+  await hs(`${OBJ}/${fromType}/${enc(fromId)}/associations/${toType}/${enc(toId)}`, { method: 'DELETE' });
 }
 
-module.exports = { hs, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate };
+module.exports = { hs, OBJ, searchAll, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate };

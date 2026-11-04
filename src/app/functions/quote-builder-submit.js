@@ -9,6 +9,17 @@ var __commonJS = (cb, mod) => function __require() {
 var require_config = __commonJS({
   "functions-src/lib/config.js"(exports2, module2) {
     "use strict";
+    var HS_API_VERSION = "2026-09";
+    var HS_PATHS = {
+      objects: `/crm/objects/${HS_API_VERSION}`,
+      // /{objectType}, /{objectType}/{id}, /batch/*, /search, /{id}/associations/...
+      associations: `/crm/associations/${HS_API_VERSION}`,
+      // /{fromType}/{toType}/batch/read
+      properties: `/crm/properties/${HS_API_VERSION}`,
+      // /{objectType}, /{objectType}/{name}, /groups, /batch/read
+      owners: `/crm/owners/${HS_API_VERSION}`
+      // ?email=, /{ownerId}
+    };
     var FAMILIES = {
       autoelevate: {
         label: "AutoElevate",
@@ -197,7 +208,7 @@ var require_config = __commonJS({
     var AE_FEATURE_TYPES_RETIRED = ["Advanced (GrandFathered)"];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS2 = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_MSP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
+    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_MSP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2 };
   }
 });
 
@@ -960,10 +971,13 @@ var require_hubspot = __commonJS({
       LINE_SESSION_PROPERTY,
       QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2,
       QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2,
-      ONE_OFF_FOLDER
+      ONE_OFF_FOLDER,
+      HS_PATHS
     } = require_config();
     var { normalizeTemplates, quoteLockState, parseBuilderState } = require_pricing();
     var BASE = "https://api.hubapi.com";
+    var OBJ2 = HS_PATHS.objects;
+    var enc = encodeURIComponent;
     var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     async function hs2(path, { method = "GET", body, retries = 2 } = {}) {
       const token = process.env.PRIVATE_APP_ACCESS_TOKEN;
@@ -1000,7 +1014,7 @@ var require_hubspot = __commonJS({
       const out = [];
       let after;
       do {
-        const page = await hs2(`/crm/v3/objects/${objectType}/search`, { method: "POST", body: Object.assign({}, body, { limit: 200, after }) });
+        const page = await hs2(`${OBJ2}/${objectType}/search`, { method: "POST", body: Object.assign({}, body, { limit: 200, after }) });
         out.push(...page.results);
         after = page.paging && page.paging.next ? page.paging.next.after : void 0;
       } while (after && out.length < max);
@@ -1009,7 +1023,7 @@ var require_hubspot = __commonJS({
     async function batchCreate2(objectType, inputs) {
       const results = [];
       for (const part of chunk(inputs, 100)) {
-        const res = await hs2(`/crm/v3/objects/${objectType}/batch/create`, { method: "POST", body: { inputs: part } });
+        const res = await hs2(`${OBJ2}/${objectType}/batch/create`, { method: "POST", body: { inputs: part } });
         if (res.status && res.status !== "COMPLETE") throw new Error(`Batch create ${objectType} returned ${res.status}`);
         const sorted = res.results.slice().sort((a, b) => Number(a.properties.hs_position_on_quote || 0) - Number(b.properties.hs_position_on_quote || 0));
         results.push(...sorted);
@@ -1018,7 +1032,7 @@ var require_hubspot = __commonJS({
     }
     async function batchArchive2(objectType, ids) {
       for (const part of chunk(ids, 100)) {
-        await hs2(`/crm/v3/objects/${objectType}/batch/archive`, { method: "POST", body: { inputs: part.map((id) => ({ id: String(id) })) } });
+        await hs2(`${OBJ2}/${objectType}/batch/archive`, { method: "POST", body: { inputs: part.map((id) => ({ id: String(id) })) } });
       }
     }
     var PRODUCT_PROPERTIES = ["name", "hs_sku", "price", "hs_price_usd", "qb_family", "qb_edition", "qb_segment", "qb_billing", "qb_tier", "qb_component", "hs_folder", "recurringbillingfrequency"];
@@ -1035,12 +1049,20 @@ var require_hubspot = __commonJS({
       });
     }
     async function loadTemplates2() {
-      const res = await hs2("/crm/v3/objects/quote_templates?limit=100&properties=hs_name,hs_type");
+      const query = "?limit=100&properties=hs_name,hs_type";
+      let res;
+      try {
+        res = await hs2(`${OBJ2}/quote_templates${query}`);
+      } catch (err) {
+        if (![400, 404].includes(err.status)) throw err;
+        console.warn("quote_templates not available on the date-based API; using v3", err.message);
+        res = await hs2(`/crm/v3/objects/quote_templates${query}`);
+      }
       return normalizeTemplates(res.results);
     }
     async function loadDealOptions2() {
       try {
-        const res = await hs2("/crm/v3/properties/deals/batch/read", { method: "POST", body: { archived: false, inputs: ENUM_PROPERTIES.map((name) => ({ name })) } });
+        const res = await hs2(`${HS_PATHS.properties}/deals/batch/read`, { method: "POST", body: { archived: false, dataSensitivity: "non_sensitive", inputs: ENUM_PROPERTIES.map((name) => ({ name })) } });
         const out = Object.assign({}, FALLBACK_OPTIONS);
         for (const p of res.results || []) out[p.name] = (p.options || []).filter((o) => !o.hidden).map((o) => ({ value: o.value, label: o.label }));
         return { options: out, issue: null };
@@ -1051,7 +1073,7 @@ var require_hubspot = __commonJS({
     async function loadOwner(ownerId) {
       if (!ownerId) return null;
       try {
-        const o = await hs2(`/crm/v3/owners/${encodeURIComponent(ownerId)}`);
+        const o = await hs2(`${HS_PATHS.owners}/${enc(ownerId)}`);
         return { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(" "), firstName: o.firstName || "", lastName: o.lastName || "", email: o.email || "" };
       } catch (err) {
         if (err.status === 404) return null;
@@ -1060,20 +1082,24 @@ var require_hubspot = __commonJS({
     }
     async function findOwnerByEmail2(email) {
       if (!email) return null;
-      const res = await hs2(`/crm/v3/owners?email=${encodeURIComponent(email)}&limit=1`);
+      const res = await hs2(`${HS_PATHS.owners}?email=${enc(email)}&limit=1`);
       const o = (res.results || [])[0];
       return o ? { id: String(o.id), name: [o.firstName, o.lastName].filter(Boolean).join(" "), firstName: o.firstName || "", lastName: o.lastName || "", email: o.email || email } : null;
     }
     async function loadDeal2(dealId) {
-      const deal = await hs2(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}?properties=${DEAL_PROPERTIES.join(",")}&associations=companies,contacts,quotes`);
-      const assoc = (type) => (deal.associations && deal.associations[type] && deal.associations[type].results || []).map((r) => String(r.id));
-      const companyIds = assoc("companies");
-      const contactIds = assoc("contacts").slice(0, 25);
-      const quoteIds = assoc("quotes").slice(0, 50);
+      const [deal, companyLinks, contactIds, allQuoteIds] = await Promise.all([
+        hs2(`${OBJ2}/deals/${enc(dealId)}?properties=${DEAL_PROPERTIES.join(",")}`),
+        associations("deals", dealId, "companies"),
+        associatedIds2("deals", dealId, "contacts").then((ids) => ids.slice(0, 25)),
+        associatedIds2("deals", dealId, "quotes")
+      ]);
+      const quoteIds = allQuoteIds.slice(0, 50);
+      const primaryCompany = companyLinks.find((l) => l.typeIds.includes(5)) || companyLinks[0];
+      const companyIds = primaryCompany ? [primaryCompany.id] : [];
       const [companies, contacts, quotes, builderLines, owner] = await Promise.all([
-        companyIds.length ? hs2("/crm/v3/objects/companies/batch/read", { method: "POST", body: { inputs: [{ id: companyIds[0] }], properties: ["name"] } }) : { results: [] },
-        contactIds.length ? hs2("/crm/v3/objects/contacts/batch/read", { method: "POST", body: { inputs: contactIds.map((id) => ({ id })), properties: ["firstname", "lastname", "jobtitle"] } }) : { results: [] },
-        quoteIds.length ? hs2("/crm/v3/objects/quotes/batch/read", {
+        companyIds.length ? hs2(`${OBJ2}/companies/batch/read`, { method: "POST", body: { inputs: [{ id: companyIds[0] }], properties: ["name"] } }) : { results: [] },
+        contactIds.length ? hs2(`${OBJ2}/contacts/batch/read`, { method: "POST", body: { inputs: contactIds.map((id) => ({ id })), properties: ["firstname", "lastname", "jobtitle"] } }) : { results: [] },
+        quoteIds.length ? hs2(`${OBJ2}/quotes/batch/read`, {
           method: "POST",
           body: {
             inputs: quoteIds.map((id) => ({ id })),
@@ -1120,10 +1146,9 @@ var require_hubspot = __commonJS({
       };
     }
     async function readBuilderLineItems(dealId) {
-      const res = await hs2(`/crm/v4/objects/deals/${encodeURIComponent(dealId)}/associations/line_items?limit=500`);
-      const ids = res.results.map((r) => String(r.toObjectId));
+      const ids = await associatedIds2("deals", dealId, "line_items");
       if (!ids.length) return [];
-      const read = await hs2("/crm/v3/objects/line_items/batch/read", {
+      const read = await hs2(`${OBJ2}/line_items/batch/read`, {
         method: "POST",
         body: { inputs: ids.map((id) => ({ id })), properties: [LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY] }
       });
@@ -1133,25 +1158,38 @@ var require_hubspot = __commonJS({
       const keep = new Set(keepIds.map(String));
       return (await readBuilderLineItems(dealId)).filter((li) => (excludeSessionId == null || li.session !== excludeSessionId) && !keep.has(li.id)).map((li) => li.id);
     }
+    async function associations(fromType, fromId, toType) {
+      const out = [];
+      let after;
+      do {
+        const input = after ? { id: String(fromId), after } : { id: String(fromId) };
+        const res = await hs2(`${HS_PATHS.associations}/${fromType}/${toType}/batch/read`, { method: "POST", body: { inputs: [input] } });
+        after = void 0;
+        for (const r of res && res.results || []) {
+          for (const t of r.to || []) out.push({ id: String(t.toObjectId), typeIds: (t.associationTypes || []).map((a) => Number(a.typeId)) });
+          if (r.paging && r.paging.next && r.paging.next.after) after = r.paging.next.after;
+        }
+      } while (after && out.length < 5e3);
+      return out;
+    }
     async function associatedIds2(fromType, fromId, toType) {
-      const res = await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}?limit=500`);
-      return res.results.map((r) => String(r.toObjectId));
+      return (await associations(fromType, fromId, toType)).map((a) => a.id);
     }
     async function associate2(fromType, fromId, toType, toId, typeIds) {
-      await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, {
+      await hs2(`${OBJ2}/${fromType}/${enc(fromId)}/associations/${toType}/${enc(toId)}`, {
         method: "PUT",
         body: typeIds.map((associationTypeId) => ({ associationCategory: "HUBSPOT_DEFINED", associationTypeId }))
       });
     }
     async function unassociate2(fromType, fromId, toType, toId) {
-      await hs2(`/crm/v4/objects/${fromType}/${encodeURIComponent(fromId)}/associations/${toType}/${encodeURIComponent(toId)}`, { method: "DELETE" });
+      await hs2(`${OBJ2}/${fromType}/${enc(fromId)}/associations/${toType}/${enc(toId)}`, { method: "DELETE" });
     }
-    module2.exports = { hs: hs2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findOwnerByEmail: findOwnerByEmail2, findBuilderLineItems: findBuilderLineItems2, associatedIds: associatedIds2, associate: associate2, unassociate: unassociate2 };
+    module2.exports = { hs: hs2, OBJ: OBJ2, searchAll, batchCreate: batchCreate2, batchArchive: batchArchive2, loadProducts: loadProducts2, loadTemplates: loadTemplates2, loadDealOptions: loadDealOptions2, loadDeal: loadDeal2, findOwnerByEmail: findOwnerByEmail2, findBuilderLineItems: findBuilderLineItems2, associatedIds: associatedIds2, associate: associate2, unassociate: unassociate2 };
   }
 });
 
 // functions-src/quote-builder-submit.js
-var { hs, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require_hubspot();
+var { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require_hubspot();
 var { quoteUrl, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require_pricing();
 var { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require_config();
 var ASSOC = {
@@ -1260,9 +1298,9 @@ exports.main = async (context) => {
       associations.push(link(signerId, ASSOC.quoteToContact));
       if (isCpq && payload.setup.acceptance === "esignature") associations.push(link(signerId, ASSOC.quoteToSigner));
     }
-    const created_quote = await hs("/crm/v3/objects/quotes", { method: "POST", body: { properties: quoteProps, associations } });
+    const created_quote = await hs(`${OBJ}/quotes`, { method: "POST", body: { properties: quoteProps, associations } });
     created.quoteId = String(created_quote.id);
-    await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: "PATCH", body: { properties: writes.properties } });
+    await hs(`${OBJ}/deals/${encodeURIComponent(dealId)}`, { method: "PATCH", body: { properties: writes.properties } });
     let replaced = 0;
     if (primary) {
       const old = await findBuilderLineItems(dealId, sessionId);
@@ -1273,7 +1311,7 @@ exports.main = async (context) => {
   } catch (err) {
     console.error("quote-builder-submit failed; rolling back", err.message, err.details || "");
     const rollbackErrors = [];
-    if (created.quoteId) await hs(`/crm/v3/objects/quotes/${created.quoteId}`, { method: "DELETE" }).catch((e) => rollbackErrors.push(e.message));
+    if (created.quoteId) await hs(`${OBJ}/quotes/${created.quoteId}`, { method: "DELETE" }).catch((e) => rollbackErrors.push(e.message));
     const lineIds = created.dealLines.concat(created.quoteLines).map((li) => li.id);
     if (lineIds.length) await batchArchive("line_items", lineIds).catch((e) => rollbackErrors.push(e.message));
     return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
@@ -1285,11 +1323,11 @@ async function editInPlace({ editing, dealId, deal, template, signerId, isCpq, p
   let before = null;
   try {
     const oldQuoteLines = await associatedIds("quotes", quoteId, "line_items");
-    const current = (await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}?properties=${Object.keys(quoteProps).join(",")}`)).properties || {};
+    const current = (await hs(`${OBJ}/quotes/${encodeURIComponent(quoteId)}?properties=${Object.keys(quoteProps).join(",")}`)).properties || {};
     before = Object.fromEntries(Object.keys(quoteProps).map((k) => [k, current[k] == null ? "" : current[k]]));
     if (primary) created.dealLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties, associations: [link(dealId, ASSOC.lineItemToDeal)] })));
     created.quoteLines = await batchCreate("line_items", lineProps.map((properties) => ({ properties, associations: [link(quoteId, ASSOC.lineItemToQuote)] })));
-    await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: { properties: quoteProps } });
+    await hs(`${OBJ}/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: { properties: quoteProps } });
     const templates = await associatedIds("quotes", quoteId, "quote_template");
     if (!templates.includes(String(template.id))) {
       for (const id of templates) await unassociate("quotes", quoteId, "quote_template", id);
@@ -1302,7 +1340,7 @@ async function editInPlace({ editing, dealId, deal, template, signerId, isCpq, p
       await associate("quotes", quoteId, "companies", deal.company.id, [ASSOC.quoteToCompany]);
     }
     if (oldQuoteLines.length) await batchArchive("line_items", oldQuoteLines);
-    await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: "PATCH", body: { properties: writes.properties } });
+    await hs(`${OBJ}/deals/${encodeURIComponent(dealId)}`, { method: "PATCH", body: { properties: writes.properties } });
     let replaced = 0;
     if (primary) {
       const old = await findBuilderLineItems(dealId, null, created.dealLines.map((li) => li.id));
@@ -1315,7 +1353,7 @@ async function editInPlace({ editing, dealId, deal, template, signerId, isCpq, p
     const rollbackErrors = [];
     const lineIds = created.dealLines.concat(created.quoteLines).map((li) => li.id);
     if (lineIds.length) await batchArchive("line_items", lineIds).catch((e) => rollbackErrors.push(e.message));
-    if (before) await hs(`/crm/v3/objects/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: { properties: before } }).catch((e) => rollbackErrors.push(e.message));
+    if (before) await hs(`${OBJ}/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: { properties: before } }).catch((e) => rollbackErrors.push(e.message));
     return { ok: false, errors: [err.message].concat(rollbackErrors.map((m) => `Rollback: ${m}`)) };
   }
 }

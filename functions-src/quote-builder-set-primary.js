@@ -5,7 +5,7 @@
 //   3. writes the quote's printed deal properties back to the deal
 // Published quotes keep their frozen values; open (draft / pending approval) quotes would
 // pick up the new deal values, which the card warns about before calling this.
-const { hs, batchCreate, batchArchive, loadDeal, findBuilderLineItems } = require('./lib/hubspot.js');
+const { hs, OBJ, batchCreate, batchArchive, loadDeal, findBuilderLineItems, associatedIds } = require('./lib/hubspot.js');
 const { LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY } = require('./lib/config.js');
 
 // Line item properties copied from the quote's lines (everything the builder writes).
@@ -26,10 +26,9 @@ exports.main = async (context) => {
     if (!quote.builder || !quote.state) return { ok: false, errors: ['Only quotes made with the Quote Builder can be made primary here.'] };
     if (quote.primary) return { ok: true, unchanged: true };
 
-    const assoc = await hs(`/crm/v4/objects/quotes/${encodeURIComponent(quote.id)}/associations/line_items?limit=500`);
-    const ids = assoc.results.map((r) => String(r.toObjectId));
+    const ids = await associatedIds('quotes', quote.id, 'line_items');
     if (!ids.length) return { ok: false, errors: ['That quote has no line items.'] };
-    const read = await hs('/crm/v3/objects/line_items/batch/read', { method: 'POST', body: { inputs: ids.map((id) => ({ id })), properties: COPY } });
+    const read = await hs(`${OBJ}/line_items/batch/read`, { method: 'POST', body: { inputs: ids.map((id) => ({ id })), properties: COPY } });
     const session = read.results[0].properties[LINE_SESSION_PROPERTY];
 
     const inputs = read.results.map((li) => {
@@ -39,7 +38,7 @@ exports.main = async (context) => {
     });
     created.push(...(await batchCreate('line_items', inputs)));
 
-    await hs(`/crm/v3/objects/deals/${encodeURIComponent(dealId)}`, { method: 'PATCH', body: { properties: quote.state.dealProperties || {} } });
+    await hs(`${OBJ}/deals/${encodeURIComponent(dealId)}`, { method: 'PATCH', body: { properties: quote.state.dealProperties || {} } });
     const old = await findBuilderLineItems(String(dealId), session);
     if (old.length) await batchArchive('line_items', old);
     return { ok: true, quoteId: quote.id, lineCount: created.length, replaced: old.length };

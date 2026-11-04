@@ -29,15 +29,17 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
   store.dealPatches = [];
   store.quotePatches = [];
   store.assocCalls = [];
+  store.assocReads = [];
   global.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
     const body = init.body ? JSON.parse(init.body) : null;
     log.push({ method, path: u.pathname, body, auth: init.headers.Authorization });
+    if (/\/v[34]\//.test(u.pathname) && !store.allowLegacy) throw new Error(`Legacy API path called: ${method} ${u.pathname}`);
     const ok = (data, status = 200) => ({ ok: true, status, headers: new Map(), text: async () => JSON.stringify(data) });
     const p = u.pathname;
-    if (p === '/crm/v3/objects/products/search') return ok({ results: PRODUCTS });
-    if (p === '/crm/v3/properties/deals/batch/read')
+    if (p === '/crm/objects/2026-09/products/search') return ok({ results: PRODUCTS });
+    if (p === '/crm/properties/2026-09/deals/batch/read')
       return ok({
         results: [
           { name: 'agreement_length', options: ['12 Months - Month-to-Month', '12 Months', '15 Months'].map((v) => ({ value: v, label: v, hidden: false })) },
@@ -47,18 +49,20 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
           { name: 'sku_type', options: ['Advanced', 'Standard', 'Advanced (GrandFathered)'].map((v) => ({ value: v, label: v })) },
         ],
       });
-    if (p === '/crm/v3/objects/quote_templates') return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }, { id: '11', properties: { hs_name: 'Timus SASE', hs_type: 'customizable_quote_template' } }] });
-    if (p === '/crm/v3/objects/deals/123' && method === 'GET')
-      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: 'USD', hubspot_owner_id: store.ownerId },  associations: { companies: { results: [{ id: '7' }] }, contacts: { results: [{ id: '501' }] }, quotes: { results: store.quotes.map((q) => ({ id: q.id })) } } });
-    if (p === '/crm/v3/owners') {
+    if (p === '/crm/objects/2026-09/quote_templates' && store.templates404) return { ok: false, status: 404, headers: new Map(), text: async () => '{"message":"Unknown object type"}' };
+    if (p === '/crm/v3/objects/quote_templates' && store.allowLegacy) return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }] });
+    if (p === '/crm/objects/2026-09/quote_templates') return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }, { id: '11', properties: { hs_name: 'Timus SASE', hs_type: 'customizable_quote_template' } }] });
+    if (p === '/crm/objects/2026-09/deals/123' && method === 'GET')
+      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: 'USD', hubspot_owner_id: store.ownerId } });
+    if (p === '/crm/owners/2026-09') {
       const users = { 'riley.rep@example.com': { id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }, 'pat.ops@example.com': { id: '88', firstName: 'Pat', lastName: 'Ops', email: 'pat.ops@example.com' } };
       const found = users[u.searchParams.get('email')];
       return ok({ results: found ? [found] : [] });
     }
-    if (p.startsWith('/crm/v3/owners/')) return p.endsWith('/77') ? ok({ id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }) : { ok: false, status: 404, headers: new Map(), text: async () => '{"message":"not found"}' };
-    if (p === '/crm/v3/objects/companies/batch/read') return ok({ results: [{ id: '7', properties: { name: 'Example MSP' } }] });
-    if (p === '/crm/v3/objects/contacts/batch/read') return ok({ results: [{ id: '501', properties: { firstname: 'Sam', lastname: 'Sample', jobtitle: 'Owner' } }] });
-    if (p === '/crm/v3/objects/line_items/batch/create') {
+    if (p.startsWith('/crm/owners/2026-09/')) return p.endsWith('/77') ? ok({ id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }) : { ok: false, status: 404, headers: new Map(), text: async () => '{"message":"not found"}' };
+    if (p === '/crm/objects/2026-09/companies/batch/read') return ok({ results: [{ id: '7', properties: { name: 'Example MSP' } }] });
+    if (p === '/crm/objects/2026-09/contacts/batch/read') return ok({ results: [{ id: '501', properties: { firstname: 'Sam', lastname: 'Sample', jobtitle: 'Owner' } }] });
+    if (p === '/crm/objects/2026-09/line_items/batch/create') {
       const results = body.inputs.map((i) => {
         const id = `L${nextId++}`;
         store.lineItems[id] = i.properties;
@@ -66,42 +70,69 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
       });
       return ok({ status: 'COMPLETE', results: results.reverse() }); // HubSpot does not promise order
     }
-    if (p === '/crm/v3/objects/quotes' && method === 'POST') {
+    if (p === '/crm/objects/2026-09/quotes' && method === 'POST') {
       if (failQuote) return { ok: false, status: 400, headers: new Map(), text: async () => JSON.stringify({ message: 'Template not compatible' }) };
       store.quote = body;
       return ok({ id: 'Q1', properties: body.properties }, 201);
     }
-    if (p === '/crm/v3/objects/quotes/Q1' && method === 'DELETE') {
+    if (p === '/crm/objects/2026-09/quotes/Q1' && method === 'DELETE') {
       store.deletedQuotes.push('Q1');
       return ok(null, 204);
     }
-    if (p === '/crm/v3/objects/deals/123' && method === 'PATCH') {
+    if (p === '/crm/objects/2026-09/deals/123' && method === 'PATCH') {
       store.dealPatch = body.properties;
       store.dealPatches.push(body.properties);
       return ok({ id: '123' });
     }
-    if (p === '/crm/v4/objects/deals/123/associations/line_items') return ok({ results: Object.keys(store.lineItems).map((id) => ({ toObjectId: id })) });
-    if (p === '/crm/v3/objects/quotes/batch/read') return ok({ results: store.quotes.map((q) => ({ id: q.id, properties: q.properties })) });
-    const qa = p.match(/^\/crm\/v4\/objects\/quotes\/(\w+)\/associations\/(line_items|quote_template|contacts|companies)(?:\/(\w+))?$/);
+    // Associations batch read (the date-based API's only way to list a record's associations).
+    const ab = p.match(/^\/crm\/associations\/2026-09\/(deals|quotes)\/(\w+)\/batch\/read$/);
+    if (ab) {
+      store.assocReads.push(`${ab[1]}->${ab[2]}`);
+      const id = body.inputs[0].id;
+      let to = [];
+      if (ab[1] === 'deals') {
+        if (ab[2] === 'line_items') {
+          to = Object.keys(store.lineItems).map((x) => ({ toObjectId: x, associationTypes: [{ category: 'HUBSPOT_DEFINED', typeId: 19 }] }));
+          // Paging: one association per page, cursor = index of the next one.
+          if (store.pageAssociations) {
+            const at = Number(body.inputs[0].after || 0);
+            const page = { from: { id }, to: to.slice(at, at + 1) };
+            if (at + 1 < to.length) page.paging = { next: { after: String(at + 1) } };
+            return ok({ status: 'COMPLETE', results: [page] });
+          }
+        }
+        // Company 6 is a secondary company; 7 is the primary (type 5), listed second on purpose.
+        if (ab[2] === 'companies') to = [{ toObjectId: 6, associationTypes: [{ category: 'HUBSPOT_DEFINED', typeId: 341 }] }, { toObjectId: 7, associationTypes: [{ category: 'HUBSPOT_DEFINED', typeId: 5 }, { category: 'HUBSPOT_DEFINED', typeId: 341 }] }];
+        if (ab[2] === 'contacts') to = [{ toObjectId: 501, associationTypes: [{ category: 'HUBSPOT_DEFINED', typeId: 3 }] }];
+        if (ab[2] === 'quotes') to = store.quotes.map((q) => ({ toObjectId: q.id, associationTypes: [{ category: 'HUBSPOT_DEFINED', typeId: 63 }] }));
+      } else {
+        const q = store.quotes.find((x) => x.id === id);
+        const key = { line_items: 'lineIds', quote_template: 'templateIds', contacts: 'contactIds', companies: 'companyIds' }[ab[2]];
+        to = ((q && q[key]) || []).map((x) => ({ toObjectId: x, associationTypes: [] }));
+      }
+      // No associations: HubSpot answers 207 with an error for that input and no result.
+      return to.length ? ok({ status: 'COMPLETE', results: [{ from: { id }, to }] }) : ok({ status: 'COMPLETE', results: [], numErrors: 1, errors: [{ status: 'error', category: 'OBJECT_NOT_FOUND', message: 'No associations found' }] }, 207);
+    }
+    if (p === '/crm/objects/2026-09/quotes/batch/read') return ok({ results: store.quotes.map((q) => ({ id: q.id, properties: q.properties })) });
+    const qa = p.match(/^\/crm\/objects\/2026-09\/quotes\/(\w+)\/associations\/(line_items|quote_template|contacts|companies)\/(\w+)$/);
     if (qa) {
       const q = store.quotes.find((x) => x.id === qa[1]);
       const key = { line_items: 'lineIds', quote_template: 'templateIds', contacts: 'contactIds', companies: 'companyIds' }[qa[2]];
       q[key] = q[key] || [];
-      if (method === 'GET') return ok({ results: q[key].map((id) => ({ toObjectId: id })) });
       if (method === 'DELETE') q[key] = q[key].filter((id) => id !== qa[3]);
       if (method === 'PUT') q[key].push(qa[3]);
       store.assocCalls.push(`${method} ${qa[2]} ${qa[3]}${body ? ' ' + body.map((t) => t.associationTypeId).join('+') : ''}`);
       return ok({});
     }
-    const qq = p.match(/^\/crm\/v3\/objects\/quotes\/(\w+)$/);
+    const qq = p.match(/^\/crm\/objects\/2026-09\/quotes\/(\w+)$/);
     if (qq && method === 'GET') return ok({ id: qq[1], properties: store.quotes.find((x) => x.id === qq[1]).properties });
     if (qq && method === 'PATCH') {
       store.quotePatches.push({ id: qq[1], properties: body.properties });
       if (store.failQuotePatch) return { ok: false, status: 400, headers: new Map(), text: async () => JSON.stringify({ message: 'Quote locked' }) };
       return ok({ id: qq[1] });
     }
-    if (p === '/crm/v3/objects/line_items/batch/read') return ok({ results: body.inputs.map((i) => ({ id: i.id, properties: store.lineItems[i.id] || {} })) });
-    if (p === '/crm/v3/objects/line_items/batch/archive') {
+    if (p === '/crm/objects/2026-09/line_items/batch/read') return ok({ results: body.inputs.map((i) => ({ id: i.id, properties: store.lineItems[i.id] || {} })) });
+    if (p === '/crm/objects/2026-09/line_items/batch/archive') {
       store.archived.push(...body.inputs.map((i) => i.id));
       return ok(null, 204);
     }
@@ -150,7 +181,7 @@ test('submit writes deal lines, quote copies, quote and deal fields; replaces on
   assert.equal(res.approval.required, false); // 3-month ramp, 10% discount: under both approval rules
   assert.ok(log.every((l) => l.auth === 'Bearer test-token'));
 
-  const creates = log.filter((l) => l.path === '/crm/v3/objects/line_items/batch/create');
+  const creates = log.filter((l) => l.path === '/crm/objects/2026-09/line_items/batch/create');
   assert.equal(creates.length, 2);
   assert.ok(creates[0].body.inputs.every((i) => i.associations[0].types[0].associationTypeId === 20 && i.associations[0].to.id === '123'));
   assert.ok(creates[1].body.inputs.every((i) => !i.associations));
@@ -239,7 +270,7 @@ test('alternative option: quote is created with saved inputs, deal line items un
   const res = await submitFn().main({ parameters: payload({ primary: false }), accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   assert.equal(res.primary, false);
-  const creates = log.filter((l) => l.path === '/crm/v3/objects/line_items/batch/create');
+  const creates = log.filter((l) => l.path === '/crm/objects/2026-09/line_items/batch/create');
   assert.equal(creates.length, 1); // quote copies only
   assert.ok(creates[0].body.inputs.every((i) => !i.associations));
   assert.deepEqual(store.archived, []); // previous primary lines stay on the deal
@@ -273,7 +304,7 @@ test('make primary copies the quote lines to the deal, archives the old primary 
   const res = await setPrimaryFn().main({ parameters: { dealId: '123', quoteId: 'Q2' } });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   assert.equal(res.lineCount, 2);
-  const create = log.find((l) => l.path === '/crm/v3/objects/line_items/batch/create');
+  const create = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create');
   assert.ok(create.body.inputs.every((i) => i.associations[0].to.id === '123' && i.properties.qb_session_id === 'qb-b'));
   assert.deepEqual(store.dealPatch, saved);
   assert.deepEqual(store.archived, ['L-old-builder']); // manual lines untouched
@@ -376,7 +407,7 @@ test('edit in place: same quote, new lines replace old ones, primary deal lines 
   assert.equal(res.quoteId, 'Q5');
   assert.equal(res.primary, true); // it was the primary option (its run's lines are on the deal) and stays primary
   assert.equal(store.quote, null); // no new quote
-  const creates = log.filter((l) => l.path === '/crm/v3/objects/line_items/batch/create');
+  const creates = log.filter((l) => l.path === '/crm/objects/2026-09/line_items/batch/create');
   assert.equal(creates.length, 2); // deal lines + quote lines
   const quoteLines = creates.find((c) => c.body.inputs[0].associations[0].types[0].associationTypeId === 68);
   assert.ok(quoteLines.body.inputs.every((i) => i.associations[0].to.id === 'Q5' && i.properties.qb_session_id === 'qb-old'));
@@ -433,7 +464,7 @@ test('HubSpot Quote Notes is never written (reps keep their own verbiage there)'
 test('one-off SKUs: catalog reads the One-Off SKUs folder; submit writes the picked product at its own price', async () => {
   const { log, store } = fakeHubSpot();
   const cat = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
-  const search = log.find((l) => l.path === '/crm/v3/objects/products/search');
+  const search = log.find((l) => l.path === '/crm/objects/2026-09/products/search');
   assert.ok(search.body.filterGroups.some((g) => g.filters.some((f) => f.propertyName === 'hs_folder' && f.value === 'One-Off SKUs')));
   assert.ok(cat.products.some((p) => p.id === '9900'));
   const res = await submitFn().main({
@@ -442,6 +473,38 @@ test('one-off SKUs: catalog reads the One-Off SKUs folder; submit writes the pic
   });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   assert.equal(res.title, 'Example MSP - Optimize365');
-  const created = log.filter((l) => l.path === '/crm/v3/objects/line_items/batch/create').flatMap((l) => l.body.inputs.map((i) => i.properties));
+  const created = log.filter((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').flatMap((l) => l.body.inputs.map((i) => i.properties));
   assert.ok(created.length >= 1 && created.every((p) => p.hs_product_id === '9900' && p.price === '4800' && p.hs_recurring_billing_period === 'P15M'));
+});
+
+test('2026-09 API: deal context uses the primary company and association batch reads, never legacy paths', async () => {
+  const { log, store } = fakeHubSpot();
+  const res = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 2585282 });
+  assert.equal(res.ok, true);
+  // Company 7 is the primary (type 5) even though company 6 is listed first.
+  const companyRead = log.find((l) => l.path === '/crm/objects/2026-09/companies/batch/read');
+  assert.deepEqual(companyRead.body.inputs, [{ id: '7' }]);
+  assert.deepEqual(store.assocReads.sort(), ['deals->companies', 'deals->contacts', 'deals->line_items', 'deals->quotes']);
+  assert.ok(log.every((l) => !/\/v[34]\//.test(l.path)));
+  const props = log.find((l) => l.path === '/crm/properties/2026-09/deals/batch/read');
+  assert.equal(props.body.dataSensitivity, 'non_sensitive');
+});
+
+test('2026-09 API: association reads follow paging', async () => {
+  const { store } = fakeHubSpot();
+  store.pageAssociations = true;
+  const res = await submitFn().main({ parameters: payload(), accountId: 2585282 });
+  assert.equal(res.ok, true);
+  // Both earlier lines came back across pages; only the builder one is archived.
+  assert.deepEqual(store.archived, ['L-old-builder']);
+});
+
+test('2026-09 API: quote templates fall back to v3 if the date-based objects API refuses them', async () => {
+  const { log, store } = fakeHubSpot();
+  store.templates404 = true;
+  store.allowLegacy = true;
+  const res = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 2585282 });
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.templates.map((t) => t.id), ['10']);
+  assert.deepEqual(log.filter((l) => /\/v3\//.test(l.path)).map((l) => l.path), ['/crm/v3/objects/quote_templates']);
 });

@@ -2,6 +2,16 @@
 // Source of truth lives in /shared. `npm run sync` copies it into the card bundle (ESM)
 // and the app functions (CommonJS). Edit here, never in the copies.
 
+// HubSpot API version (date-based). Legacy /v3 and /v4 paths stop working September 2027.
+// To move to a newer version, change this one value and run the tests.
+export const HS_API_VERSION = '2026-09';
+export const HS_PATHS = {
+  objects: `/crm/objects/${HS_API_VERSION}`, // /{objectType}, /{objectType}/{id}, /batch/*, /search, /{id}/associations/...
+  associations: `/crm/associations/${HS_API_VERSION}`, // /{fromType}/{toType}/batch/read
+  properties: `/crm/properties/${HS_API_VERSION}`, // /{objectType}, /{objectType}/{name}, /groups, /batch/read
+  owners: `/crm/owners/${HS_API_VERSION}`, // ?email=, /{ownerId}
+};
+
 // Product families the builder sells. Keys match the `qb_family` product property.
 export const FAMILIES = {
   autoelevate: {

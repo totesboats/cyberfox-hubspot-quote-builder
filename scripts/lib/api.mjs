@@ -1,6 +1,9 @@
 // Tiny HubSpot client for the one-time setup scripts (Node 18+).
 // Auth: HUBSPOT_TOKEN = an Ops-owned private app / service key token. Never commit it.
+import { HS_PATHS } from '../../shared/config.mjs';
+
 const BASE = 'https://api.hubapi.com';
+export { HS_PATHS };
 
 export function token() {
   const t = process.env.HUBSPOT_TOKEN;
@@ -42,7 +45,7 @@ export async function searchAll(objectType, body) {
   const out = [];
   let after;
   do {
-    const { data } = await hs(`/crm/v3/objects/${objectType}/search`, { method: 'POST', body: { ...body, limit: 200, after } });
+    const { data } = await hs(`${HS_PATHS.objects}/${objectType}/search`, { method: 'POST', body: { ...body, limit: 200, after } });
     out.push(...data.results);
     after = data.paging?.next?.after;
   } while (after);
