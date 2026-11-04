@@ -47,7 +47,7 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, user, 
       label="Agreement Length"
       name="agreementLength"
       required
-      tooltip={m2m ? 'Month-to-month: plans renew monthly.' : 'Total length, including any ramp. Optimize365 can only ramp on 13 or 14 months paid monthly (1 or 2 free months).'}
+      tooltip={m2m ? 'Month-to-month: plans renew monthly.' : 'Total length, including any ramp. Optimize365 can only ramp on 13, 14 or 15 months paid monthly (1, 2 or 3 free months).'}
       placeholder="Choose a length"
       options={opts('agreement_length')}
       value={setup.agreementLength}

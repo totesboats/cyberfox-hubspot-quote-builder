@@ -64,7 +64,7 @@ export function rampFor(state) {
 }
 
 // The ramp a product starts with when Ramp is ticked: the months the agreement runs past 12, free
-// (16 months → 4). Optimize365 starts at its only allowed shape (13 months → 1 free, 14 → 2 free).
+// (16 months → 4). Optimize365 starts at its only allowed shape (13 months → 1 free, 14 → 2, 15 → 3).
 export function defaultProductStages(setup, family) {
   const optimize = family === 'optimize365' ? optimizeRampRule(setup) : null;
   const months = optimize && optimize.allowed ? optimize.months : defaultRampMonths(setup.agreementLength);

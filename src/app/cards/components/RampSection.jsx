@@ -49,7 +49,7 @@ export function scheduleRows(quote) {
 }
 
 // One product's ramp: its stages (length, pricing, discount), shown inside the product's tile.
-// Optimize365 is locked to its only allowed shape (1–2 free months, one stage).
+// Optimize365 is locked to its only allowed shape (1–3 free months, one stage).
 export function ProductRamp({ row, quote, onStage, onAddStage, onRemoveStage }) {
   const uid = row.input.uid;
   const stages = row.input.rampStages && row.input.rampStages.length ? row.input.rampStages : row.ramp.stages;

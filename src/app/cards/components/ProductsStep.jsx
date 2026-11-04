@@ -202,7 +202,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
           </Alert>
         ) : null}
 
-        {/* Optimize365 can only ramp 1–2 free months on a 13/14-month monthly agreement; otherwise the box
+        {/* Optimize365 can only ramp 1–3 free months on a 13/14/15-month monthly agreement; otherwise the box
             is locked (still untickable if it was ticked before Setup changed). */}
         <Checkbox
           name={`ramp-${input.uid}`}

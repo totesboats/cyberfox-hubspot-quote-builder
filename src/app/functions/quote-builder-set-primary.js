@@ -78,7 +78,7 @@ var require_config = __commonJS({
         editions: [{ value: "standard", label: "Standard" }]
       }
     };
-    var OPTIMIZE_RAMP = { family: "optimize365", planMonths: 12, maxMonths: 2 };
+    var OPTIMIZE_RAMP = { family: "optimize365", planMonths: 12, maxMonths: 3 };
     var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365", "oneoff"];
     var OPTIMIZE_TDR = {
       edition: "tdr",
@@ -671,12 +671,14 @@ var require_pricing = __commonJS({
     function optimizeRampRule(setup) {
       const billing = effectiveBilling(setup || {});
       const frequency = setup && setup.paymentFrequency || PAYMENT_FREQUENCY_DEFAULT[billing];
-      const lengths = `${OPTIMIZE_RAMP.planMonths + 1} or ${OPTIMIZE_RAMP.planMonths + OPTIMIZE_RAMP.maxMonths}`;
+      const okMonths = Array.from({ length: OPTIMIZE_RAMP.maxMonths }, (_, i) => i + 1);
+      const orList = (xs) => xs.length > 1 ? `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}` : String(xs[0]);
+      const lengths = orList(okMonths.map((m) => OPTIMIZE_RAMP.planMonths + m));
       if (billing === "m2m") return { allowed: false, months: 0, reason: "Month-to-month Optimize365 quotes can't ramp." };
       if (billing === "annual" || frequency === "Annual Payments") return { allowed: false, months: 0, reason: "Optimize365 paid annually upfront can't ramp." };
       const extra = (agreementMonths(setup.agreementLength) || 0) - OPTIMIZE_RAMP.planMonths;
       if (extra < 1 || extra > OPTIMIZE_RAMP.maxMonths) {
-        return { allowed: false, months: 0, reason: `Optimize365 can only ramp on a ${lengths}-month agreement paid monthly (1 or 2 free months on top of 12).` };
+        return { allowed: false, months: 0, reason: `Optimize365 can only ramp on a ${lengths}-month agreement paid monthly (${orList(okMonths)} free months on top of ${OPTIMIZE_RAMP.planMonths}).` };
       }
       return { allowed: true, months: extra, reason: `Optimize365 ramp: ${extra} free month${extra > 1 ? "s" : ""} on top of the 12-month plan.` };
     }

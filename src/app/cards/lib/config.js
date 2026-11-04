@@ -73,10 +73,10 @@ export const FAMILIES = {
   },
 };
 
-// Optimize365 ramps: free months added on top of a 12-month plan, so only a 13-month (1 free month) or
-// 14-month (2 free months) agreement can ramp, and only when paid monthly. Annual (paid upfront) and
-// month-to-month Optimize quotes never ramp.
-export const OPTIMIZE_RAMP = { family: 'optimize365', planMonths: 12, maxMonths: 2 };
+// Optimize365 ramps (MSP and Enterprise): free months added on top of a 12-month plan, so only a 13-, 14- or
+// 15-month agreement can ramp (1, 2 or 3 free months, 100% off), and only when paid monthly. Annual (paid
+// upfront) and month-to-month Optimize quotes never ramp. 3 months allowed from Nov 2026 (was 2).
+export const OPTIMIZE_RAMP = { family: 'optimize365', planMonths: 12, maxMonths: 3 };
 
 // Products reps can add (in this order). CyberFOX Bundles are being retired (SKUs off Jan 1), so they
 // can't be added to new quotes; saved quotes that already include a bundle still load and edit.

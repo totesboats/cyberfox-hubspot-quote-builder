@@ -391,7 +391,7 @@ test('ramp defaults to the months past 12 and follows Agreement Length; Bundles 
   await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 2));
 });
 
-test('Optimize365 Ramp box is locked on agreements past 14 months', async () => {
+test('Optimize365 Ramp box is locked on agreements past 15 months', async () => {
   const r = mk();
   const withOptimize = Object.assign({}, CATALOG_RESPONSE, {
     products: CATALOG_RESPONSE.products.concat([prod('Optimize365-100-User-Commit', 200, 'optimize365', 'standard', 'MSP', 'monthly', 100)]),
@@ -407,7 +407,7 @@ test('Optimize365 Ramp box is locked on agreements past 14 months', async () => 
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   // 16 months: Optimize can't ramp, so its Ramp box is locked and says why.
   assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.readOnly, true);
-  assert.match(r.find(Checkbox, { name: 'ramp-1' }).props.description, /13 or 14-month agreement paid monthly/);
+  assert.match(r.find(Checkbox, { name: 'ramp-1' }).props.description, /13, 14 or 15-month agreement paid monthly/);
 
   r.find(StepIndicator).trigger('onClick', 0);
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));

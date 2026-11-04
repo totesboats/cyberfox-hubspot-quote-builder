@@ -412,7 +412,7 @@ test('Open quote links: CPQ quotes open in the quote editor; legacy drafts in th
 });
 
 // ---------------------------------------------------------------------------
-// Optimize365 ramps: only 1–2 free months on top of 12, paid monthly
+// Optimize365 ramps: only 1–3 free months on top of 12, paid monthly (MSP and Enterprise)
 const OPT_CATALOG = P.indexCatalog(RECORDS.concat([
   prod('Optimize365-100-User-Commit', 200, 'optimize365', 'standard', 'MSP', 'monthly', 100),
   prod('Optimize365-100-User-Annual-Commit', 2280, 'optimize365', 'standard', 'MSP', 'annual', 100),
@@ -420,12 +420,15 @@ const OPT_CATALOG = P.indexCatalog(RECORDS.concat([
 const opt = (over = {}) => Object.assign({ uid: 2, family: 'optimize365', edition: 'standard', quantity: 100, discountPct: 0, ramp: true }, over);
 const free = (months) => ({ enabled: true, stages: [{ months, mode: 'free' }] });
 
-test('Optimize365 ramp rule: 13 → 1 free month, 14 → 2, everything else no ramp', () => {
+test('Optimize365 ramp rule: 13 → 1 free month, 14 → 2, 15 → 3, everything else no ramp', () => {
   const rule = (agreementLength, extra = {}) => P.optimizeRampRule(Object.assign({}, MSP, { agreementLength }, extra));
   assert.deepEqual([rule('13 Months').allowed, rule('13 Months').months], [true, 1]);
   assert.deepEqual([rule('14 Months').allowed, rule('14 Months').months], [true, 2]);
-  for (const len of ['12 Months', '15 Months', '16 Months', '24 Months']) assert.equal(rule(len).allowed, false, len);
-  assert.match(rule('16 Months').reason, /13 or 14-month agreement paid monthly/);
+  for (const len of ['12 Months', '16 Months', '24 Months']) assert.equal(rule(len).allowed, false, len);
+  assert.deepEqual([rule('15 Months').allowed, rule('15 Months').months], [true, 3]);
+  assert.deepEqual([rule('15 Months', { segment: 'ENT' }).allowed, rule('15 Months', { segment: 'ENT' }).months], [true, 3]);
+  assert.equal(rule('16 Months').allowed, false);
+  assert.match(rule('16 Months').reason, /13, 14 or 15-month agreement paid monthly \(1, 2 or 3 free months on top of 12\)/);
   assert.equal(rule('14 Months', { billing: 'annual' }).allowed, false); // annual SKUs, paid upfront
   assert.equal(rule('14 Months', { paymentFrequency: 'Annual Payments' }).allowed, false); // monthly SKUs paid annually upfront
   assert.match(rule('14 Months', { billing: 'annual' }).reason, /annually upfront/);
@@ -440,9 +443,21 @@ test('Optimize365 on a 14-month monthly agreement: 2 free months then the 12-mon
   assert.equal(q.lines.find((l) => !l.ramp).termMonths, 12);
 });
 
-test('Optimize365 ramp is blocked past 14 months, on annual payment, and when the ramp has the wrong shape', () => {
+test('Optimize365 on a 15-month monthly agreement: 3 free months then the 12-month plan, MSP and Enterprise', () => {
+  const ENT_OPT = P.indexCatalog([prod('Optimize365-100-User-Commit-Monthly-E', 336, 'optimize365', 'standard', 'ENT', 'monthly', 100)]);
+  for (const [segment, catalog] of [['MSP', OPT_CATALOG], ['ENT', ENT_OPT]]) {
+    const q = P.buildQuote(Object.assign({}, MSP, { segment, agreementLength: '15 Months' }), [opt()], free(3), catalog);
+    assert.deepEqual(q.conflicts, [], segment);
+    const rampLine = q.lines.find((l) => l.ramp);
+    assert.deepEqual([rampLine.termMonths, rampLine.discountPct], [3, 100], segment);
+    assert.equal(q.lines.find((l) => !l.ramp).termMonths, 12, segment);
+  }
+  assert.match(P.buildQuote(Object.assign({}, MSP, { agreementLength: '15 Months' }), [opt()], free(2), OPT_CATALOG).conflicts[0], /must be 3 free months/);
+});
+
+test('Optimize365 ramp is blocked past 15 months, on annual payment, and when the ramp has the wrong shape', () => {
   const build = (setup, ramp) => P.buildQuote(Object.assign({}, MSP, setup), [opt()], ramp, OPT_CATALOG).conflicts;
-  assert.match(build({ agreementLength: '16 Months' }, free(4))[0], /Optimize365 can only ramp on a 13 or 14-month/);
+  assert.match(build({ agreementLength: '16 Months' }, free(4))[0], /Optimize365 can only ramp on a 13, 14 or 15-month/);
   assert.match(build({ agreementLength: '14 Months', paymentFrequency: 'Annual Payments' }, free(2))[0], /annually upfront/);
   assert.match(build({ agreementLength: '14 Months' }, free(1))[0], /must be 2 free months/); // ramp shorter than the extra months
   assert.match(build({ agreementLength: '14 Months' }, { enabled: true, stages: [{ months: 2, mode: 'percent', percent: 50 }] })[0], /100% off/);
