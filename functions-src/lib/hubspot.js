@@ -12,6 +12,7 @@ const {
   QUOTE_STATE_PROPERTY,
   ONE_OFF_FOLDER,
   HS_PATHS,
+  CURRENCIES,
 } = require('./config.js');
 const { normalizeTemplates, quoteLockState, parseBuilderState } = require('./pricing.js');
 
@@ -87,7 +88,7 @@ async function batchArchive(objectType, ids) {
 // Loaders used by both functions
 // ---------------------------------------------------------------------------
 
-const PRODUCT_PROPERTIES = ['name', 'hs_sku', 'price', 'hs_price_usd', 'qb_family', 'qb_edition', 'qb_segment', 'qb_billing', 'qb_tier', 'qb_component', 'hs_folder', 'recurringbillingfrequency'];
+const PRODUCT_PROPERTIES = ['name', 'hs_sku', 'price', ...CURRENCIES.map((c) => `hs_price_${c.toLowerCase()}`), 'qb_family', 'qb_edition', 'qb_segment', 'qb_billing', 'qb_tier', 'qb_component', 'hs_folder', 'recurringbillingfrequency'];
 
 // Tagged price-book products, plus every active product in the One-Off SKUs folder (read live, no tagging).
 async function loadProducts() {

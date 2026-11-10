@@ -9,7 +9,7 @@
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
 const { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
-const { quoteUrl, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
+const { quoteUrl, quoteCurrency, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
 const ASSOC = {
@@ -55,7 +55,9 @@ exports.main = async (context) => {
   if (!template) return { ok: false, errors: ['The selected quote template no longer exists.'] };
 
   const setup = Object.assign({}, payload.setup, { salesTeam: deal.salesTeam, templateType: template.templateType });
-  const catalog = indexCatalog(products);
+  // Priced in the deal's currency (CAD deals use each product's CAD price).
+  const currency = quoteCurrency(deal.properties.deal_currency_code);
+  const catalog = indexCatalog(products, currency);
   const quote = buildQuote(setup, payload.products, payload.ramp, catalog);
   if (quote.blocking.length) return { ok: false, errors: quote.blocking.map((b) => b.error) };
   if (quote.conflicts.length) return { ok: false, errors: quote.conflicts };
@@ -79,7 +81,7 @@ exports.main = async (context) => {
   }
 
   const sessionId = editing ? editing.session : `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const lineProps = quote.lines.map((l) => lineItemProperties(l, { billing: setup.billing, rampMonths: quote.ramp.months, sessionId }));
+  const lineProps = quote.lines.map((l) => lineItemProperties(l, { billing: setup.billing, rampMonths: quote.ramp.months, sessionId, currency }));
   const created = { dealLines: [], quoteLines: [], quoteId: null };
   // Primary unless the rep says otherwise; the first builder quote on a deal is always primary.
   // An edited quote keeps whatever option status it had.
@@ -91,7 +93,7 @@ exports.main = async (context) => {
     hs_expiration_date: payload.setup.expirationDate,
     hs_template_type: template.templateType,
     hs_language: QUOTE_DEFAULTS.language,
-    hs_currency: (deal.properties.deal_currency_code || QUOTE_DEFAULTS.currency).toUpperCase(),
+    hs_currency: currency,
     hs_payment_enabled: String(QUOTE_DEFAULTS.paymentEnabled),
     hubspot_owner_id: quoteOwner.id,
     hs_sender_firstname: sender.firstName,

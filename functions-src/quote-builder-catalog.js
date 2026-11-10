@@ -2,7 +2,7 @@
 // Loads everything the card needs in one round trip: tagged products, quote templates
 // and the deal's context.
 const { loadProducts, loadTemplates, loadDealOptions, loadDeal } = require('./lib/hubspot.js');
-const { indexCatalog } = require('./lib/pricing.js');
+const { indexCatalog, quoteCurrency } = require('./lib/pricing.js');
 
 exports.main = async (context) => {
   const params = context.parameters || {};
@@ -11,7 +11,7 @@ exports.main = async (context) => {
 
   try {
     const [products, templates, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadDealOptions(), loadDeal(dealId)]);
-    const catalog = indexCatalog(products);
+    const catalog = indexCatalog(products, quoteCurrency(deal.properties && deal.properties.deal_currency_code));
     const issues = catalog.issues.slice();
     if (dealOptions.issue) issues.push(dealOptions.issue);
     if (!products.length) issues.push('No products are tagged for the Quote Builder (qb_family is empty on every product).');

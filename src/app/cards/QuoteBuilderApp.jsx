@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
 import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -233,7 +233,8 @@ export function QuoteBuilderApp() {
     try {
       const res = await callFunction('quote_builder_catalog', { dealId });
       if (!res.ok) throw new Error((res.errors || []).join('; ') || 'Could not load the product library.');
-      const catalog = indexCatalog(res.products);
+      // Priced in the deal's currency: a CAD deal uses each product's CAD price.
+      const catalog = indexCatalog(res.products, quoteCurrency(res.deal && res.deal.properties && res.deal.properties.deal_currency_code));
       setData(Object.assign({}, res, { catalog }));
       if (refresh === true) return;
       const props = (res.deal && res.deal.properties) || {};

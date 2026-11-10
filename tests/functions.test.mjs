@@ -19,7 +19,7 @@ const PRODUCTS = [
   { id: '9900', properties: { name: 'Optimize365 4000 User Plan', hs_sku: 'Optimize365-4000-User-Commit', hs_price_usd: '4800', hs_folder: 'One-Off SKUs', recurringbillingfrequency: 'monthly' } },
 ];
 
-function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
+function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency = 'USD', products = PRODUCTS } = {}) {
   const log = [];
   const store = { lineItems: {}, archived: [], deletedQuotes: [], quote: null, dealPatch: null };
   store.lineItems['L-old-builder'] = { qb_source: 'quote_builder', qb_session_id: 'qb-old' };
@@ -38,7 +38,7 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
     if (/\/v[34]\//.test(u.pathname) && !store.allowLegacy) throw new Error(`Legacy API path called: ${method} ${u.pathname}`);
     const ok = (data, status = 200) => ({ ok: true, status, headers: new Map(), text: async () => JSON.stringify(data) });
     const p = u.pathname;
-    if (p === '/crm/objects/2026-09/products/search') return ok({ results: PRODUCTS });
+    if (p === '/crm/objects/2026-09/products/search') return ok({ results: products });
     if (p === '/crm/properties/2026-09/deals/batch/read')
       return ok({
         results: [
@@ -53,7 +53,7 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77' } = {}) {
     if (p === '/crm/v3/objects/quote_templates' && store.allowLegacy) return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }] });
     if (p === '/crm/objects/2026-09/quote_templates') return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }, { id: '11', properties: { hs_name: 'Timus SASE', hs_type: 'customizable_quote_template' } }] });
     if (p === '/crm/objects/2026-09/deals/123' && method === 'GET')
-      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: 'USD', hubspot_owner_id: store.ownerId } });
+      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: currency, hubspot_owner_id: store.ownerId } });
     if (p === '/crm/owners/2026-09') {
       const users = { 'riley.rep@example.com': { id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }, 'pat.ops@example.com': { id: '88', firstName: 'Pat', lastName: 'Ops', email: 'pat.ops@example.com' } };
       const found = users[u.searchParams.get('email')];
@@ -507,4 +507,26 @@ test('2026-09 API: quote templates fall back to v3 if the date-based objects API
   assert.equal(res.ok, true);
   assert.deepEqual(res.templates.map((t) => t.id), ['10']);
   assert.deepEqual(log.filter((l) => /\/v3\//.test(l.path)).map((l) => l.path), ['/crm/v3/objects/quote_templates']);
+});
+
+test('CAD deal: line items use the products\' CAD prices and carry CAD; the quote is CAD', async () => {
+  const cad = PRODUCTS.map((pr) => ({ id: pr.id, properties: Object.assign({}, pr.properties, pr.properties.hs_sku === 'Standard-AE-1000-Agent-Commit-2026' ? { hs_price_cad: '1390' } : pr.properties.hs_sku === 'Standard-AE-1000-Agent-Commit-Additional-Agents+2026' ? { hs_price_cad: '1.39' } : {}) }));
+  const { log, store } = fakeHubSpot({ currency: 'CAD', products: cad });
+  const res = await submitFn().main({ parameters: payload({ ramp: { enabled: false }, products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: false }] }), accountId: 2585282 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const created = log.filter((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').flatMap((l) => l.body.inputs.map((i) => i.properties));
+  assert.ok(created.length >= 2);
+  assert.deepEqual([...new Set(created.map((c) => c.hs_line_item_currency_code))], ['CAD']);
+  assert.deepEqual([...new Set(created.map((c) => `${c.hs_sku}=${c.price}`))].sort(), ['Standard-AE-1000-Agent-Commit-2026=1390', 'Standard-AE-1000-Agent-Commit-Additional-Agents+2026=1.39']);
+  assert.equal(store.quote.properties.hs_currency, 'CAD');
+  // The product search asks for every currency's price.
+  assert.ok(log.find((l) => l.path === '/crm/objects/2026-09/products/search').body.properties.includes('hs_price_cad'));
+});
+
+test('CAD deal: a SKU with no CAD price stops the quote (never falls back to USD)', async () => {
+  const { log } = fakeHubSpot({ currency: 'CAD' }); // fixture products have USD prices only
+  const res = await submitFn().main({ parameters: payload({ ramp: { enabled: false }, products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: false }] }), accountId: 2585282 });
+  assert.equal(res.ok, false);
+  assert.match(res.errors[0], /No CAD price on Standard-AE-1000-Agent-Commit-2026, Standard-AE-1000-Agent-Commit-Additional-Agents\+2026 in the product library/);
+  assert.equal(log.filter((l) => l.path.endsWith('/batch/create')).length, 0);
 });

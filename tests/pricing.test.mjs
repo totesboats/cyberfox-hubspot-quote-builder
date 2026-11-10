@@ -644,3 +644,52 @@ test('MSP Optimize365 ramp (Optimize rule) covers the TDR line too; per tenant i
   assert.deepEqual(P.editionsFor('optimize365', 'ENT').map((e) => e.value), ['standard']);
   assert.deepEqual(P.editionsFor('optimize365', 'MSP').map((e) => e.label), ['Per user', 'Per tenant']);
 });
+
+// ---------------------------------------------------------------------------
+// Currency: quotes are priced in the deal's currency from hs_price_<currency>.
+const cadProd = (sku, usd, cad, tier, component = 'base', family = 'autoelevate', edition = 'standard') => ({
+  id: sku,
+  properties: Object.assign({ name: sku, hs_sku: sku, hs_price_usd: String(usd), qb_family: family, qb_edition: edition, qb_segment: 'MSP', qb_billing: 'monthly', qb_tier: String(tier), qb_component: component }, cad == null ? {} : { hs_price_cad: String(cad) }),
+});
+const CAD_RECORDS = [
+  cadProd('AE-1000', 1050, 1390, 1000),
+  cadProd('AE-1000-Add', 1.05, 1.39, 1000, 'additional'),
+  cadProd('DNS-500', 300, null, 500, 'base', 'dns'),
+  cadProd('Optimize365 5 Tenant Plan', 250, 340, 5, 'base', 'optimize365', 'tenant'),
+  cadProd('Optimize TDR', '', null, 1, 'base', 'optimize365', 'tdr'),
+  { id: 'tm', properties: { name: 'Timus SASE - Monthly Minimum', hs_sku: 'Timus SASE - Monthly Minimum', hs_price_usd: '250', qb_family: 'timus', qb_edition: 'advanced', qb_segment: 'MSP', qb_billing: 'monthly', qb_component: 'minimum' } },
+  { id: '7009', properties: { name: 'One-off AE', hs_sku: 'AE-1OFF', hs_price_usd: '100', hs_folder: 'One-Off SKUs', recurringbillingfrequency: 'monthly' } },
+];
+const S12 = Object.assign({}, MSP, { agreementLength: '12 Months' });
+
+test('currency: a CAD catalog prices from hs_price_cad; USD is unchanged', () => {
+  const cad = P.indexCatalog(CAD_RECORDS, 'cad');
+  assert.equal(cad.currency, 'CAD');
+  const q = P.buildQuote(S12, [ae({ quantity: 1250, discountPct: 0, ramp: false })], {}, cad);
+  assert.deepEqual(q.blocking, []);
+  assert.deepEqual(q.lines.map((l) => [l.sku, l.quantity, l.unitPrice]), [['AE-1000', 1, 1390], ['AE-1000-Add', 250, 1.39]]);
+  assert.equal(q.currency, 'CAD');
+  const usd = P.buildQuote(S12, [ae({ quantity: 1250, discountPct: 0, ramp: false })], {}, P.indexCatalog(CAD_RECORDS));
+  assert.deepEqual(usd.lines.map((l) => l.unitPrice), [1050, 1.05]);
+  assert.equal(usd.currency, 'USD');
+  assert.equal(P.lineItemProperties(q.lines[0], { billing: 'monthly', sessionId: 's', currency: 'cad' }).hs_line_item_currency_code, 'CAD');
+  assert.equal(P.lineItemProperties(q.lines[0], { billing: 'monthly', sessionId: 's' }).hs_line_item_currency_code, 'USD');
+});
+
+test('currency: SKUs without a price in the deal currency are blocking errors, never USD', () => {
+  const cad = P.indexCatalog(CAD_RECORDS, 'CAD');
+  const dns = P.buildQuote(S12, [{ uid: 3, family: 'dns', edition: 'standard', quantity: 500, discountPct: 0, ramp: false }], {}, cad);
+  assert.match(dns.blocking[0].error, /No CAD price on DNS-500 in the product library/);
+  const oneOff = P.buildQuote(S12, [{ uid: 5, family: 'oneoff', productId: '7009', quantity: 1, discountPct: 0, ramp: false }], {}, cad);
+  assert.match(oneOff.blocking[0].error, /No CAD price on AE-1OFF/);
+  // Timus: the SKU default needs a CAD price, but a minimum the rep enters (in CAD) is fine.
+  const timus = (minimum) => P.buildQuote(S12, [{ uid: 6, family: 'timus', edition: 'advanced', agreement: 'standard', minimum, gateways: 1, userRate: 5, gatewayRate: 10, quantity: 50, discountPct: 0, ramp: false }], {}, cad);
+  assert.match(timus('').blocking[0].error, /No CAD price on Timus SASE - Monthly Minimum.*Or enter the monthly minimum in CAD/);
+  assert.deepEqual(timus(400).blocking, []);
+  assert.equal(timus(400).lines[0].unitPrice, 400);
+  // Optimize TDR tiers are USD only.
+  const tdr = (n) => P.buildQuote(S12, [{ uid: 7, family: 'optimize365', edition: 'tenant', quantity: 5, tdrUsers: n, discountPct: 0, ramp: false }], {}, cad);
+  assert.match(tdr(100).blocking[0].error, /Optimize TDR tiers are only set in USD/);
+  assert.deepEqual(tdr(0).blocking, []);
+  assert.equal(tdr(0).lines[0].unitPrice, 340);
+});

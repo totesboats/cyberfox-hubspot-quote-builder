@@ -234,7 +234,7 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
         <Heading>Products & ramp</Heading>
         <Text variant="microcopy">
           Enter the total count. The builder uses the highest commit tier at or below the count and adds the overage SKU above it. Showing {segment} ·{' '}
-          {BILLING[quote.billing].label.toLowerCase()} SKUs.
+          {BILLING[quote.billing].label.toLowerCase()} SKUs{quote.currency && quote.currency !== 'USD' ? ` · prices in ${quote.currency} (the deal's currency)` : ''}.
         </Text>
       </Flex>
 

@@ -87,6 +87,7 @@ export const FAMILY_ORDER = ['autoelevate', 'password', 'dns', 'timus', 'optimiz
 // "Optimize TDR" product. The product is tagged qb_edition = tdr (see tag-products).
 export const OPTIMIZE_TDR = {
   edition: 'tdr',
+  currency: 'USD', // the tiers below are USD; add a currency here (with its own tiers) before quoting TDR in it
   withEdition: 'tenant',
   sku: 'Optimize TDR',
   tiers: [
@@ -277,3 +278,7 @@ export const RAMP_NAME_PREFIX = 'RAMP ';
 // paymentEnabled: false matches every CyberFOX CPQ quote today (no online payment on the quote).
 // With payments on, HubSpot requires every invoice to be $35+, which blocks ramp months.
 export const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30, paymentEnabled: false };
+
+// Currencies the product library prices in (hs_price_<code> on each product). A quote is priced in its deal's
+// currency (Deal currency code); a SKU with no price in that currency stops the quote instead of falling back to USD.
+export const CURRENCIES = ['USD', 'CAD', 'GBP', 'EUR', 'AUD'];

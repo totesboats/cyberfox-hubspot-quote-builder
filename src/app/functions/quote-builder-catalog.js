@@ -82,6 +82,8 @@ var require_config = __commonJS({
     var FAMILY_ORDER = ["autoelevate", "password", "dns", "timus", "optimize365", "oneoff"];
     var OPTIMIZE_TDR = {
       edition: "tdr",
+      currency: "USD",
+      // the tiers below are USD; add a currency here (with its own tiers) before quoting TDR in it
       withEdition: "tenant",
       sku: "Optimize TDR",
       tiers: [
@@ -223,7 +225,8 @@ var require_config = __commonJS({
     var AE_FEATURE_TYPES_RETIRED = ["Advanced (GrandFathered)"];
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
-    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS };
+    var CURRENCIES = ["USD", "CAD", "GBP", "EUR", "AUD"];
+    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };
   }
 });
 
@@ -231,7 +234,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR } = require_config();
+    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -248,6 +251,25 @@ var require_pricing = __commonJS({
     function formatInt(n) {
       return Math.round(toNum(n)).toLocaleString("en-US");
     }
+    function productPrices(p) {
+      const out = {};
+      for (const code of CURRENCIES) {
+        const v = p[`hs_price_${code.toLowerCase()}`];
+        if (v != null && v !== "" && Number.isFinite(Number(v))) out[code] = Number(v);
+      }
+      if (out.USD == null && p.price != null && p.price !== "" && Number.isFinite(Number(p.price))) out.USD = Number(p.price);
+      return out;
+    }
+    function missingPriceError(products, currency) {
+      const missing = products.filter((p) => p && p.missingPrice);
+      if (!missing.length) return null;
+      const skus = missing.map((p) => p.sku || p.name).join(", ");
+      return `No ${currency} price on ${skus} in the product library. Add the ${currency} price to quote this deal in ${currency}.`;
+    }
+    function quoteCurrency2(code) {
+      const c = String(code || QUOTE_DEFAULTS.currency).trim().toUpperCase();
+      return c || QUOTE_DEFAULTS.currency;
+    }
     function normalizeProduct(record) {
       const p = record.properties || record;
       const tierRaw = p.qb_tier;
@@ -255,8 +277,10 @@ var require_pricing = __commonJS({
         id: String(record.id != null ? record.id : p.hs_object_id),
         name: (p.name || "").trim(),
         sku: (p.hs_sku || "").trim(),
-        // Multi-currency portals store the list price in hs_price_<currency>.
+        // Multi-currency portals store the list price in hs_price_<currency>. `price` is USD until indexCatalog
+        // picks the deal's currency.
         price: toNum(p.hs_price_usd != null && p.hs_price_usd !== "" ? p.hs_price_usd : p.price),
+        prices: productPrices(p),
         family: p.qb_family || null,
         edition: p.qb_edition || "standard",
         segment: p.qb_segment || "MSP",
@@ -275,13 +299,17 @@ var require_pricing = __commonJS({
     function catalogKey(family, edition, segment, billing) {
       return [family, edition, segment, billing].join("|");
     }
-    function indexCatalog2(records) {
+    function indexCatalog2(records, currency) {
+      const cur = quoteCurrency2(currency);
       const tiers = {};
       const timus = { minimum: null, satgat: {} };
       const oneOffs = [];
       const issues = [];
       for (const record of records || []) {
         const p = normalizeProduct(record);
+        p.currency = cur;
+        p.missingPrice = p.prices[cur] == null;
+        p.price = p.missingPrice ? 0 : p.prices[cur];
         if (p.folder === ONE_OFF_FOLDER) {
           oneOffs.push(Object.assign(p, oneOffFamily(p)));
           continue;
@@ -307,7 +335,7 @@ var require_pricing = __commonJS({
         tiers[key][p.tier][slot] = p;
       }
       oneOffs.sort((a, b) => a.name.localeCompare(b.name));
-      return { tiers, timus, oneOffs, issues };
+      return { tiers, timus, oneOffs, issues, currency: cur };
     }
     function normalizeTemplates(records) {
       const typeMap = { cpq_template: "CPQ_QUOTE", customizable_quote_template: "CUSTOMIZABLE_QUOTE_TEMPLATE" };
@@ -441,6 +469,11 @@ var require_pricing = __commonJS({
         cost: o.cost
       }));
       result.chosenTier = chosen.tier;
+      const unpriced = missingPriceError([chosen.base, chosen.additional && chosen.addQty > 0 ? chosen.additional : null], catalog.currency || "USD");
+      if (unpriced) {
+        result.error = unpriced;
+        return result;
+      }
       result.bestTier = best.tier;
       result.cheapestTier = cheapest.tier;
       result.lines.push(
@@ -495,6 +528,11 @@ var require_pricing = __commonJS({
         const slot = Object.values(tdrTiers).find((t) => t.base);
         const product = slot && slot.base;
         const tier = tdrTier(tdrUsers);
+        const cur = catalog.currency || "USD";
+        if (cur !== OPTIMIZE_TDR.currency) {
+          result.error = result.error || `${OPTIMIZE_TDR.sku} tiers are only set in ${OPTIMIZE_TDR.currency}, so it can't be quoted in ${cur} yet. Set TDR users to 0, or ask Ops to add ${cur} tiers.`;
+          return result;
+        }
         if (!product) {
           result.error = result.error || `The ${OPTIMIZE_TDR.sku} product isn't available for ${setup.segment} ${billingLabel.toLowerCase()} (run Setup scripts \u2192 tag-products). Set TDR users to 0 to quote without it.`;
           return result;
@@ -525,6 +563,11 @@ var require_pricing = __commonJS({
       }
       if (!result.quantity) {
         result.error = "Enter a quantity.";
+        return result;
+      }
+      const unpriced = missingPriceError([p], catalog.currency || "USD");
+      if (unpriced) {
+        result.error = unpriced;
         return result;
       }
       const annual = ONE_OFF_FREQUENCIES[p.frequency];
@@ -564,6 +607,11 @@ var require_pricing = __commonJS({
           return result;
         }
         minimum = tier;
+        const unpriced = missingPriceError([product], catalog.currency || "USD");
+        if (unpriced) {
+          result.error = unpriced;
+          return result;
+        }
         result.lines.push(
           makeLine({ family: "timus", kind: "satgat", productId: product.id, name: product.name, sku: product.sku, quantity: 1, unitPrice: product.price, discountPct: result.discountPct, annual: false })
         );
@@ -573,7 +621,12 @@ var require_pricing = __commonJS({
           result.error = `The "${TIMUS.minimumSku}" product is not tagged for the Quote Builder.`;
           return result;
         }
-        minimum = entered(input.minimum) && toNum(input.minimum) > 0 ? round2(toNum(input.minimum)) : product.price;
+        const repMinimum = entered(input.minimum) && toNum(input.minimum) > 0;
+        if (!repMinimum && product.missingPrice) {
+          result.error = `${missingPriceError([product], catalog.currency || "USD")} Or enter the monthly minimum in ${catalog.currency}.`;
+          return result;
+        }
+        minimum = repMinimum ? round2(toNum(input.minimum)) : product.price;
         result.lines.push(
           makeLine({
             family: "timus",
@@ -809,7 +862,7 @@ var require_pricing = __commonJS({
       const aeFeature = resolveAeFeature(rows);
       if (aeFeature && aeFeature.conflict) conflicts.push(aeFeature.conflict);
       const ramp = { enabled: anyRamp, months: longestRamp };
-      return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: catalog && catalog.oneOffs || [] };
+      return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: catalog && catalog.oneOffs || [], currency: catalog && catalog.currency || QUOTE_DEFAULTS.currency };
     }
     function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
       const reasons = [];
@@ -830,8 +883,9 @@ var require_pricing = __commonJS({
         manual: legacy && reasons.length > 0
       };
     }
-    function lineItemProperties(line, { billing, rampMonths, sessionId }) {
+    function lineItemProperties(line, { billing, rampMonths, sessionId, currency }) {
       const props = {
+        hs_line_item_currency_code: quoteCurrency2(currency),
         hs_product_id: line.productId,
         name: line.name,
         hs_sku: line.sku,
@@ -985,7 +1039,7 @@ var require_pricing = __commonJS({
       if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], "ramp");
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency: quoteCurrency2, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 
@@ -1003,7 +1057,8 @@ var require_hubspot = __commonJS({
       QUOTE_SESSION_PROPERTY,
       QUOTE_STATE_PROPERTY,
       ONE_OFF_FOLDER,
-      HS_PATHS
+      HS_PATHS,
+      CURRENCIES
     } = require_config();
     var { normalizeTemplates, quoteLockState, parseBuilderState } = require_pricing();
     var BASE = "https://api.hubapi.com";
@@ -1066,7 +1121,7 @@ var require_hubspot = __commonJS({
         await hs(`${OBJ}/${objectType}/batch/archive`, { method: "POST", body: { inputs: part.map((id) => ({ id: String(id) })) } });
       }
     }
-    var PRODUCT_PROPERTIES = ["name", "hs_sku", "price", "hs_price_usd", "qb_family", "qb_edition", "qb_segment", "qb_billing", "qb_tier", "qb_component", "hs_folder", "recurringbillingfrequency"];
+    var PRODUCT_PROPERTIES = ["name", "hs_sku", "price", ...CURRENCIES.map((c) => `hs_price_${c.toLowerCase()}`), "qb_family", "qb_edition", "qb_segment", "qb_billing", "qb_tier", "qb_component", "hs_folder", "recurringbillingfrequency"];
     async function loadProducts2() {
       const active = { propertyName: "hs_status", operator: "EQ", value: "active" };
       return searchAll("products", {
@@ -1221,14 +1276,14 @@ var require_hubspot = __commonJS({
 
 // functions-src/quote-builder-catalog.js
 var { loadProducts, loadTemplates, loadDealOptions, loadDeal } = require_hubspot();
-var { indexCatalog } = require_pricing();
+var { indexCatalog, quoteCurrency } = require_pricing();
 exports.main = async (context) => {
   const params = context.parameters || {};
   const dealId = params.dealId || context.propertiesToSend && context.propertiesToSend.hs_object_id;
   if (!dealId) return { ok: false, errors: ["dealId is required"] };
   try {
     const [products, templates, dealOptions, deal] = await Promise.all([loadProducts(), loadTemplates(), loadDealOptions(), loadDeal(dealId)]);
-    const catalog = indexCatalog(products);
+    const catalog = indexCatalog(products, quoteCurrency(deal.properties && deal.properties.deal_currency_code));
     const issues = catalog.issues.slice();
     if (dealOptions.issue) issues.push(dealOptions.issue);
     if (!products.length) issues.push("No products are tagged for the Quote Builder (qb_family is empty on every product).");

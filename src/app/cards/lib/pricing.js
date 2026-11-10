@@ -27,6 +27,8 @@ import {
   ONE_OFF_FOLDER,
   ONE_OFF_FAMILY_PATTERNS,
   OPTIMIZE_TDR,
+  CURRENCIES,
+  QUOTE_DEFAULTS,
 } from './config.js';
 
 export function toNum(v, fallback = 0) {
@@ -54,6 +56,31 @@ export function formatInt(n) {
 // Catalog
 // ---------------------------------------------------------------------------
 
+// { USD: 1050, CAD: 1390, ... } from a product's hs_price_<currency> properties (only currencies that are set).
+export function productPrices(p) {
+  const out = {};
+  for (const code of CURRENCIES) {
+    const v = p[`hs_price_${code.toLowerCase()}`];
+    if (v != null && v !== '' && Number.isFinite(Number(v))) out[code] = Number(v);
+  }
+  if (out.USD == null && p.price != null && p.price !== '' && Number.isFinite(Number(p.price))) out.USD = Number(p.price);
+  return out;
+}
+
+// Blocking error text when products have no price in the quote's currency (null when all are priced).
+function missingPriceError(products, currency) {
+  const missing = products.filter((p) => p && p.missingPrice);
+  if (!missing.length) return null;
+  const skus = missing.map((p) => p.sku || p.name).join(', ');
+  return `No ${currency} price on ${skus} in the product library. Add the ${currency} price to quote this deal in ${currency}.`;
+}
+
+// The deal's currency code, normalized (USD when unset).
+export function quoteCurrency(code) {
+  const c = String(code || QUOTE_DEFAULTS.currency).trim().toUpperCase();
+  return c || QUOTE_DEFAULTS.currency;
+}
+
 export function normalizeProduct(record) {
   const p = record.properties || record;
   const tierRaw = p.qb_tier;
@@ -61,8 +88,10 @@ export function normalizeProduct(record) {
     id: String(record.id != null ? record.id : p.hs_object_id),
     name: (p.name || '').trim(),
     sku: (p.hs_sku || '').trim(),
-    // Multi-currency portals store the list price in hs_price_<currency>.
+    // Multi-currency portals store the list price in hs_price_<currency>. `price` is USD until indexCatalog
+    // picks the deal's currency.
     price: toNum(p.hs_price_usd != null && p.hs_price_usd !== '' ? p.hs_price_usd : p.price),
+    prices: productPrices(p),
     family: p.qb_family || null,
     edition: p.qb_edition || 'standard',
     segment: p.qb_segment || 'MSP',
@@ -86,13 +115,19 @@ export function catalogKey(family, edition, segment, billing) {
 }
 
 // Builds { tiers: { key: { tier: { base, additional } } }, timus: { minimum, satgat }, oneOffs, issues }
-export function indexCatalog(records) {
+// `currency` is the deal's currency: every product is priced from its hs_price_<currency>. A product with no
+// price in that currency is kept but marked missingPrice, so quoting it is a blocking error (never USD instead).
+export function indexCatalog(records, currency) {
+  const cur = quoteCurrency(currency);
   const tiers = {};
   const timus = { minimum: null, satgat: {} };
   const oneOffs = [];
   const issues = [];
   for (const record of records || []) {
     const p = normalizeProduct(record);
+    p.currency = cur;
+    p.missingPrice = p.prices[cur] == null;
+    p.price = p.missingPrice ? 0 : p.prices[cur];
     // One-off SKUs are picked by the rep from their folder, never by tier.
     if (p.folder === ONE_OFF_FOLDER) {
       oneOffs.push(Object.assign(p, oneOffFamily(p)));
@@ -119,7 +154,7 @@ export function indexCatalog(records) {
     tiers[key][p.tier][slot] = p;
   }
   oneOffs.sort((a, b) => a.name.localeCompare(b.name));
-  return { tiers, timus, oneOffs, issues };
+  return { tiers, timus, oneOffs, issues, currency: cur };
 }
 
 // Quote templates (CRM objects API, quote_templates) → rep-facing list.
@@ -284,6 +319,11 @@ export function priceProduct(input, setup, catalog) {
     cost: o.cost,
   }));
   result.chosenTier = chosen.tier;
+  const unpriced = missingPriceError([chosen.base, chosen.additional && chosen.addQty > 0 ? chosen.additional : null], catalog.currency || 'USD');
+  if (unpriced) {
+    result.error = unpriced;
+    return result;
+  }
   result.bestTier = best.tier;
   result.cheapestTier = cheapest.tier;
 
@@ -342,6 +382,11 @@ export function priceProduct(input, setup, catalog) {
     const slot = Object.values(tdrTiers).find((t) => t.base);
     const product = slot && slot.base;
     const tier = tdrTier(tdrUsers);
+    const cur = catalog.currency || 'USD';
+    if (cur !== OPTIMIZE_TDR.currency) {
+      result.error = result.error || `${OPTIMIZE_TDR.sku} tiers are only set in ${OPTIMIZE_TDR.currency}, so it can't be quoted in ${cur} yet. Set TDR users to 0, or ask Ops to add ${cur} tiers.`;
+      return result;
+    }
     if (!product) {
       result.error = result.error || `The ${OPTIMIZE_TDR.sku} product isn't available for ${setup.segment} ${billingLabel.toLowerCase()} (run Setup scripts → tag-products). Set TDR users to 0 to quote without it.`;
       return result;
@@ -379,6 +424,11 @@ function priceOneOff(input, catalog, result) {
   }
   if (!result.quantity) {
     result.error = 'Enter a quantity.';
+    return result;
+  }
+  const unpriced = missingPriceError([p], catalog.currency || 'USD');
+  if (unpriced) {
+    result.error = unpriced;
     return result;
   }
   const annual = ONE_OFF_FREQUENCIES[p.frequency];
@@ -425,6 +475,11 @@ function priceTimus(input, setup, catalog, result) {
       return result;
     }
     minimum = tier;
+    const unpriced = missingPriceError([product], catalog.currency || 'USD');
+    if (unpriced) {
+      result.error = unpriced;
+      return result;
+    }
     result.lines.push(
       makeLine({ family: 'timus', kind: 'satgat', productId: product.id, name: product.name, sku: product.sku, quantity: 1, unitPrice: product.price, discountPct: result.discountPct, annual: false })
     );
@@ -434,7 +489,13 @@ function priceTimus(input, setup, catalog, result) {
       result.error = `The "${TIMUS.minimumSku}" product is not tagged for the Quote Builder.`;
       return result;
     }
-    minimum = entered(input.minimum) && toNum(input.minimum) > 0 ? round2(toNum(input.minimum)) : product.price;
+    const repMinimum = entered(input.minimum) && toNum(input.minimum) > 0;
+    // The rep's minimum is in the deal's currency; the SKU's own price is only the default.
+    if (!repMinimum && product.missingPrice) {
+      result.error = `${missingPriceError([product], catalog.currency || 'USD')} Or enter the monthly minimum in ${catalog.currency}.`;
+      return result;
+    }
+    minimum = repMinimum ? round2(toNum(input.minimum)) : product.price;
     result.lines.push(
       makeLine({
         family: 'timus',
@@ -722,7 +783,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
 
   // `ramp` summarises the quote: on when any product ramps; `months` is the longest product ramp.
   const ramp = { enabled: anyRamp, months: longestRamp };
-  return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [] };
+  return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [], currency: (catalog && catalog.currency) || QUOTE_DEFAULTS.currency };
 }
 
 export function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
@@ -749,8 +810,9 @@ export function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths
 // HubSpot property mapping
 // ---------------------------------------------------------------------------
 
-export function lineItemProperties(line, { billing, rampMonths, sessionId }) {
+export function lineItemProperties(line, { billing, rampMonths, sessionId, currency }) {
   const props = {
+    hs_line_item_currency_code: quoteCurrency(currency),
     hs_product_id: line.productId,
     name: line.name,
     hs_sku: line.sku,

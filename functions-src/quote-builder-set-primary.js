@@ -10,7 +10,7 @@ const { LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY } = require('./lib/config.js
 
 // Line item properties copied from the quote's lines (everything the builder writes).
 const COPY = [
-  'hs_product_id', 'name', 'hs_sku', 'quantity', 'price', 'hs_discount_percentage', 'recurringbillingfrequency',
+  'hs_product_id', 'name', 'hs_sku', 'quantity', 'price', 'hs_line_item_currency_code', 'hs_discount_percentage', 'recurringbillingfrequency',
   'hs_recurring_billing_period', 'hs_recurring_billing_terms', 'hs_billing_start_delay_type', 'hs_billing_start_delay_months',
   'hs_position_on_quote', 'ramp', 'approval_discount', 'approval_ramp_months', LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY,
 ];
