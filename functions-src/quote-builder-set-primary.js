@@ -6,13 +6,14 @@
 // Published quotes keep their frozen values; open (draft / pending approval) quotes would
 // pick up the new deal values, which the card warns about before calling this.
 const { hs, OBJ, batchCreate, batchArchive, loadDeal, findBuilderLineItems, associatedIds } = require('./lib/hubspot.js');
-const { LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY } = require('./lib/config.js');
+const { LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY } = require('./lib/config.js');
 
 // Line item properties copied from the quote's lines (everything the builder writes).
 const COPY = [
   'hs_product_id', 'name', 'hs_sku', 'quantity', 'price', 'hs_line_item_currency_code', 'hs_discount_percentage', 'recurringbillingfrequency',
   'hs_recurring_billing_period', 'hs_recurring_billing_terms', 'hs_billing_start_delay_type', 'hs_billing_start_delay_months',
   'hs_position_on_quote', 'ramp', 'approval_discount', 'approval_ramp_months', LINE_SOURCE_PROPERTY, LINE_SESSION_PROPERTY,
+  LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY,
 ];
 
 exports.main = async (context) => {

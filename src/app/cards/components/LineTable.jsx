@@ -1,8 +1,8 @@
 import React from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag, Text } from '@hubspot/ui-extensions';
-import { formatInt, formatMoney } from '../lib/pricing.js';
+import { formatInt, formatMoney, lineTypeLabel } from '../lib/pricing.js';
 
-// Shared line-item table. `detailed` adds Term and Starts columns for the review step.
+// Shared line-item table. `detailed` adds Term, Starts and Type (New / Upsell / Co-term) columns for the review step.
 export function LineTable({ lines, detailed = false, billing = 'monthly' }) {
   return (
     <Table bordered density="condensed">
@@ -15,6 +15,7 @@ export function LineTable({ lines, detailed = false, billing = 'monthly' }) {
           <TableHeader align="right">Disc.</TableHeader>
           {detailed && <TableHeader>Term</TableHeader>}
           {detailed && <TableHeader>Starts</TableHeader>}
+          {detailed && <TableHeader>Type</TableHeader>}
           <TableHeader align="right">Net</TableHeader>
         </TableRow>
       </TableHead>
@@ -32,6 +33,7 @@ export function LineTable({ lines, detailed = false, billing = 'monthly' }) {
             <TableCell align="right">{l.discountPct ? `${l.discountPct}%` : '—'}</TableCell>
             {detailed && <TableCell>{billing === 'm2m' && !l.ramp ? 'Month-to-month' : `${l.termMonths} mo`}</TableCell>}
             {detailed && <TableCell>Month {l.startMonth}</TableCell>}
+            {detailed && <TableCell>{lineTypeLabel(l.lineType) || '—'}</TableCell>}
             <TableCell align="right">
               {formatMoney(l.net)}
               {l.annual ? '/yr' : '/mo'}

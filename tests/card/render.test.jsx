@@ -570,3 +570,39 @@ test('MSP Optimize365: Pricing picker switches to per tenant, which adds the Opt
   // 250 + 2×50 + 100×1 = 450
   await r.waitFor(() => assert.match(text(r.getRootNode()), /\$450\.00\/mo/));
 });
+
+test('line type: Upsell for a product the company has, New otherwise; Co-term box tags the row and the review lines', async () => {
+  const r = mk();
+  const calls = [];
+  const res = Object.assign({}, CATALOG_RESPONSE, { deal: Object.assign({}, CATALOG_RESPONSE.deal, { company: { id: '9', name: 'Example MSP', activeProducts: ['autoelevate'] } }) });
+  r.mocks.runServerlessFunction.willCall(async (params) => {
+    calls.push(params);
+    return { status: 'SUCCESS', response: params.name === 'quote_builder_catalog' ? res : { ok: false, errors: ['stop'] } };
+  });
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'coterm-2' })));
+  const tags = () => r.findAll(Tag).map((t) => text(t));
+  assert.ok(tags().some((t) => /Upsell/.test(t)));
+  assert.ok(tags().some((t) => /"New"/.test(t)));
+  assert.equal(r.find(Checkbox, { name: 'coterm-1' }).props.checked, false);
+  r.find(Checkbox, { name: 'coterm-1' }).trigger('onChange', true);
+  await r.waitFor(() => assert.ok(tags().some((t) => /Co-term/.test(t))));
+  assert.equal(r.maybeFind(Alert, (n) => /isn't Active/.test(text(n))), null); // the partner has AutoElevate
+  // Co-term on DNS (which the partner doesn't have) is flagged but doesn't block.
+  r.find(Checkbox, { name: 'coterm-2' }).trigger('onChange', true);
+  await r.waitFor(() => assert.ok(r.maybeFind(Alert, (n) => /isn't Active on DNS Filtering/.test(text(n)))));
+  r.find(Checkbox, { name: 'coterm-2' }).trigger('onChange', false);
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
+  const rows = r.findAll(TableRow).map((n) => text(n));
+  assert.ok(rows.some((t) => /Co-term/.test(t)) && rows.some((t) => /"New"/.test(t)));
+  r.find(Button, (n) => /Create quote/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(calls.some((c) => c.name === 'quote_builder_submit')));
+  const sent = calls.find((c) => c.name === 'quote_builder_submit').parameters.products;
+  assert.deepEqual(sent.map((p) => !!p.coterm), [true, false]);
+});

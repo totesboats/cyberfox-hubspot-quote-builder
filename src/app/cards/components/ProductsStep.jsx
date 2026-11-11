@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Button, Checkbox, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, OPTIMIZE_TDR, SEGMENTS } from '../lib/config.js';
-import { editionsFor, formatMoney, unitsFor } from '../lib/pricing.js';
+import { editionsFor, formatMoney, lineTypeLabel, unitsFor } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
@@ -175,6 +175,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
             <Heading>{input.family === 'oneoff' ? priced.productName || family.label : family.label}</Heading>
             <Tag>{edition.label}</Tag>
             {row.ramped && <Tag variant="warning">{`${row.rampMonths}-mo ramp`}</Tag>}
+            {row.lineType && <Tag variant={input.coterm ? 'info' : 'default'}>{lineTypeLabel(row.lineType)}</Tag>}
           </Flex>
           <Flex gap="small" align="center">
             <Text format={{ fontWeight: 'demibold' }}>{mrr}</Text>
@@ -220,6 +221,17 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
 
         {input.ramp && <ProductRamp row={row} quote={quote} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />}
 
+        {/* Co-term: the partner already has this product and is re-signing it so its renewal lines up with
+            the new product. Its lines stay on this deal when it closes (no extra deal or Sale Review). */}
+        <Checkbox
+          name={`coterm-${input.uid}`}
+          checked={!!input.coterm}
+          description="The partner already has this product and is re-signing it so its renewal date lines up with the new product. It stays on this deal at Closed Won; Ops updates the renewal date on the company."
+          onChange={(checked) => update({ coterm: checked })}
+        >
+          Co-term
+        </Checkbox>
+
         {row.mainLines.length > 0 && <LineTable lines={row.rampLines.concat(row.mainLines)} />}
       </Flex>
     </Tile>
@@ -243,6 +255,12 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
       {quote.conflicts.map((c) => (
         <Alert key={c} title="Fix before continuing" variant="warning">
           {c}
+        </Alert>
+      ))}
+
+      {(quote.warnings || []).map((w) => (
+        <Alert key={w} title="Check this" variant="warning">
+          {w}
         </Alert>
       ))}
 

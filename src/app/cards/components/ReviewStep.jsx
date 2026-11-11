@@ -82,6 +82,11 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
             <Heading>Review line items</Heading>
             <Tag>{`${quote.lines.length} lines · ${rampCount} ramp`}</Tag>
           </Flex>
+          {(quote.warnings || []).map((w) => (
+            <Alert key={w} title="Check this" variant="warning">
+              {w}
+            </Alert>
+          ))}
           <LineTable lines={quote.lines} detailed billing={setup.billing} />
         </Flex>
       </Tile>

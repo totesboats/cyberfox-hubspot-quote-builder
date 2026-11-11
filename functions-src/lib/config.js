@@ -156,6 +156,26 @@ const LINE_SOURCE_PROPERTY = 'qb_source';
 const LINE_SOURCE_VALUE = 'quote_builder';
 const LINE_SESSION_PROPERTY = 'qb_session_id';
 
+// Line item fields the NetSuite auto-split reads (Nov 2026).
+// qb_family: the product a line belongs to (a one-off SKU counts as its product's family when the name
+// says which, else "oneoff"). The auto-split moves each family's lines to that product's own deal.
+const LINE_FAMILY_PROPERTY = 'qb_family';
+// qb_line_type: New / Upsell / Co-term. Internal values exactly as created in HubSpot ("New" and "Upsell"
+// are capitalized, "coterm" is not). New or Upsell is set from the company's product status; Co-term is
+// the rep's choice: an existing product re-signed so its renewal lines up with the new product. Co-term
+// lines stay on the deal they were sold on (no extra deal or Sale Review).
+const LINE_TYPE_PROPERTY = 'qb_line_type';
+const LINE_TYPES = { new: 'New', upsell: 'Upsell', coterm: 'coterm' };
+const LINE_TYPE_LABELS = { New: 'New', Upsell: 'Upsell', coterm: 'Co-term' };
+// Company properties that say whether the partner is already on a product (Active = an upsell).
+const COMPANY_PRODUCT_STATUS = {
+  autoelevate: { property: 'ae_product', active: 'AE Active' },
+  password: { property: 'pb_product', active: 'PB Active' },
+  dns: { property: 'dns_product', active: 'DNS Active' },
+  timus: { property: 'timus_product', active: 'Timus Active' },
+  optimize365: { property: 'optimize_product', active: 'Optimize Active' },
+};
+
 // Multiple quotes per deal ("options"). Each builder quote stores its run id and the builder
 // state so a rep can start a new option from it or make it the primary option later.
 const QUOTE_SESSION_PROPERTY = 'qb_session_id';
@@ -284,4 +304,4 @@ const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30, pa
 // currency (Deal currency code); a SKU with no price in that currency stops the quote instead of falling back to USD.
 const CURRENCIES = ['USD', 'CAD', 'GBP', 'EUR', 'AUD'];
 
-module.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };
+module.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };

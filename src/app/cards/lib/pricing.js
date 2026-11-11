@@ -29,6 +29,11 @@ import {
   OPTIMIZE_TDR,
   CURRENCIES,
   QUOTE_DEFAULTS,
+  LINE_FAMILY_PROPERTY,
+  LINE_TYPE_PROPERTY,
+  LINE_TYPES,
+  LINE_TYPE_LABELS,
+  COMPANY_PRODUCT_STATUS,
 } from './config.js';
 
 export function toNum(v, fallback = 0) {
@@ -445,6 +450,25 @@ export function rowFamily(row) {
   return row.input.family === 'oneoff' ? row.priced.baseFamily || 'oneoff' : row.input.family;
 }
 
+// Products the company is already on (status Active), from its product status properties.
+/** @param {Record<string, any> | null | undefined} companyProps @returns {string[]} */
+export function activeProducts(companyProps) {
+  const props = companyProps || {};
+  return Object.keys(COMPANY_PRODUCT_STATUS).filter((f) => props[COMPANY_PRODUCT_STATUS[f].property] === COMPANY_PRODUCT_STATUS[f].active);
+}
+
+// New / Upsell / Co-term for a row. Co-term is the rep's choice; otherwise a product the company is
+// already Active on is an upsell, anything else is new. `active` = null when the company is unknown.
+/** @param {string} family @param {boolean} coterm @param {string[] | null | undefined} active */
+export function lineTypeFor(family, coterm, active) {
+  if (coterm) return LINE_TYPES.coterm;
+  return Array.isArray(active) && active.includes(family) ? LINE_TYPES.upsell : LINE_TYPES.new;
+}
+
+export function lineTypeLabel(value) {
+  return LINE_TYPE_LABELS[value] || value || '';
+}
+
 // What to call a row on screen: the family, or a one-off's product name.
 export function rowLabel(row) {
   if (row.input.family === 'oneoff') return row.priced.productName || FAMILIES.oneoff.label;
@@ -657,6 +681,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
   const months = m2m ? null : agreementMonths(setup.agreementLength);
   const agreement = months || 12;
   const conflicts = [];
+  const warnings = []; // shown to the rep, never block Create quote
   if (!m2m && !months) conflicts.push('Pick an Agreement Length on the Setup step.');
   const optimizeRamp = optimizeRampRule(setup);
 
@@ -681,14 +706,23 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     }
     const rampMonths = ramped ? ramp.months : 0;
     const multiStage = ramp.stages.length > 1;
+    // NetSuite auto-split fields, written on every line of the row.
+    const family = rowFamily({ input, priced });
+    const coterm = !!input.coterm;
+    const lineType = lineTypeFor(family, coterm, setup.activeProducts);
+    // Co-term means re-signing a product the partner already has; flag it when the company isn't on it.
+    if (coterm && Array.isArray(setup.activeProducts) && !setup.activeProducts.includes(family)) {
+      warnings.push(`${label} is marked Co-term, but the company isn't Active on ${FAMILIES[family] ? FAMILIES[family].label : 'this product'}. Co-term is for a product the partner already has; untick it if this is a new sale.`);
+    }
+    const tag = { qbFamily: family, lineType };
     const mainTerm = m2m ? 1 : Math.max(1, agreement - rampMonths);
     const valueMonths = m2m ? 12 : mainTerm; // months used to value an open-ended M2M quote
-    const mainLines = priced.lines.map((l) => Object.assign({}, l, { ramp: false, termMonths: mainTerm, startMonth: rampMonths + 1 }));
+    const mainLines = priced.lines.map((l) => Object.assign({}, l, tag, { ramp: false, termMonths: mainTerm, startMonth: rampMonths + 1 }));
     // One RAMP line per product line per stage: "RAMP …" for a single stage, "RAMP 1 …", "RAMP 2 …" for steps.
     const rampLines = ramped
       ? ramp.stages.flatMap((st, si) =>
           priced.lines.map((l) =>
-            Object.assign(makeLine(Object.assign({}, l, { discountPct: st.mode === 'free' ? 100 : st.percent })), {
+            Object.assign(makeLine(Object.assign({}, l, tag, { discountPct: st.mode === 'free' ? 100 : st.percent })), {
               name: (multiStage ? `${RAMP_NAME_PREFIX.trim()} ${si + 1} ` : RAMP_NAME_PREFIX) + l.name,
               ramp: true,
               stage: si + 1,
@@ -702,7 +736,8 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     const sum = (ls, k) => ls.reduce((a, l) => a + l[k], 0);
     return {
       input,
-      family: rowFamily({ input, priced }),
+      family,
+      lineType,
       label,
       priced,
       usable,
@@ -783,7 +818,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
 
   // `ramp` summarises the quote: on when any product ramps; `months` is the longest product ramp.
   const ramp = { enabled: anyRamp, months: longestRamp };
-  return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [], currency: (catalog && catalog.currency) || QUOTE_DEFAULTS.currency };
+  return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, warnings, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [], currency: (catalog && catalog.currency) || QUOTE_DEFAULTS.currency };
 }
 
 export function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
@@ -828,6 +863,9 @@ export function lineItemProperties(line, { billing, rampMonths, sessionId, curre
     [LINE_SOURCE_PROPERTY]: LINE_SOURCE_VALUE,
     [LINE_SESSION_PROPERTY]: sessionId,
   };
+  // NetSuite auto-split: which product the line belongs to and whether it's New, Upsell or Co-term.
+  if (line.qbFamily) props[LINE_FAMILY_PROPERTY] = line.qbFamily;
+  if (line.lineType) props[LINE_TYPE_PROPERTY] = line.lineType;
   if (billing === 'm2m' && !line.ramp) {
     props.hs_recurring_billing_terms = 'AUTOMATICALLY_RENEW';
   } else {
@@ -982,6 +1020,7 @@ export function validateSubmission(payload) {
     const tdr = toNum(p.tdrUsers, 0);
     if (!(tdr >= 0 && tdr <= 1000000)) errors.push(`TDR users for ${p.family} is out of range`);
     if (p.family === 'oneoff' && p.productId != null && typeof p.productId !== 'string' && typeof p.productId !== 'number') errors.push('one-off productId must be an id');
+    if (p.coterm != null && typeof p.coterm !== 'boolean') errors.push(`coterm for ${p.family} must be true or false`);
   }
   const checkStages = (raw, who) => {
     if (raw.length > MAX_RAMP_STAGES) errors.push(`${who}: at most ${MAX_RAMP_STAGES} ramp stages`);

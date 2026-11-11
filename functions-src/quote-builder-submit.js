@@ -54,7 +54,12 @@ exports.main = async (context) => {
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ['The selected quote template no longer exists.'] };
 
-  const setup = Object.assign({}, payload.setup, { salesTeam: deal.salesTeam, templateType: template.templateType });
+  // activeProducts comes from the company record here, never from the card, so New/Upsell can't be spoofed.
+  const setup = Object.assign({}, payload.setup, {
+    salesTeam: deal.salesTeam,
+    templateType: template.templateType,
+    activeProducts: deal.company ? deal.company.activeProducts : null,
+  });
   // Priced in the deal's currency (CAD deals use each product's CAD price).
   const currency = quoteCurrency(deal.properties.deal_currency_code);
   const catalog = indexCatalog(products, currency);

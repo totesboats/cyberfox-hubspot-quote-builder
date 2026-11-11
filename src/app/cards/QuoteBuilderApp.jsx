@@ -268,6 +268,7 @@ export function QuoteBuilderApp() {
     const setup = Object.assign({}, state.setup, {
       salesTeam: data.deal.salesTeam,
       templateType: template ? template.templateType : 'CPQ_QUOTE',
+      activeProducts: data.deal.company ? data.deal.company.activeProducts || null : null,
     });
     return buildQuote(setup, state.products, rampFor(state), data.catalog);
   }, [data, state.setup, state.products, template]);

@@ -19,7 +19,7 @@ const PRODUCTS = [
   { id: '9900', properties: { name: 'Optimize365 4000 User Plan', hs_sku: 'Optimize365-4000-User-Commit', hs_price_usd: '4800', hs_folder: 'One-Off SKUs', recurringbillingfrequency: 'monthly' } },
 ];
 
-function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency = 'USD', products = PRODUCTS } = {}) {
+function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency = 'USD', products = PRODUCTS, companyProps = {} } = {}) {
   const log = [];
   const store = { lineItems: {}, archived: [], deletedQuotes: [], quote: null, dealPatch: null };
   store.lineItems['L-old-builder'] = { qb_source: 'quote_builder', qb_session_id: 'qb-old' };
@@ -60,7 +60,10 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency 
       return ok({ results: found ? [found] : [] });
     }
     if (p.startsWith('/crm/owners/2026-09/')) return p.endsWith('/77') ? ok({ id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }) : { ok: false, status: 404, headers: new Map(), text: async () => '{"message":"not found"}' };
-    if (p === '/crm/objects/2026-09/companies/batch/read') return ok({ results: [{ id: '7', properties: { name: 'Example MSP' } }] });
+    if (p === '/crm/objects/2026-09/companies/batch/read') {
+      store.companyRead = body;
+      return ok({ results: [{ id: '7', properties: Object.assign({ name: 'Example MSP' }, companyProps) }] });
+    }
     if (p === '/crm/objects/2026-09/contacts/batch/read') return ok({ results: [{ id: '501', properties: { firstname: 'Sam', lastname: 'Sample', jobtitle: 'Owner' } }] });
     if (p === '/crm/objects/2026-09/line_items/batch/create') {
       const results = body.inputs.map((i) => {
@@ -308,6 +311,60 @@ test('make primary copies the quote lines to the deal, archives the old primary 
   assert.ok(create.body.inputs.every((i) => i.associations[0].to.id === '123' && i.properties.qb_session_id === 'qb-b'));
   assert.deepEqual(store.dealPatch, saved);
   assert.deepEqual(store.archived, ['L-old-builder']); // manual lines untouched
+});
+
+test('make primary carries the NetSuite auto-split fields (qb_family, qb_line_type) onto the deal lines', async () => {
+  const quote = { id: 'Q2', lineIds: ['QL1'], properties: { hs_title: 'Option B', hs_quote_progression_status: 'PUBLISHED', qb_session_id: 'qb-b', qb_builder_state: P.builderState({ setup: {}, products: [], ramp: {} }, {}) } };
+  const { store, log } = fakeHubSpot({ quotes: [quote] });
+  store.lineItems.QL1 = { name: 'AE plan', price: '1050', quantity: '1', qb_source: 'quote_builder', qb_session_id: 'qb-b', qb_family: 'autoelevate', qb_line_type: 'coterm' };
+  const res = await setPrimaryFn().main({ parameters: { dealId: '123', quoteId: 'Q2' } });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const create = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create');
+  assert.equal(create.body.inputs[0].properties.qb_family, 'autoelevate');
+  assert.equal(create.body.inputs[0].properties.qb_line_type, 'coterm');
+});
+
+test('line type: Upsell for a product the company is Active on, New otherwise, from the company record (not the card)', async () => {
+  const { log, store } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', optimize_product: 'Optimize Terminated' } });
+  const res = await submitFn().main({
+    parameters: payload({
+      // The card can't claim the partner is Active on Optimize: the server reads the company.
+      setup: Object.assign({}, payload().setup, { activeProducts: ['optimize365'] }),
+      products: [
+        { uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: false },
+        { uid: 2, family: 'oneoff', productId: '9900', quantity: 1, discountPct: 0, ramp: false },
+      ],
+      ramp: { enabled: false },
+    }),
+    accountId: 1,
+  });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  assert.ok(store.companyRead.properties.includes('ae_product') && store.companyRead.properties.includes('optimize_product'));
+  const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
+  const ae = lines.filter((l) => l.hs_sku.includes('AE'));
+  const opt = lines.filter((l) => l.hs_product_id === '9900');
+  assert.ok(ae.length === 2 && ae.every((l) => l.qb_family === 'autoelevate' && l.qb_line_type === 'Upsell'));
+  // A one-off SKU is tagged with its product's family so the auto-split moves it to the Optimize deal.
+  assert.ok(opt.length === 1 && opt.every((l) => l.qb_family === 'optimize365' && l.qb_line_type === 'New'));
+});
+
+test('line type: a Co-term row writes coterm on every line, ramp lines included', async () => {
+  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active' } });
+  const res = await submitFn().main({
+    parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: true, coterm: true }] }),
+    accountId: 1,
+  });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
+  assert.equal(lines.length, 4);
+  assert.ok(lines.every((l) => l.qb_line_type === 'coterm' && l.qb_family === 'autoelevate'));
+});
+
+test('line type: coterm must be true or false', async () => {
+  fakeHubSpot();
+  const res = await submitFn().main({ parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: false, coterm: 'yes' }] }), accountId: 1 });
+  assert.equal(res.ok, false);
+  assert.match(res.errors.join(' '), /coterm/);
 });
 
 test('make primary refuses quotes that were not built with the builder', async () => {
