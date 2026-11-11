@@ -596,9 +596,12 @@ var require_pricing = __commonJS({
       const props = companyProps || {};
       return Object.keys(COMPANY_PRODUCT_STATUS).filter((f) => props[COMPANY_PRODUCT_STATUS[f].property] === COMPANY_PRODUCT_STATUS[f].active);
     }
+    function canCoterm(family, active) {
+      return Array.isArray(active) && active.includes(family);
+    }
     function lineTypeFor(family, coterm, active) {
-      if (coterm) return LINE_TYPES.coterm;
-      return Array.isArray(active) && active.includes(family) ? LINE_TYPES.upsell : LINE_TYPES.new;
+      if (!canCoterm(family, active)) return LINE_TYPES.new;
+      return coterm ? LINE_TYPES.coterm : LINE_TYPES.upsell;
     }
     function lineTypeLabel(value) {
       return LINE_TYPE_LABELS[value] || value || "";
@@ -770,7 +773,6 @@ var require_pricing = __commonJS({
       const months = m2m ? null : agreementMonths(setup.agreementLength);
       const agreement = months || 12;
       const conflicts = [];
-      const warnings = [];
       if (!m2m && !months) conflicts.push("Pick an Agreement Length on the Setup step.");
       const optimizeRamp = optimizeRampRule(setup);
       const rows = (inputs || []).map((input) => {
@@ -794,11 +796,8 @@ var require_pricing = __commonJS({
         const rampMonths = ramped ? ramp2.months : 0;
         const multiStage = ramp2.stages.length > 1;
         const family = rowFamily({ input, priced });
-        const coterm = !!input.coterm;
-        const lineType = lineTypeFor(family, coterm, setup.activeProducts);
-        if (coterm && Array.isArray(setup.activeProducts) && !setup.activeProducts.includes(family)) {
-          warnings.push(`${label} is marked Co-term, but the company isn't Active on ${FAMILIES[family] ? FAMILIES[family].label : "this product"}. Co-term is for a product the partner already has; untick it if this is a new sale.`);
-        }
+        const cotermAllowed = canCoterm(family, setup.activeProducts);
+        const lineType = lineTypeFor(family, !!input.coterm, setup.activeProducts);
         const tag = { qbFamily: family, lineType };
         const mainTerm = m2m ? 1 : Math.max(1, agreement - rampMonths);
         const valueMonths = m2m ? 12 : mainTerm;
@@ -821,6 +820,8 @@ var require_pricing = __commonJS({
           input,
           family,
           lineType,
+          cotermAllowed,
+          // the card shows the Co-term box only on products the company is Active on
           label,
           priced,
           usable,
@@ -893,7 +894,7 @@ var require_pricing = __commonJS({
       const aeFeature = resolveAeFeature(rows);
       if (aeFeature && aeFeature.conflict) conflicts.push(aeFeature.conflict);
       const ramp = { enabled: anyRamp, months: longestRamp };
-      return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, warnings, aeFeature, anyRamp, optimizeRamp, oneOffs: catalog && catalog.oneOffs || [], currency: catalog && catalog.currency || QUOTE_DEFAULTS2.currency };
+      return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: catalog && catalog.oneOffs || [], currency: catalog && catalog.currency || QUOTE_DEFAULTS2.currency };
     }
     function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {
       const reasons = [];
@@ -1073,7 +1074,7 @@ var require_pricing = __commonJS({
       if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], "ramp");
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency: quoteCurrency2, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, lineTypeFor, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteUrl: quoteUrl2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency: quoteCurrency2, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, canCoterm, lineTypeFor, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteUrl: quoteUrl2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
   }
 });
 

@@ -456,12 +456,19 @@ export function activeProducts(companyProps) {
   return Object.keys(COMPANY_PRODUCT_STATUS).filter((f) => props[COMPANY_PRODUCT_STATUS[f].property] === COMPANY_PRODUCT_STATUS[f].active);
 }
 
-// New / Upsell / Co-term for a row. Co-term is the rep's choice; otherwise a product the company is
-// already Active on is an upsell, anything else is new. `active` = null when the company is unknown.
+// Co-term is only offered on a product the company is already Active on.
+/** @param {string} family @param {string[] | null | undefined} active */
+export function canCoterm(family, active) {
+  return Array.isArray(active) && active.includes(family);
+}
+
+// New / Upsell / Co-term for a row. A product the company is already Active on is an upsell, or a
+// co-term when the rep ticks Co-term; anything else is new (a Co-term tick on it is ignored).
+// `active` = null when the company is unknown.
 /** @param {string} family @param {boolean} coterm @param {string[] | null | undefined} active */
 export function lineTypeFor(family, coterm, active) {
-  if (coterm) return LINE_TYPES.coterm;
-  return Array.isArray(active) && active.includes(family) ? LINE_TYPES.upsell : LINE_TYPES.new;
+  if (!canCoterm(family, active)) return LINE_TYPES.new;
+  return coterm ? LINE_TYPES.coterm : LINE_TYPES.upsell;
 }
 
 export function lineTypeLabel(value) {
@@ -680,7 +687,6 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
   const months = m2m ? null : agreementMonths(setup.agreementLength);
   const agreement = months || 12;
   const conflicts = [];
-  const warnings = []; // shown to the rep, never block Create quote
   if (!m2m && !months) conflicts.push('Pick an Agreement Length on the Setup step.');
   const optimizeRamp = optimizeRampRule(setup);
 
@@ -707,12 +713,8 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     const multiStage = ramp.stages.length > 1;
     // NetSuite auto-split fields, written on every line of the row.
     const family = rowFamily({ input, priced });
-    const coterm = !!input.coterm;
-    const lineType = lineTypeFor(family, coterm, setup.activeProducts);
-    // Co-term means re-signing a product the partner already has; flag it when the company isn't on it.
-    if (coterm && Array.isArray(setup.activeProducts) && !setup.activeProducts.includes(family)) {
-      warnings.push(`${label} is marked Co-term, but the company isn't Active on ${FAMILIES[family] ? FAMILIES[family].label : 'this product'}. Co-term is for a product the partner already has; untick it if this is a new sale.`);
-    }
+    const cotermAllowed = canCoterm(family, setup.activeProducts);
+    const lineType = lineTypeFor(family, !!input.coterm, setup.activeProducts);
     const tag = { qbFamily: family, lineType };
     const mainTerm = m2m ? 1 : Math.max(1, agreement - rampMonths);
     const valueMonths = m2m ? 12 : mainTerm; // months used to value an open-ended M2M quote
@@ -737,6 +739,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
       input,
       family,
       lineType,
+      cotermAllowed, // the card shows the Co-term box only on products the company is Active on
       label,
       priced,
       usable,
@@ -817,7 +820,7 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
 
   // `ramp` summarises the quote: on when any product ramps; `months` is the longest product ramp.
   const ramp = { enabled: anyRamp, months: longestRamp };
-  return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, warnings, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [], currency: (catalog && catalog.currency) || QUOTE_DEFAULTS.currency };
+  return { segment: setup.segment, ramp, term: agreement, billing, m2m, rows, lines, totals, approval, blocking, conflicts, aeFeature, anyRamp, optimizeRamp, oneOffs: (catalog && catalog.oneOffs) || [], currency: (catalog && catalog.currency) || QUOTE_DEFAULTS.currency };
 }
 
 export function evaluateApproval({ maxDiscountPct, maxDiscountFamily, rampMonths, salesTeam, templateType }) {

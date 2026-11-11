@@ -698,28 +698,26 @@ test('NetSuite auto-split fields: qb_family and qb_line_type (New / Upsell / Co-
   assert.deepEqual(P.activeProducts({ ae_product: 'AE Active', pb_product: 'PB Terminated', dns_product: 'DNS Active', optimize_product: '' }), ['autoelevate', 'dns']);
   assert.deepEqual(P.activeProducts(null), []);
   assert.equal(P.lineTypeFor('autoelevate', false, ['autoelevate']), 'Upsell');
+  assert.equal(P.lineTypeFor('autoelevate', true, ['autoelevate']), 'coterm');
   assert.equal(P.lineTypeFor('dns', false, ['autoelevate']), 'New');
-  assert.equal(P.lineTypeFor('dns', false, null), 'New'); // company unknown
-  assert.equal(P.lineTypeFor('dns', true, []), 'coterm');
+  assert.equal(P.lineTypeFor('dns', true, ['autoelevate']), 'New'); // co-term only on a product the company has
+  assert.equal(P.lineTypeFor('dns', true, null), 'New'); // company unknown
   assert.equal(P.lineTypeLabel('coterm'), 'Co-term');
 
   const setup = Object.assign({}, MSP, { activeProducts: ['autoelevate'] });
   const dnsRow = { uid: 9, family: 'dns', edition: 'standard', quantity: 600, tier: '', discountPct: 0, ramp: false };
-  const q = P.buildQuote(setup, [ae({ coterm: true, ramp: true }), dnsRow], { enabled: true, months: 3 }, CATALOG);
+  const q = P.buildQuote(setup, [ae({ coterm: true, ramp: true }), Object.assign({}, dnsRow, { coterm: true })], { enabled: true, months: 3 }, CATALOG);
   const byFamily = (f) => q.lines.filter((l) => l.qbFamily === f);
   assert.ok(byFamily('autoelevate').length > 0 && byFamily('autoelevate').every((l) => l.lineType === 'coterm'));
   assert.ok(byFamily('dns').length > 0 && byFamily('dns').every((l) => l.lineType === 'New'));
-  assert.deepEqual(q.warnings, []); // co-term on a product the company has: nothing to flag
+  assert.deepEqual(q.rows.map((r) => r.cotermAllowed), [true, false]); // the card shows Co-term on AutoElevate only
   const props = q.lines.map((l) => P.lineItemProperties(l, { billing: 'monthly', rampMonths: 3, sessionId: 's' }));
   assert.ok(props.every((p) => p.qb_family && p.qb_line_type));
-
-  // Co-term on a product the company isn't on is flagged, never blocked.
-  const odd = P.buildQuote(Object.assign({}, MSP, { activeProducts: [] }), [dnsRow, Object.assign({}, dnsRow, { uid: 10, coterm: true })], {}, CATALOG);
-  assert.equal(odd.conflicts.length, 0);
-  assert.equal(odd.warnings.length, 1);
-  assert.match(odd.warnings[0], /Co-term, but the company isn't Active on DNS Filtering/);
 
   // Upsell without co-term.
   const up = P.buildQuote(setup, [ae()], {}, CATALOG);
   assert.ok(up.lines.every((l) => l.lineType === 'Upsell' && l.qbFamily === 'autoelevate'));
+  // No company or no active products: every row is New and none offers Co-term.
+  const none = P.buildQuote(MSP, [ae()], {}, CATALOG);
+  assert.ok(none.lines.every((l) => l.lineType === 'New') && none.rows.every((r) => !r.cotermAllowed));
 });
