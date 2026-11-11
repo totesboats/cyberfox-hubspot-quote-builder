@@ -615,3 +615,24 @@ test('line type: a company with no active products shows no Co-term box', async 
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   assert.equal(r.maybeFind(Checkbox, { name: 'coterm-1' }), null);
 });
+
+test('AutoElevate Upsell deal: the AutoElevate row is Upsell with no Co-term box; another active product still offers it', async () => {
+  const r = mk();
+  const res = Object.assign({}, CATALOG_RESPONSE, {
+    deal: Object.assign({}, CATALOG_RESPONSE.deal, {
+      properties: Object.assign({}, CATALOG_RESPONSE.deal.properties, { pipeline: '7659799' }),
+      company: { id: '9', name: 'Example MSP', activeProducts: ['autoelevate', 'dns'] },
+    }),
+  });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: res }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
+  assert.equal(r.maybeFind(Checkbox, { name: 'coterm-1' }), null);
+  assert.ok(r.maybeFind(Checkbox, { name: 'coterm-2' }));
+  assert.equal(r.findAll(Tag).filter((t) => /Upsell/.test(text(t))).length, 2);
+});

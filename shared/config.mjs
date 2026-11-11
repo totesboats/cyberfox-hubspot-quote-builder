@@ -165,6 +165,20 @@ export const LINE_FAMILY_PROPERTY = 'qb_family';
 export const LINE_TYPE_PROPERTY = 'qb_line_type';
 export const LINE_TYPES = { new: 'New', upsell: 'Upsell', coterm: 'coterm' };
 export const LINE_TYPE_LABELS = { New: 'New', Upsell: 'Upsell', coterm: 'Co-term' };
+// The product each deal pipeline sells (Sales and Upsell), so Co-term is never offered on the deal's own
+// product: on an AutoElevate Upsell deal the AutoElevate line is the upsell itself.
+export const PIPELINE_FAMILY = {
+  '907910': 'autoelevate', // AutoElevate Sales
+  '7659799': 'autoelevate', // AutoElevate Upsell
+  '6643621': 'password', // Password Manager Sales
+  '7687975': 'password', // Password Manager Upsell
+  '800440185': 'dns', // DNS Filtering Sales
+  '800641452': 'dns', // DNS Filtering Upsell
+  '897549164': 'timus', // Timus Sales
+  '904388020': 'timus', // Timus Upsell
+  '917642399': 'optimize365', // Optimize Sales
+  '933312031': 'optimize365', // Optimize Upsell
+};
 // Company properties that say whether the partner is already on a product (Active = an upsell).
 export const COMPANY_PRODUCT_STATUS = {
   autoelevate: { property: 'ae_product', active: 'AE Active' },
@@ -218,6 +232,7 @@ export const DEAL_PROPERTIES = [
   'new_minimum_commitment_amount',
   'ae_feature_type_details',
   'deal_currency_code',
+  'pipeline',
 ];
 // Printed deal properties compared against open quotes before they are overwritten.
 export const PRINTED_DEAL_PROPERTIES = [

@@ -703,6 +703,14 @@ test('NetSuite auto-split fields: qb_family and qb_line_type (New / Upsell / Co-
   assert.equal(P.lineTypeFor('dns', true, ['autoelevate']), 'New'); // co-term only on a product the company has
   assert.equal(P.lineTypeFor('dns', true, null), 'New'); // company unknown
   assert.equal(P.lineTypeLabel('coterm'), 'Co-term');
+  // The deal's own product is never a co-term: on an AutoElevate Upsell deal the AutoElevate line is the upsell.
+  assert.equal(P.pipelineFamily('7659799'), 'autoelevate');
+  assert.equal(P.pipelineFamily('917642399'), 'optimize365');
+  assert.equal(P.pipelineFamily('123'), null);
+  assert.equal(P.canCoterm('autoelevate', ['autoelevate'], 'autoelevate'), false);
+  assert.equal(P.canCoterm('autoelevate', ['autoelevate'], 'optimize365'), true);
+  assert.equal(P.lineTypeFor('autoelevate', true, ['autoelevate'], 'autoelevate'), 'Upsell');
+  assert.equal(P.lineTypeFor('autoelevate', true, ['autoelevate'], 'optimize365'), 'coterm');
 
   const setup = Object.assign({}, MSP, { activeProducts: ['autoelevate'] });
   const dnsRow = { uid: 9, family: 'dns', edition: 'standard', quantity: 600, tier: '', discountPct: 0, ramp: false };

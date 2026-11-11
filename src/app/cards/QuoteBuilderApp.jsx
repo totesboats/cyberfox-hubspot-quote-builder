@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
 import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -269,6 +269,7 @@ export function QuoteBuilderApp() {
       salesTeam: data.deal.salesTeam,
       templateType: template ? template.templateType : 'CPQ_QUOTE',
       activeProducts: data.deal.company ? data.deal.company.activeProducts || null : null,
+      dealFamily: pipelineFamily(data.deal.properties && data.deal.properties.pipeline),
     });
     return buildQuote(setup, state.products, rampFor(state), data.catalog);
   }, [data, state.setup, state.products, template]);

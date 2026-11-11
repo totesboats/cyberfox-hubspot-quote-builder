@@ -2,7 +2,7 @@
 'use strict';
 // Pure pricing, ramp and approval logic shared by the card (live preview) and the
 // submit function (authoritative rebuild). No HubSpot calls in here.
-const { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS } = require('./config.js');
+const { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY } = require('./config.js');
 
 function toNum(v, fallback = 0) {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -425,19 +425,26 @@ function activeProducts(companyProps) {
   return Object.keys(COMPANY_PRODUCT_STATUS).filter((f) => props[COMPANY_PRODUCT_STATUS[f].property] === COMPANY_PRODUCT_STATUS[f].active);
 }
 
-// Co-term is only offered on a product the company is already Active on.
-/** @param {string} family @param {string[] | null | undefined} active */
-function canCoterm(family, active) {
-  return Array.isArray(active) && active.includes(family);
+// The product a deal's pipeline sells (null for any other pipeline).
+/** @param {string | null | undefined} pipelineId @returns {string | null} */
+function pipelineFamily(pipelineId) {
+  return PIPELINE_FAMILY[String(pipelineId || '')] || null;
+}
+
+// Co-term is offered on a product the company is already Active on, other than the deal's own product
+// (on an AutoElevate Upsell deal the AutoElevate line is the upsell itself).
+/** @param {string} family @param {string[] | null | undefined} active @param {string | null} [dealFamily] */
+function canCoterm(family, active, dealFamily = null) {
+  return Array.isArray(active) && active.includes(family) && family !== dealFamily;
 }
 
 // New / Upsell / Co-term for a row. A product the company is already Active on is an upsell, or a
-// co-term when the rep ticks Co-term; anything else is new (a Co-term tick on it is ignored).
-// `active` = null when the company is unknown.
-/** @param {string} family @param {boolean} coterm @param {string[] | null | undefined} active */
-function lineTypeFor(family, coterm, active) {
-  if (!canCoterm(family, active)) return LINE_TYPES.new;
-  return coterm ? LINE_TYPES.coterm : LINE_TYPES.upsell;
+// co-term when the rep ticks Co-term where it's offered; anything else is new (a stray Co-term tick is
+// ignored). `active` = null when the company is unknown.
+/** @param {string} family @param {boolean} coterm @param {string[] | null | undefined} active @param {string | null} [dealFamily] */
+function lineTypeFor(family, coterm, active, dealFamily = null) {
+  if (!(Array.isArray(active) && active.includes(family))) return LINE_TYPES.new;
+  return coterm && canCoterm(family, active, dealFamily) ? LINE_TYPES.coterm : LINE_TYPES.upsell;
 }
 
 function lineTypeLabel(value) {
@@ -682,8 +689,8 @@ function buildQuote(setup, inputs, rampInput, catalog) {
     const multiStage = ramp.stages.length > 1;
     // NetSuite auto-split fields, written on every line of the row.
     const family = rowFamily({ input, priced });
-    const cotermAllowed = canCoterm(family, setup.activeProducts);
-    const lineType = lineTypeFor(family, !!input.coterm, setup.activeProducts);
+    const cotermAllowed = canCoterm(family, setup.activeProducts, setup.dealFamily);
+    const lineType = lineTypeFor(family, !!input.coterm, setup.activeProducts, setup.dealFamily);
     const tag = { qbFamily: family, lineType };
     const mainTerm = m2m ? 1 : Math.max(1, agreement - rampMonths);
     const valueMonths = m2m ? 12 : mainTerm; // months used to value an open-ended M2M quote
@@ -1012,4 +1019,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, canCoterm, lineTypeFor, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, canCoterm, lineTypeFor, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };

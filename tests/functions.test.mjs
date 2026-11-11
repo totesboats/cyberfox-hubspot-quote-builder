@@ -19,7 +19,7 @@ const PRODUCTS = [
   { id: '9900', properties: { name: 'Optimize365 4000 User Plan', hs_sku: 'Optimize365-4000-User-Commit', hs_price_usd: '4800', hs_folder: 'One-Off SKUs', recurringbillingfrequency: 'monthly' } },
 ];
 
-function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency = 'USD', products = PRODUCTS, companyProps = {} } = {}) {
+function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency = 'USD', products = PRODUCTS, companyProps = {}, pipeline = '917642399' } = {}) {
   const log = [];
   const store = { lineItems: {}, archived: [], deletedQuotes: [], quote: null, dealPatch: null };
   store.lineItems['L-old-builder'] = { qb_source: 'quote_builder', qb_session_id: 'qb-old' };
@@ -53,7 +53,7 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency 
     if (p === '/crm/v3/objects/quote_templates' && store.allowLegacy) return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }] });
     if (p === '/crm/objects/2026-09/quote_templates') return ok({ results: [{ id: '10', properties: { hs_name: 'AutoElevate', hs_type: 'cpq_template' } }, { id: '11', properties: { hs_name: 'Timus SASE', hs_type: 'customizable_quote_template' } }] });
     if (p === '/crm/objects/2026-09/deals/123' && method === 'GET')
-      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: currency, hubspot_owner_id: store.ownerId } });
+      return ok({ id: '123', properties: { sales_team: 'MSP', deal_currency_code: currency, hubspot_owner_id: store.ownerId, pipeline } });
     if (p === '/crm/owners/2026-09') {
       const users = { 'riley.rep@example.com': { id: '77', firstName: 'Riley', lastName: 'Rep', email: 'riley.rep@example.com' }, 'pat.ops@example.com': { id: '88', firstName: 'Pat', lastName: 'Ops', email: 'pat.ops@example.com' } };
       const found = users[u.searchParams.get('email')];
@@ -358,6 +358,17 @@ test('line type: a Co-term row writes coterm on every line, ramp lines included'
   const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
   assert.equal(lines.length, 4);
   assert.ok(lines.every((l) => l.qb_line_type === 'coterm' && l.qb_family === 'autoelevate'));
+});
+
+test("line type: no Co-term on the deal's own product (an AutoElevate line on an AutoElevate Upsell deal is the upsell)", async () => {
+  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active' }, pipeline: '7659799' });
+  const res = await submitFn().main({
+    parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: false, coterm: true }], ramp: { enabled: false } }),
+    accountId: 1,
+  });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
+  assert.ok(lines.length > 0 && lines.every((l) => l.qb_line_type === 'Upsell'));
 });
 
 test('line type: coterm must be true or false', async () => {

@@ -9,7 +9,7 @@
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
 const { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
-const { quoteUrl, quoteCurrency, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
+const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
 const ASSOC = {
@@ -54,11 +54,13 @@ exports.main = async (context) => {
   const template = templates.find((t) => t.id === String(payload.setup.templateId));
   if (!template) return { ok: false, errors: ['The selected quote template no longer exists.'] };
 
-  // activeProducts comes from the company record here, never from the card, so New/Upsell can't be spoofed.
+  // activeProducts and dealFamily come from the company and deal records here, never from the card,
+  // so New / Upsell / Co-term can't be spoofed.
   const setup = Object.assign({}, payload.setup, {
     salesTeam: deal.salesTeam,
     templateType: template.templateType,
     activeProducts: deal.company ? deal.company.activeProducts : null,
+    dealFamily: pipelineFamily(deal.properties.pipeline),
   });
   // Priced in the deal's currency (CAD deals use each product's CAD price).
   const currency = quoteCurrency(deal.properties.deal_currency_code);
