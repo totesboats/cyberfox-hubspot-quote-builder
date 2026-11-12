@@ -349,7 +349,7 @@ test('line type: Upsell for a product the company is Active on, New otherwise, f
 });
 
 test('line type: a Co-term row writes coterm on every line and never ramps', async () => {
-  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active' } });
+  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', ae_payment_terms: 'Month-to-Month' } });
   const res = await submitFn().main({
     // An older saved quote may still have Ramp ticked on a co-term row: it's ignored.
     parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: true, coterm: true }] }),
@@ -365,10 +365,22 @@ test('the catalog loads the company commits that size the co-term rows', async (
   const { store } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', ae_agent_commit: '150', ae_sku_type: 'Advanced (GrandFathered)' } });
   const res = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
-  for (const p of ['ae_agent_commit', 'ae_sku_type', 'pb_user_commit', 'dns_device_commit', 'timus_committed_mrr', 'optimize_user_commit', 'optimize_tenant_commit']) assert.ok(store.companyRead.properties.includes(p), p);
+  for (const p of ['ae_agent_commit', 'ae_sku_type', 'ae_payment_terms', 'pb_user_commit', 'dns_device_commit', 'timus_committed_mrr', 'timus_payment_terms', 'optimize_user_commit', 'optimize_tenant_commit']) assert.ok(store.companyRead.properties.includes(p), p);
+  assert.deepEqual(res.deal.company.cotermProducts, []); // AE Payment Terms is blank here, so no co-term
   assert.equal(res.deal.company.commits.ae_agent_commit, '150');
   assert.equal(res.deal.company.commits.ae_sku_type, 'Advanced (GrandFathered)');
   assert.equal(res.deal.company.commits.dns_device_commit, null);
+});
+
+test('line type: an annual AutoElevate partner never co-terms (the server reads AE Payment Terms)', async () => {
+  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', ae_payment_terms: 'Annual Payments' } });
+  const res = await submitFn().main({
+    parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: false, coterm: true }], ramp: { enabled: false } }),
+    accountId: 1,
+  });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
+  assert.ok(lines.length > 0 && lines.every((l) => l.qb_line_type === 'Upsell'));
 });
 
 test("line type: no Co-term on the deal's own product (an AutoElevate line on an AutoElevate Upsell deal is the upsell)", async () => {

@@ -60,6 +60,7 @@ exports.main = async (context) => {
     salesTeam: deal.salesTeam,
     templateType: template.templateType,
     activeProducts: deal.company ? deal.company.activeProducts : null,
+    cotermProducts: deal.company ? deal.company.cotermProducts || [] : null,
     dealFamily: pipelineFamily(deal.properties.pipeline),
   });
   // Priced in the deal's currency (CAD deals use each product's CAD price).

@@ -740,7 +740,8 @@ const COTERM_CATALOG = P.indexCatalog(RECORDS.concat([
   prod('Advanced-AE-250-Agent-Commit-2026', 450, 'autoelevate', 'advanced', 'MSP', 'monthly', 250),
   prod('Advanced-AE-250-Agent-Commit-Additional-Agents+2026', 1.8, 'autoelevate', 'advanced', 'MSP', 'monthly', 250, 'additional'),
 ]));
-const company = (active, commits) => ({ activeProducts: active, commits });
+const M2M = { ae_payment_terms: 'Month-to-Month', pb_payment_terms: 'Month-to-Month', dns_payment_terms: 'Month-to-Month', timus_payment_terms: 'Month-to-Month', optimize_payment_terms: 'Month-to-Month' };
+const company = (active, commits) => ({ activeProducts: active, commits: Object.assign({}, M2M, commits) });
 
 test('co-term: one row per active product except the deal\'s own, in product order', () => {
   const rows = P.cotermRows(company(['optimize365', 'autoelevate', 'dns'], { ae_agent_commit: '150', ae_sku_type: 'Advanced', dns_device_commit: '600', optimize_user_commit: '40' }), { dealFamily: 'optimize365', segment: 'MSP' });
@@ -815,5 +816,24 @@ test('co-term: Optimize365 per tenant when the company has a tenant commit (MSP)
 });
 
 test('co-term: the company properties it reads', () => {
-  assert.deepEqual(P.cotermCompanyProperties(), ['ae_agent_commit', 'ae_sku_type', 'pb_user_commit', 'dns_device_commit', 'timus_committed_mrr', 'timus_user_commit', 'optimize_user_commit', 'optimize_tenant_commit']);
+  assert.deepEqual(P.cotermCompanyProperties(), ['ae_agent_commit', 'ae_sku_type', 'ae_payment_terms', 'pb_user_commit', 'pb_payment_terms', 'dns_device_commit', 'dns_payment_terms', 'timus_committed_mrr', 'timus_user_commit', 'timus_payment_terms', 'optimize_user_commit', 'optimize_tenant_commit', 'optimize_payment_terms']);
+});
+
+test('co-term: only products paid Month-to-Month; Annual Payments, Quarterly, One Time or blank terms are an Upsell', () => {
+  const props = { ae_product: 'AE Active', ae_payment_terms: 'Annual Payments', pb_product: 'PB Active', pb_payment_terms: 'Month-to-Month', dns_product: 'DNS Active', dns_payment_terms: 'Quarterly', timus_product: 'Timus Active', optimize_product: 'Optimize Active', optimize_payment_terms: 'One Time' };
+  assert.deepEqual(P.cotermProducts(props), ['password']);
+  assert.deepEqual(P.cotermProducts(null), []);
+  // Rows: only Password Manager is added (from loadDeal's list, or worked out from the commits).
+  const fromList = P.cotermRows({ activeProducts: ['autoelevate', 'password', 'dns', 'timus', 'optimize365'], cotermProducts: ['password'], commits: {} }, { dealFamily: 'autoelevate' });
+  assert.deepEqual(fromList.map((r) => r.family), ['password']);
+  const worked = P.cotermRows({ activeProducts: ['autoelevate', 'password', 'dns', 'timus', 'optimize365'], commits: props }, { dealFamily: 'timus' });
+  assert.deepEqual(worked.map((r) => r.family), ['password']);
+  // An annual AutoElevate partner on an Optimize deal: a co-term row (an older saved quote) counts as an Upsell.
+  const setup = Object.assign({}, MSP, { activeProducts: ['autoelevate'], cotermProducts: [], dealFamily: 'optimize365' });
+  const q = P.buildQuote(setup, [ae({ coterm: true, ramp: false })], {}, CATALOG);
+  assert.ok(q.lines.every((l) => l.lineType === 'Upsell') && !q.rows[0].cotermAllowed);
+  // Month-to-Month: co-term.
+  const ok = P.buildQuote(Object.assign({}, setup, { cotermProducts: ['autoelevate'] }), [ae({ coterm: true, ramp: false })], {}, CATALOG);
+  assert.ok(ok.lines.every((l) => l.lineType === 'coterm'));
+  assert.equal(P.lineTypeFor('autoelevate', true, ['autoelevate'], null, []), 'Upsell');
 });

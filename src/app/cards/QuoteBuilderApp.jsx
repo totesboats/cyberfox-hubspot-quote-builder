@@ -86,12 +86,15 @@ function withOwnRamps(products, savedRamp) {
   });
 }
 
-// Automatic co-term: add a Co-term row for each product the company is Active on that the quote doesn't
-// have yet (a one-off SKU counts as its product). `coterms` come from cotermRows() at load.
+// Automatic co-term: add a Co-term row for each product the company is Active on (and pays Month-to-Month)
+// that the quote doesn't have yet (a one-off SKU counts as its product). `coterms` come from cotermRows()
+// at load. A saved row marked co-term on a product that can no longer co-term becomes a normal row.
 export function withCoterms(products, coterms, nextUid) {
-  const have = new Set(products.map((p) => (p.family === 'oneoff' ? p.baseFamily : p.family)));
-  const add = (coterms || []).filter((c) => !have.has(c.family)).map((c, i) => Object.assign({}, c, { uid: nextUid + i }));
-  return { products: products.concat(add), nextUid: nextUid + add.length };
+  const list = coterms || [];
+  const kept = products.map((p) => (p.coterm && !list.some((c) => c.family === p.family) ? Object.assign({}, p, { coterm: false }) : p));
+  const have = new Set(kept.map((p) => (p.family === 'oneoff' ? p.baseFamily : p.family)));
+  const add = list.filter((c) => !have.has(c.family)).map((c, i) => Object.assign({}, c, { uid: nextUid + i }));
+  return { products: kept.concat(add), nextUid: nextUid + add.length };
 }
 
 const mapStages = (state, uid, fn) =>
@@ -292,6 +295,8 @@ export function QuoteBuilderApp() {
       salesTeam: data.deal.salesTeam,
       templateType: template ? template.templateType : 'CPQ_QUOTE',
       activeProducts: data.deal.company ? data.deal.company.activeProducts || null : null,
+      // undefined for an older catalog response (then any Active product can co-term)
+      cotermProducts: data.deal.company ? data.deal.company.cotermProducts : null,
       dealFamily: pipelineFamily(data.deal.properties && data.deal.properties.pipeline),
     });
     return buildQuote(setup, state.products, rampFor(state), data.catalog);

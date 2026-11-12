@@ -194,14 +194,17 @@ const COMPANY_PRODUCT_STATUS = {
 // than the deal's own product) gets a Co-term row sized from the company's current commit, in the
 // segment picked on Setup: 150 agents = the 100-agent plan + 50 additional agents. Reps can change the
 // count, plan and discount as a fail-safe, but can't remove the row: every active product is co-termed.
-// Co-term rows don't ramp.
+// Co-term rows don't ramp. Only a product paid Month-to-Month is co-termed (its Payment Terms on the
+// company): Annual Payments, Quarterly, One Time or blank never co-term, so that product is an Upsell.
 const COTERM_COMMITS = {
-  autoelevate: { quantity: 'ae_agent_commit', featureType: 'ae_sku_type' },
-  password: { quantity: 'pb_user_commit', edition: 'pack' }, // 2026 User Packs: round up to whole packs
-  dns: { quantity: 'dns_device_commit' },
-  timus: { minimum: 'timus_committed_mrr', users: 'timus_user_commit' }, // a spend commit, not a user commit
-  optimize365: { quantity: 'optimize_user_commit', tenants: 'optimize_tenant_commit' },
+  autoelevate: { quantity: 'ae_agent_commit', featureType: 'ae_sku_type', paymentTerms: 'ae_payment_terms' },
+  password: { quantity: 'pb_user_commit', edition: 'pack', paymentTerms: 'pb_payment_terms' }, // 2026 User Packs: round up to whole packs
+  dns: { quantity: 'dns_device_commit', paymentTerms: 'dns_payment_terms' },
+  timus: { minimum: 'timus_committed_mrr', users: 'timus_user_commit', paymentTerms: 'timus_payment_terms' }, // a spend commit, not a user commit
+  optimize365: { quantity: 'optimize_user_commit', tenants: 'optimize_tenant_commit', paymentTerms: 'optimize_payment_terms' },
 };
+// The only company Payment Terms value that co-terms.
+const COTERM_PAYMENT_TERMS = ['Month-to-Month'];
 // The company's AE Feature Type → the feature type the AutoElevate co-term is priced on.
 // Advanced (GrandFathered) partners co-term on Advanced SKUs.
 const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Advanced' };
@@ -215,6 +218,11 @@ const COTERM_PROPERTY_LABELS = {
   timus_user_commit: 'Timus User Commit',
   optimize_user_commit: 'Optimize User Commit',
   optimize_tenant_commit: 'Optimize Tenant Commit',
+  ae_payment_terms: 'AE Payment Terms',
+  pb_payment_terms: 'PM Payment Terms',
+  dns_payment_terms: 'DNS Payment Terms',
+  timus_payment_terms: 'Timus Payment Terms',
+  optimize_payment_terms: 'Optimize Payment Terms',
 };
 
 // Multiple quotes per deal ("options"). Each builder quote stores its run id and the builder
@@ -346,4 +354,4 @@ const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30, pa
 // currency (Deal currency code); a SKU with no price in that currency stops the quote instead of falling back to USD.
 const CURRENCIES = ['USD', 'CAD', 'GBP', 'EUR', 'AUD'];
 
-module.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };
+module.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, COTERM_COMMITS, COTERM_PAYMENT_TERMS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };

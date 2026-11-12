@@ -37,6 +37,7 @@ import {
   COTERM_COMMITS,
   COTERM_AE_FEATURE,
   COTERM_PROPERTY_LABELS,
+  COTERM_PAYMENT_TERMS,
   FAMILY_ORDER,
 } from './config.mjs';
 
@@ -469,20 +470,29 @@ export function pipelineFamily(pipelineId) {
   return PIPELINE_FAMILY[String(pipelineId || '')] || null;
 }
 
-// Co-term is offered on a product the company is already Active on, other than the deal's own product
-// (on an AutoElevate Upsell deal the AutoElevate line is the upsell itself).
+// Active products the company pays Month-to-Month (its product Payment Terms on the company). Only these
+// co-term; an Active product paid annually, quarterly, one time (or with no terms) is an Upsell.
+/** @param {Record<string, any> | null | undefined} companyProps @returns {string[]} */
+export function cotermProducts(companyProps) {
+  const props = companyProps || {};
+  return activeProducts(props).filter((f) => COTERM_COMMITS[f] && COTERM_PAYMENT_TERMS.includes(props[COTERM_COMMITS[f].paymentTerms]));
+}
+
+// Co-term is offered on a product the company is Active on and pays Month-to-Month (`active` = that list),
+// other than the deal's own product (on an AutoElevate Upsell deal the AutoElevate line is the upsell itself).
 /** @param {string} family @param {string[] | null | undefined} active @param {string | null} [dealFamily] */
 export function canCoterm(family, active, dealFamily = null) {
   return Array.isArray(active) && active.includes(family) && family !== dealFamily;
 }
 
 // New / Upsell / Co-term for a row. A product the company is already Active on is an upsell, or a
-// co-term when the rep ticks Co-term where it's offered; anything else is new (a stray Co-term tick is
-// ignored). `active` = null when the company is unknown.
-/** @param {string} family @param {boolean} coterm @param {string[] | null | undefined} active @param {string | null} [dealFamily] */
-export function lineTypeFor(family, coterm, active, dealFamily = null) {
+// co-term for a co-term row where co-term is allowed (`cotermable`: Active and paid Month-to-Month;
+// defaults to `active` for callers that don't know the terms); anything else is new. A co-term row on a
+// product that can't co-term counts as an Upsell. `active` = null when the company is unknown.
+/** @param {string} family @param {boolean} coterm @param {string[] | null | undefined} active @param {string | null} [dealFamily] @param {string[] | null | undefined} [cotermable] */
+export function lineTypeFor(family, coterm, active, dealFamily = null, cotermable = active) {
   if (!(Array.isArray(active) && active.includes(family))) return LINE_TYPES.new;
-  return coterm && canCoterm(family, active, dealFamily) ? LINE_TYPES.coterm : LINE_TYPES.upsell;
+  return coterm && canCoterm(family, cotermable, dealFamily) ? LINE_TYPES.coterm : LINE_TYPES.upsell;
 }
 
 // Company properties the automatic co-term reads (loaded with the deal's company).
@@ -494,13 +504,15 @@ export function cotermCompanyProperties() {
 }
 
 // The co-term rows a quote starts with: one per product the company is Active on, other than the deal's
-// own product, sized from the company's commit. `company` = { activeProducts, commits } from loadDeal.
+// own product, that it pays Month-to-Month, sized from the company's commit.
+// `company` = { activeProducts, cotermProducts, commits } from loadDeal.
 // Rows carry `coterm: true` and a note saying where the numbers came from. No uid: the card adds it.
 /** @param {any} company @param {{ dealFamily?: string | null, segment?: string }} [ctx] @returns {any[]} */
 export function cotermRows(company, { dealFamily = null, segment = 'MSP' } = {}) {
   if (!company) return [];
-  const active = company.activeProducts || [];
   const c = company.commits || {};
+  // Active and paid Month-to-Month (worked out from the commits when loadDeal didn't send the list).
+  const active = company.cotermProducts || cotermProducts(Object.assign({}, c, Object.fromEntries((company.activeProducts || []).map((f) => [COMPANY_PRODUCT_STATUS[f].property, COMPANY_PRODUCT_STATUS[f].active]))));
   const count = (prop) => Math.max(0, Math.round(toNum(c[prop])));
   const label = (prop) => COTERM_PROPERTY_LABELS[prop] || prop;
   const shown = (prop) => (count(prop) ? formatInt(count(prop)) : 'blank');
@@ -789,8 +801,9 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     const multiStage = ramp.stages.length > 1;
     // NetSuite auto-split fields, written on every line of the row.
     const family = rowFamily({ input, priced });
-    const cotermAllowed = canCoterm(family, setup.activeProducts, setup.dealFamily);
-    const lineType = lineTypeFor(family, !!input.coterm, setup.activeProducts, setup.dealFamily);
+    const cotermable = setup.cotermProducts !== undefined ? setup.cotermProducts : setup.activeProducts;
+    const cotermAllowed = canCoterm(family, cotermable, setup.dealFamily);
+    const lineType = lineTypeFor(family, !!input.coterm, setup.activeProducts, setup.dealFamily, cotermable);
     const tag = { qbFamily: family, lineType };
     const mainTerm = m2m ? 1 : Math.max(1, agreement - rampMonths);
     const valueMonths = m2m ? 12 : mainTerm; // months used to value an open-ended M2M quote

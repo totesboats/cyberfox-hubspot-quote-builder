@@ -585,7 +585,7 @@ test('co-term: every active product is added automatically from the company comm
   const r = mk();
   const calls = [];
   // An Optimize deal for a partner Active on AutoElevate and DNS Filtering.
-  const res = withCompany({ activeProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600' } }, { pipeline: '917642399' });
+  const res = withCompany({ activeProducts: ['autoelevate', 'dns', 'password'], cotermProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600', pb_user_commit: '200' } }, { pipeline: '917642399' });
   r.mocks.runServerlessFunction.willCall(async (params) => {
     calls.push(params);
     return { status: 'SUCCESS', response: params.name === 'quote_builder_catalog' ? res : { ok: false, errors: ['stop'] } };
@@ -605,10 +605,10 @@ test('co-term: every active product is added automatically from the company comm
   // The rep can still change the count and discount as a fail-safe.
   r.find(NumberInput, { name: 'disc-1' }).trigger('onChange', 15);
   r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 700);
-  // Products the company isn't on are New.
+  // Password Manager is Active but not paid Month-to-Month: not co-termed, and added by hand it's an Upsell.
   r.find(Button, (n) => /\+ Password Manager/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'qty-3' })));
-  assert.ok(r.findAll(Tag).some((t) => /"New"/.test(text(t))));
+  assert.ok(r.findAll(Tag).some((t) => /Upsell/.test(text(t))));
   assert.equal(r.findAll(Button).filter((b) => /Remove/.test(text(b))).length, 1); // only the new row
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
@@ -632,7 +632,7 @@ test('co-term: a company with no active products starts empty', async () => {
 
 test("co-term: not on the deal's own product (AutoElevate Upsell deal): AutoElevate is the upsell, DNS is co-termed", async () => {
   const r = mk();
-  const res = withCompany({ activeProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', dns_device_commit: '600' } }, { pipeline: '7659799' });
+  const res = withCompany({ activeProducts: ['autoelevate', 'dns'], cotermProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', dns_device_commit: '600' } }, { pipeline: '7659799' });
   r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: res }));
   r.render(<QuoteBuilderApp />);
   await toProducts(r);
@@ -658,6 +658,9 @@ test('co-term: editing or copying an older quote adds the missing co-terms; Stop
   const stopped = reducer(edited, { type: 'stopEditing', coterms });
   assert.deepEqual(stopped.products.map((p) => [p.uid, p.family]), [[1, 'autoelevate']]);
   assert.equal(reducer(stopped, { type: 'removeProduct', uid: 1 }).products.length, 1);
+  // A saved co-term on a product that can't co-term any more (now paid annually) becomes a normal row.
+  const annual = { setup: {}, products: [{ uid: 1, family: 'dns', coterm: true, edition: 'standard', quantity: 600, discountPct: 0 }] };
+  assert.deepEqual(reducer(initialState, { type: 'editQuote', quote: { id: 'Q2', state: annual }, coterms }).products.map((p) => [p.family, !!p.coterm]), [['dns', false], ['autoelevate', true]]);
   // Switching to Enterprise moves a per-tenant Optimize co-term back to the company's user commit.
   const tenant = Object.assign({}, initialState, { products: [{ uid: 1, family: 'optimize365', coterm: true, edition: 'tenant', quantity: 7, cotermCounts: { users: 40, tenants: 7 } }] });
   const ent = reducer(tenant, { type: 'setup', patch: { segment: 'ENT' } });

@@ -15,7 +15,7 @@ const {
   CURRENCIES,
   COMPANY_PRODUCT_STATUS,
 } = require('./config.js');
-const { normalizeTemplates, quoteLockState, parseBuilderState, activeProducts, cotermCompanyProperties } = require('./pricing.js');
+const { normalizeTemplates, quoteLockState, parseBuilderState, activeProducts, cotermProducts, cotermCompanyProperties } = require('./pricing.js');
 
 const BASE = 'https://api.hubapi.com';
 // Date-based API paths (see HS_API_VERSION in shared/config.mjs).
@@ -193,6 +193,8 @@ async function loadDeal(dealId) {
           id: String(company.id),
           name: company.properties.name,
           activeProducts: activeProducts(company.properties),
+          // Active products paid Month-to-Month: the only ones that co-term.
+          cotermProducts: cotermProducts(company.properties),
           commits: Object.fromEntries(cotermCompanyProperties().map((p) => [p, company.properties[p] ?? null])),
         }
       : null,
