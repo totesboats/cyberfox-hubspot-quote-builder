@@ -169,6 +169,26 @@ var require_config = __commonJS({
       timus: { property: "timus_product", active: "Timus Active" },
       optimize365: { property: "optimize_product", active: "Optimize Active" }
     };
+    var COTERM_COMMITS = {
+      autoelevate: { quantity: "ae_agent_commit", featureType: "ae_sku_type" },
+      password: { quantity: "pb_user_commit", edition: "pack" },
+      // 2026 User Packs: round up to whole packs
+      dns: { quantity: "dns_device_commit" },
+      timus: { minimum: "timus_committed_mrr", users: "timus_user_commit" },
+      // a spend commit, not a user commit
+      optimize365: { quantity: "optimize_user_commit", tenants: "optimize_tenant_commit" }
+    };
+    var COTERM_AE_FEATURE = { Standard: "Standard", Advanced: "Advanced", "Advanced (GrandFathered)": "Advanced" };
+    var COTERM_PROPERTY_LABELS = {
+      ae_agent_commit: "AE Agent Commit",
+      ae_sku_type: "AE Feature Type",
+      pb_user_commit: "PM User Commit",
+      dns_device_commit: "DNS Device Commit",
+      timus_committed_mrr: "Timus Committed MRR",
+      timus_user_commit: "Timus User Commit",
+      optimize_user_commit: "Optimize User Commit",
+      optimize_tenant_commit: "Optimize Tenant Commit"
+    };
     var QUOTE_SESSION_PROPERTY2 = "qb_session_id";
     var QUOTE_STATE_PROPERTY2 = "qb_builder_state";
     var QUOTE_OPEN_STATUSES = ["DRAFT", "PENDING_APPROVAL", "CHANGES_REQUESTED"];
@@ -260,7 +280,7 @@ var require_config = __commonJS({
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS2 = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
     var CURRENCIES = ["USD", "CAD", "GBP", "EUR", "AUD"];
-    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2, CURRENCIES };
+    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, QUOTE_SESSION_PROPERTY: QUOTE_SESSION_PROPERTY2, QUOTE_STATE_PROPERTY: QUOTE_STATE_PROPERTY2, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS: QUOTE_DEFAULTS2, CURRENCIES };
   }
 });
 
@@ -268,7 +288,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS: QUOTE_DEFAULTS2, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY } = require_config();
+    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS: QUOTE_DEFAULTS2, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, FAMILY_ORDER } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -539,7 +559,7 @@ var require_pricing = __commonJS({
         );
       }
       if (quantity === 0) {
-        result.error = `Enter how many ${units.unit} to quote.`;
+        result.error = input.coterm ? `The company has no ${units.unit} commit for ${family.label}. Enter the ${units.unit} to co-term, and ask Ops to update the company record.` : `Enter how many ${units.unit} to quote.`;
       } else if (chosen !== best && chosen.cost > cheapest.cost + 1e-9) {
         result.hint = `The ${formatInt(cheapest.tier)} tier covers ${formatInt(quantity)} ${units.unit} for ${formatMoney(cheapest.cost)}${per}, ${formatMoney(chosen.cost - cheapest.cost)}${per} less than the tier selected.`;
         result.hintLevel = "warning";
@@ -629,6 +649,48 @@ var require_pricing = __commonJS({
       if (!(Array.isArray(active) && active.includes(family))) return LINE_TYPES.new;
       return coterm && canCoterm(family, active, dealFamily) ? LINE_TYPES.coterm : LINE_TYPES.upsell;
     }
+    function cotermCompanyProperties() {
+      const names = [];
+      for (const src of Object.values(COTERM_COMMITS)) for (const [k, v] of Object.entries(src)) if (k !== "edition" && !names.includes(v)) names.push(v);
+      return names;
+    }
+    function cotermRows(company, { dealFamily = null, segment = "MSP" } = {}) {
+      if (!company) return [];
+      const active = company.activeProducts || [];
+      const c = company.commits || {};
+      const count = (prop) => Math.max(0, Math.round(toNum(c[prop])));
+      const label = (prop) => COTERM_PROPERTY_LABELS[prop] || prop;
+      const shown = (prop) => count(prop) ? formatInt(count(prop)) : "blank";
+      return FAMILY_ORDER.filter((f) => COTERM_COMMITS[f] && canCoterm(f, active, dealFamily)).map((family) => {
+        const src = COTERM_COMMITS[family];
+        const row = { family, coterm: true, edition: FAMILIES[family].editions[0].value, quantity: 0, tier: "", discountPct: 0, ramp: false };
+        if (family === "autoelevate") {
+          const companyType = c[src.featureType] || "";
+          row.featureType = COTERM_AE_FEATURE[companyType] || "Standard";
+          row.edition = (AE_FEATURE_TYPES.find((f) => f.value === row.featureType) || AE_FEATURE_TYPES[0]).edition;
+          row.quantity = count(src.quantity);
+          row.cotermNote = `${label(src.quantity)} ${shown(src.quantity)} \xB7 ${label(src.featureType)} ${companyType || "blank"} \u2192 ${row.featureType} SKUs`;
+        } else if (family === "timus") {
+          const mrr = round2(toNum(c[src.minimum]));
+          Object.assign(row, { agreement: "standard", minimum: mrr > 0 ? mrr : "", satgatTier: "", gateways: 0, userRate: "", gatewayRate: "", quantity: count(src.users) });
+          row.cotermNote = `${label(src.minimum)} ${mrr > 0 ? formatMoney(mrr) : "blank"}`;
+        } else if (family === "optimize365") {
+          const users = count(src.quantity);
+          const tenants = count(src.tenants);
+          const perTenant = tenants > 0 && segment === "MSP";
+          row.edition = perTenant ? "tenant" : "standard";
+          row.quantity = perTenant ? tenants : users;
+          row.tdrUsers = 0;
+          row.cotermCounts = { users, tenants };
+          row.cotermNote = perTenant ? `${label(src.tenants)} ${formatInt(tenants)}${users ? ` (${label(src.quantity)} ${formatInt(users)} not used)` : ""}` : `${label(src.quantity)} ${shown(src.quantity)}`;
+        } else {
+          if (src.edition) row.edition = src.edition;
+          row.quantity = count(src.quantity);
+          row.cotermNote = `${label(src.quantity)} ${shown(src.quantity)}`;
+        }
+        return row;
+      });
+    }
     function lineTypeLabel(value) {
       return LINE_TYPE_LABELS[value] || value || "";
     }
@@ -645,7 +707,8 @@ var require_pricing = __commonJS({
       const missing = [];
       if (!(userRate > 0)) missing.push("Timus Price Per User");
       if (!entered(input.gatewayRate) || gatewayRate < 0) missing.push("Timus Price Per Gateway");
-      if (missing.length) {
+      result.timus.ratesEntered = missing.length === 0;
+      if (missing.length && !input.coterm) {
         result.error = `Enter the ${missing.join(" and ")}. ${missing.length > 1 ? "They print" : "It prints"} on the quote.`;
         return result;
       }
@@ -673,6 +736,10 @@ var require_pricing = __commonJS({
           return result;
         }
         const repMinimum = entered(input.minimum) && toNum(input.minimum) > 0;
+        if (input.coterm && !repMinimum) {
+          result.error = "Timus Committed MRR is blank on the company. Enter the monthly minimum to co-term, and ask Ops to update the company record.";
+          return result;
+        }
         if (!repMinimum && product.missingPrice) {
           result.error = `${missingPriceError([product], catalog.currency || "USD")} Or enter the monthly minimum in ${catalog.currency}.`;
           return result;
@@ -694,6 +761,10 @@ var require_pricing = __commonJS({
       }
       const usage = round2(result.quantity * userRate + gateways * gatewayRate);
       Object.assign(result.timus, { minimum, usage });
+      if (input.coterm && !result.timus.ratesEntered) {
+        result.hint = `Co-term at a ${formatMoney(minimum)}/mo monthly minimum.`;
+        return result;
+      }
       if (setup.billing !== "monthly") {
         result.hint = "Timus SASE bills monthly against its minimum, whatever billing is set for the quote. ";
         result.hintLevel = "warning";
@@ -805,7 +876,7 @@ var require_pricing = __commonJS({
         const priced = priceProduct(input, priceSetup, catalog);
         const usable = !priced.error && priced.lines.length > 0;
         const ramp2 = productRamp(input, legacyRamp);
-        const ramped = ramp2.enabled && usable;
+        const ramped = ramp2.enabled && usable && !input.coterm;
         const label = rowLabel({ input, priced });
         if (ramped && ramp2.months > MAX_RAMP_MONTHS) {
           conflicts.push(`${label}: the ramp stages add up to ${ramp2.months} months; the most is ${MAX_RAMP_MONTHS}.`);
@@ -1003,7 +1074,7 @@ var require_pricing = __commonJS({
         setEnum("sku_type", "AE Feature Type", quote.aeFeature.type);
         properties.ae_feature_type_details = quote.aeFeature.details;
       }
-      const timusRow = quote.rows.find((r) => r.input.family === "timus" && r.usable);
+      const timusRow = quote.rows.find((r) => r.input.family === "timus" && r.usable && r.lineType !== LINE_TYPES.coterm);
       if (timusRow && timusRow.priced.timus) {
         const t = timusRow.priced.timus;
         Object.assign(properties, {
@@ -1100,7 +1171,7 @@ var require_pricing = __commonJS({
       if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], "ramp");
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency: quoteCurrency2, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily: pipelineFamily2, canCoterm, lineTypeFor, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteUrl: quoteUrl2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency: quoteCurrency2, normalizeProduct, oneOffFamily, catalogKey, indexCatalog: indexCatalog2, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily: pipelineFamily2, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote: buildQuote2, evaluateApproval, lineItemProperties: lineItemProperties2, dealWrites: dealWrites2, quoteEditability: quoteEditability2, quoteUrl: quoteUrl2, quoteLockState, openQuoteConflicts: openQuoteConflicts2, builderState: builderState2, parseBuilderState, autoQuoteName: autoQuoteName2, validateSubmission: validateSubmission2 };
   }
 });
 
@@ -1122,7 +1193,7 @@ var require_hubspot = __commonJS({
       CURRENCIES,
       COMPANY_PRODUCT_STATUS
     } = require_config();
-    var { normalizeTemplates, quoteLockState, parseBuilderState, activeProducts } = require_pricing();
+    var { normalizeTemplates, quoteLockState, parseBuilderState, activeProducts, cotermCompanyProperties } = require_pricing();
     var BASE = "https://api.hubapi.com";
     var OBJ2 = HS_PATHS.objects;
     var enc = encodeURIComponent;
@@ -1245,7 +1316,7 @@ var require_hubspot = __commonJS({
       const primaryCompany = companyLinks.find((l) => l.typeIds.includes(5)) || companyLinks[0];
       const companyIds = primaryCompany ? [primaryCompany.id] : [];
       const [companies, contacts, quotes, builderLines, owner] = await Promise.all([
-        companyIds.length ? hs2(`${OBJ2}/companies/batch/read`, { method: "POST", body: { inputs: [{ id: companyIds[0] }], properties: ["name"].concat(Object.values(COMPANY_PRODUCT_STATUS).map((s) => s.property)) } }) : { results: [] },
+        companyIds.length ? hs2(`${OBJ2}/companies/batch/read`, { method: "POST", body: { inputs: [{ id: companyIds[0] }], properties: ["name"].concat(Object.values(COMPANY_PRODUCT_STATUS).map((s) => s.property), cotermCompanyProperties()) } }) : { results: [] },
         contactIds.length ? hs2(`${OBJ2}/contacts/batch/read`, { method: "POST", body: { inputs: contactIds.map((id) => ({ id })), properties: ["firstname", "lastname", "jobtitle"] } }) : { results: [] },
         quoteIds.length ? hs2(`${OBJ2}/quotes/batch/read`, {
           method: "POST",
@@ -1265,7 +1336,13 @@ var require_hubspot = __commonJS({
         salesTeam: deal.properties.sales_team || null,
         owner,
         // activeProducts: families the company is Active on, so the builder can tag lines New or Upsell.
-        company: company ? { id: String(company.id), name: company.properties.name, activeProducts: activeProducts(company.properties) } : null,
+        // commits: the company's current commits (AE Agent Commit, PM User Commit …), which size the co-term rows.
+        company: company ? {
+          id: String(company.id),
+          name: company.properties.name,
+          activeProducts: activeProducts(company.properties),
+          commits: Object.fromEntries(cotermCompanyProperties().map((p) => [p, company.properties[p] ?? null]))
+        } : null,
         // Name + title only: enough to pick a signer, nothing more.
         contacts: contacts.results.map((c) => ({
           id: String(c.id),

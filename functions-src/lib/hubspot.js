@@ -15,7 +15,7 @@ const {
   CURRENCIES,
   COMPANY_PRODUCT_STATUS,
 } = require('./config.js');
-const { normalizeTemplates, quoteLockState, parseBuilderState, activeProducts } = require('./pricing.js');
+const { normalizeTemplates, quoteLockState, parseBuilderState, activeProducts, cotermCompanyProperties } = require('./pricing.js');
 
 const BASE = 'https://api.hubapi.com';
 // Date-based API paths (see HS_API_VERSION in shared/config.mjs).
@@ -164,7 +164,7 @@ async function loadDeal(dealId) {
   const primaryCompany = companyLinks.find((l) => l.typeIds.includes(5)) || companyLinks[0];
   const companyIds = primaryCompany ? [primaryCompany.id] : [];
   const [companies, contacts, quotes, builderLines, owner] = await Promise.all([
-    companyIds.length ? hs(`${OBJ}/companies/batch/read`, { method: 'POST', body: { inputs: [{ id: companyIds[0] }], properties: ['name'].concat(Object.values(COMPANY_PRODUCT_STATUS).map((s) => s.property)) } }) : { results: [] },
+    companyIds.length ? hs(`${OBJ}/companies/batch/read`, { method: 'POST', body: { inputs: [{ id: companyIds[0] }], properties: ['name'].concat(Object.values(COMPANY_PRODUCT_STATUS).map((s) => s.property), cotermCompanyProperties()) } }) : { results: [] },
     contactIds.length ? hs(`${OBJ}/contacts/batch/read`, { method: 'POST', body: { inputs: contactIds.map((id) => ({ id })), properties: ['firstname', 'lastname', 'jobtitle'] } }) : { results: [] },
     quoteIds.length
       ? hs(`${OBJ}/quotes/batch/read`, {
@@ -187,7 +187,15 @@ async function loadDeal(dealId) {
     salesTeam: deal.properties.sales_team || null,
     owner,
     // activeProducts: families the company is Active on, so the builder can tag lines New or Upsell.
-    company: company ? { id: String(company.id), name: company.properties.name, activeProducts: activeProducts(company.properties) } : null,
+    // commits: the company's current commits (AE Agent Commit, PM User Commit …), which size the co-term rows.
+    company: company
+      ? {
+          id: String(company.id),
+          name: company.properties.name,
+          activeProducts: activeProducts(company.properties),
+          commits: Object.fromEntries(cotermCompanyProperties().map((p) => [p, company.properties[p] ?? null])),
+        }
+      : null,
     // Name + title only: enough to pick a signer, nothing more.
     contacts: contacts.results.map((c) => ({
       id: String(c.id),

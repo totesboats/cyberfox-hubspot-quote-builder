@@ -34,6 +34,10 @@ import {
   LINE_TYPE_LABELS,
   COMPANY_PRODUCT_STATUS,
   PIPELINE_FAMILY,
+  COTERM_COMMITS,
+  COTERM_AE_FEATURE,
+  COTERM_PROPERTY_LABELS,
+  FAMILY_ORDER,
 } from './config.mjs';
 
 export function toNum(v, fallback = 0) {
@@ -362,7 +366,9 @@ export function priceProduct(input, setup, catalog) {
   }
 
   if (quantity === 0) {
-    result.error = `Enter how many ${units.unit} to quote.`;
+    result.error = input.coterm
+      ? `The company has no ${units.unit} commit for ${family.label}. Enter the ${units.unit} to co-term, and ask Ops to update the company record.`
+      : `Enter how many ${units.unit} to quote.`;
   } else if (chosen !== best && chosen.cost > cheapest.cost + 1e-9) {
     result.hint = `The ${formatInt(cheapest.tier)} tier covers ${formatInt(quantity)} ${units.unit} for ${formatMoney(cheapest.cost)}${per}, ${formatMoney(chosen.cost - cheapest.cost)}${per} less than the tier selected.`;
     result.hintLevel = 'warning';
@@ -479,6 +485,57 @@ export function lineTypeFor(family, coterm, active, dealFamily = null) {
   return coterm && canCoterm(family, active, dealFamily) ? LINE_TYPES.coterm : LINE_TYPES.upsell;
 }
 
+// Company properties the automatic co-term reads (loaded with the deal's company).
+/** @returns {string[]} */
+export function cotermCompanyProperties() {
+  const names = [];
+  for (const src of Object.values(COTERM_COMMITS)) for (const [k, v] of Object.entries(src)) if (k !== 'edition' && !names.includes(v)) names.push(v);
+  return names;
+}
+
+// The co-term rows a quote starts with: one per product the company is Active on, other than the deal's
+// own product, sized from the company's commit. `company` = { activeProducts, commits } from loadDeal.
+// Rows carry `coterm: true` and a note saying where the numbers came from. No uid: the card adds it.
+/** @param {any} company @param {{ dealFamily?: string | null, segment?: string }} [ctx] @returns {any[]} */
+export function cotermRows(company, { dealFamily = null, segment = 'MSP' } = {}) {
+  if (!company) return [];
+  const active = company.activeProducts || [];
+  const c = company.commits || {};
+  const count = (prop) => Math.max(0, Math.round(toNum(c[prop])));
+  const label = (prop) => COTERM_PROPERTY_LABELS[prop] || prop;
+  const shown = (prop) => (count(prop) ? formatInt(count(prop)) : 'blank');
+  return FAMILY_ORDER.filter((f) => COTERM_COMMITS[f] && canCoterm(f, active, dealFamily)).map((family) => {
+    const src = COTERM_COMMITS[family];
+    const row = { family, coterm: true, edition: FAMILIES[family].editions[0].value, quantity: 0, tier: '', discountPct: 0, ramp: false };
+    if (family === 'autoelevate') {
+      const companyType = c[src.featureType] || '';
+      row.featureType = COTERM_AE_FEATURE[companyType] || 'Standard';
+      row.edition = (AE_FEATURE_TYPES.find((f) => f.value === row.featureType) || AE_FEATURE_TYPES[0]).edition;
+      row.quantity = count(src.quantity);
+      row.cotermNote = `${label(src.quantity)} ${shown(src.quantity)} · ${label(src.featureType)} ${companyType || 'blank'} → ${row.featureType} SKUs`;
+    } else if (family === 'timus') {
+      const mrr = round2(toNum(c[src.minimum]));
+      Object.assign(row, { agreement: 'standard', minimum: mrr > 0 ? mrr : '', satgatTier: '', gateways: 0, userRate: '', gatewayRate: '', quantity: count(src.users) });
+      row.cotermNote = `${label(src.minimum)} ${mrr > 0 ? formatMoney(mrr) : 'blank'}`;
+    } else if (family === 'optimize365') {
+      const users = count(src.quantity);
+      const tenants = count(src.tenants);
+      // Per tenant when the company has a tenant commit (MSP only), else per user.
+      const perTenant = tenants > 0 && segment === 'MSP';
+      row.edition = perTenant ? 'tenant' : 'standard';
+      row.quantity = perTenant ? tenants : users;
+      row.tdrUsers = 0;
+      row.cotermCounts = { users, tenants };
+      row.cotermNote = perTenant ? `${label(src.tenants)} ${formatInt(tenants)}${users ? ` (${label(src.quantity)} ${formatInt(users)} not used)` : ''}` : `${label(src.quantity)} ${shown(src.quantity)}`;
+    } else {
+      if (src.edition) row.edition = src.edition;
+      row.quantity = count(src.quantity);
+      row.cotermNote = `${label(src.quantity)} ${shown(src.quantity)}`;
+    }
+    return row;
+  });
+}
+
 export function lineTypeLabel(value) {
   return LINE_TYPE_LABELS[value] || value || '';
 }
@@ -499,7 +556,9 @@ function priceTimus(input, setup, catalog, result) {
   const missing = [];
   if (!(userRate > 0)) missing.push('Timus Price Per User');
   if (!entered(input.gatewayRate) || gatewayRate < 0) missing.push('Timus Price Per Gateway');
-  if (missing.length) {
+  // A Timus co-term only re-signs the monthly minimum, so the rates are optional (they aren't written).
+  result.timus.ratesEntered = missing.length === 0;
+  if (missing.length && !input.coterm) {
     result.error = `Enter the ${missing.join(' and ')}. ${missing.length > 1 ? 'They print' : 'It prints'} on the quote.`;
     return result;
   }
@@ -528,6 +587,10 @@ function priceTimus(input, setup, catalog, result) {
       return result;
     }
     const repMinimum = entered(input.minimum) && toNum(input.minimum) > 0;
+    if (input.coterm && !repMinimum) {
+      result.error = 'Timus Committed MRR is blank on the company. Enter the monthly minimum to co-term, and ask Ops to update the company record.';
+      return result;
+    }
     // The rep's minimum is in the deal's currency; the SKU's own price is only the default.
     if (!repMinimum && product.missingPrice) {
       result.error = `${missingPriceError([product], catalog.currency || 'USD')} Or enter the monthly minimum in ${catalog.currency}.`;
@@ -550,6 +613,10 @@ function priceTimus(input, setup, catalog, result) {
   }
   const usage = round2(result.quantity * userRate + gateways * gatewayRate);
   Object.assign(result.timus, { minimum, usage });
+  if (input.coterm && !result.timus.ratesEntered) {
+    result.hint = `Co-term at a ${formatMoney(minimum)}/mo monthly minimum.`;
+    return result;
+  }
 
   if (setup.billing !== 'monthly') {
     result.hint = 'Timus SASE bills monthly against its minimum, whatever billing is set for the quote. ';
@@ -702,7 +769,8 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     const priced = priceProduct(input, priceSetup, catalog);
     const usable = !priced.error && priced.lines.length > 0;
     const ramp = productRamp(input, legacyRamp);
-    const ramped = ramp.enabled && usable;
+    // Co-term rows re-sign an existing product at its commit: no ramp.
+    const ramped = ramp.enabled && usable && !input.coterm;
     const label = rowLabel({ input, priced });
     if (ramped && ramp.months > MAX_RAMP_MONTHS) {
       conflicts.push(`${label}: the ramp stages add up to ${ramp.months} months; the most is ${MAX_RAMP_MONTHS}.`);
@@ -929,7 +997,8 @@ export function dealWrites(quote, { setup = {} } = {}, enumOptions = {}) {
     properties.ae_feature_type_details = quote.aeFeature.details;
   }
 
-  const timusRow = quote.rows.find((r) => r.input.family === 'timus' && r.usable);
+  // A Timus co-term (on another product's deal) leaves the Timus deal fields alone.
+  const timusRow = quote.rows.find((r) => r.input.family === 'timus' && r.usable && r.lineType !== LINE_TYPES.coterm);
   if (timusRow && timusRow.priced.timus) {
     // Timus Price List is being retired, so the builder leaves it untouched.
     const t = timusRow.priced.timus;

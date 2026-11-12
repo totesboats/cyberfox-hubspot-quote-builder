@@ -133,20 +133,20 @@ function TimusFields({ input, priced, onUpdate }) {
       <NumberInput
         label="Timus Price Per User"
         name={`rate-${input.uid}`}
-        required
+        required={!input.coterm}
         min={0}
         precision={2}
-        tooltip="Prints on the quote."
+        tooltip={input.coterm ? 'Optional on a co-term: only the monthly minimum is re-signed.' : 'Prints on the quote.'}
         value={num(input.userRate)}
         onChange={(v) => onUpdate({ userRate: v })}
       />
       <NumberInput
         label="Timus Price Per Gateway"
         name={`gwrate-${input.uid}`}
-        required
+        required={!input.coterm}
         min={0}
         precision={2}
-        tooltip="Prints on the quote."
+        tooltip={input.coterm ? 'Optional on a co-term: only the monthly minimum is re-signed.' : 'Prints on the quote.'}
         value={num(input.gatewayRate)}
         onChange={(v) => onUpdate({ gatewayRate: v })}
       />
@@ -179,11 +179,20 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
           </Flex>
           <Flex gap="small" align="center">
             <Text format={{ fontWeight: 'demibold' }}>{mrr}</Text>
-            <Button variant="secondary" size="sm" onClick={() => onRemove(input.uid)}>
-              Remove
-            </Button>
+            {/* Co-term rows can't be removed: every product the company is Active on is co-termed. */}
+            {!input.coterm && (
+              <Button variant="secondary" size="sm" onClick={() => onRemove(input.uid)}>
+                Remove
+              </Button>
+            )}
           </Flex>
         </Flex>
+
+        {input.coterm && (
+          <Text variant="microcopy">
+            {`Added automatically: the company is Active on ${family.label}, so it's co-termed with this deal. From the company record: ${input.cotermNote || 'its current commit'}. Change the count or plan if the record is out of date; the discount is yours to set.`}
+          </Text>
+        )}
 
         {input.family === 'timus' ? (
           <TimusFields input={input} priced={priced} onUpdate={update} />
@@ -205,33 +214,23 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
 
         {/* Optimize365 can only ramp 1–3 free months on a 13/14/15-month monthly agreement; otherwise the box
             is locked (still untickable if it was ticked before Setup changed). */}
-        <Checkbox
-          name={`ramp-${input.uid}`}
-          checked={!!input.ramp}
-          readOnly={row.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp}
-          description={
-            row.family === 'optimize365' && optimizeRamp
-              ? optimizeRamp.reason
-              : 'Gives this product its own ramp: RAMP line items for its first months, at the length and discount you set below.'
-          }
-          onChange={(checked) => update({ ramp: checked })}
-        >
-          Ramp
-        </Checkbox>
-
-        {input.ramp && <ProductRamp row={row} quote={quote} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />}
-
-        {/* Co-term: only on a product the company is already Active on. Its lines stay on this deal at Closed Won. */}
-        {row.cotermAllowed && (
+        {!input.coterm && (
           <Checkbox
-            name={`coterm-${input.uid}`}
-            checked={!!input.coterm}
-            description="Lines this product's renewal date up with the new product on this quote. Ops updates the renewal date on the company."
-            onChange={(checked) => update({ coterm: checked })}
+            name={`ramp-${input.uid}`}
+            checked={!!input.ramp}
+            readOnly={row.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp}
+            description={
+              row.family === 'optimize365' && optimizeRamp
+                ? optimizeRamp.reason
+                : 'Gives this product its own ramp: RAMP line items for its first months, at the length and discount you set below.'
+            }
+            onChange={(checked) => update({ ramp: checked })}
           >
-            Co-term
+            Ramp
           </Checkbox>
         )}
+
+        {input.ramp && !input.coterm && <ProductRamp row={row} quote={quote} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />}
 
         {row.mainLines.length > 0 && <LineTable lines={row.rampLines.concat(row.mainLines)} />}
       </Flex>

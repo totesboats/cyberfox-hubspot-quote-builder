@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer } from '@hubspot/ui-extensions/testing';
 import { Alert, Button, Checkbox, DescriptionListItem, Input, NumberInput, Select, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
-import { QuoteBuilderApp } from '../../src/app/cards/QuoteBuilderApp.jsx';
+import { QuoteBuilderApp, reducer, initialState } from '../../src/app/cards/QuoteBuilderApp.jsx';
 
 // The platform exposes hubspot.serverless via a worker global; route it to the renderer's mock.
 let current;
@@ -571,68 +571,95 @@ test('MSP Optimize365: Pricing picker switches to per tenant, which adds the Opt
   await r.waitFor(() => assert.match(text(r.getRootNode()), /\$450\.00\/mo/));
 });
 
-test('line type: Upsell for a product the company has, New otherwise; Co-term box only on products the company has', async () => {
+const withCompany = (company, dealProps = {}) =>
+  Object.assign({}, CATALOG_RESPONSE, {
+    deal: Object.assign({}, CATALOG_RESPONSE.deal, { properties: Object.assign({}, CATALOG_RESPONSE.deal.properties, dealProps), company: Object.assign({ id: '9', name: 'Example MSP' }, company) }),
+  });
+const toProducts = async (r) => {
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+};
+
+test('co-term: every active product is added automatically from the company commits, with no Co-term box to tick', async () => {
   const r = mk();
   const calls = [];
-  const res = Object.assign({}, CATALOG_RESPONSE, { deal: Object.assign({}, CATALOG_RESPONSE.deal, { company: { id: '9', name: 'Example MSP', activeProducts: ['autoelevate'] } }) });
+  // An Optimize deal for a partner Active on AutoElevate and DNS Filtering.
+  const res = withCompany({ activeProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600' } }, { pipeline: '917642399' });
   r.mocks.runServerlessFunction.willCall(async (params) => {
     calls.push(params);
     return { status: 'SUCCESS', response: params.name === 'quote_builder_catalog' ? res : { ok: false, errors: ['stop'] } };
   });
   r.render(<QuoteBuilderApp />);
-  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
-  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
-  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
-  const tags = () => r.findAll(Tag).map((t) => text(t));
-  assert.ok(tags().some((t) => /Upsell/.test(t)));
-  assert.ok(tags().some((t) => /"New"/.test(t)));
-  assert.equal(r.maybeFind(Checkbox, { name: 'coterm-2' }), null); // the partner doesn't have DNS Filtering
-  assert.equal(r.find(Checkbox, { name: 'coterm-1' }).props.checked, false);
-  r.find(Checkbox, { name: 'coterm-1' }).trigger('onChange', true);
-  await r.waitFor(() => assert.ok(tags().some((t) => /Co-term/.test(t))));
+  await toProducts(r);
+  // Both rows are already there, priced from the commits: 1,250 agents = 1,000 plan + 250 additional.
+  assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 1250);
+  assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
+  assert.equal(r.find(NumberInput, { name: 'qty-2' }).props.value, 600);
+  assert.equal(r.findAll(Tag).filter((t) => /Co-term/.test(text(t))).length, 2);
+  assert.match(text(r.getRootNode()), /From the company record: AE Agent Commit 1,250 · AE Feature Type Standard → Standard SKUs/);
+  // No Co-term box, no Ramp box, no Remove button on a co-term row.
+  assert.equal(r.maybeFind(Checkbox, { name: 'coterm-1' }), null);
+  assert.equal(r.maybeFind(Checkbox, { name: 'ramp-1' }), null);
+  assert.equal(r.findAll(Button).filter((b) => /Remove/.test(text(b))).length, 0);
+  // The rep can still change the count and discount as a fail-safe.
+  r.find(NumberInput, { name: 'disc-1' }).trigger('onChange', 15);
+  r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 700);
+  // Products the company isn't on are New.
+  r.find(Button, (n) => /\+ Password Manager/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'qty-3' })));
+  assert.ok(r.findAll(Tag).some((t) => /"New"/.test(text(t))));
+  assert.equal(r.findAll(Button).filter((b) => /Remove/.test(text(b))).length, 1); // only the new row
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
-  const rows = r.findAll(TableRow).map((n) => text(n));
-  assert.ok(rows.some((t) => /Co-term/.test(t)) && rows.some((t) => /"New"/.test(t)));
   r.find(Button, (n) => /Create quote/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(calls.some((c) => c.name === 'quote_builder_submit')));
   const sent = calls.find((c) => c.name === 'quote_builder_submit').parameters.products;
-  assert.deepEqual(sent.map((p) => !!p.coterm), [true, false]);
+  assert.deepEqual(sent.map((p) => [p.family, !!p.coterm, p.quantity, p.discountPct]), [['autoelevate', true, 1250, 15], ['dns', true, 700, 0], ['password', false, 100, 0]]);
 });
 
-test('line type: a company with no active products shows no Co-term box', async () => {
+test('co-term: a company with no active products starts empty', async () => {
   const r = mk();
-  const res = Object.assign({}, CATALOG_RESPONSE, { deal: Object.assign({}, CATALOG_RESPONSE.deal, { company: { id: '9', name: 'Example MSP', activeProducts: [] } }) });
-  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: res }));
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: withCompany({ activeProducts: [], commits: {} }) }));
   r.render(<QuoteBuilderApp />);
-  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
-  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  await toProducts(r);
+  assert.equal(r.maybeFind(NumberInput, { name: 'qty-1' }), null);
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   assert.equal(r.maybeFind(Checkbox, { name: 'coterm-1' }), null);
+  assert.ok(r.findAll(Tag).some((t) => /"New"/.test(text(t))));
 });
 
-test('AutoElevate Upsell deal: the AutoElevate row is Upsell with no Co-term box; another active product still offers it', async () => {
+test("co-term: not on the deal's own product (AutoElevate Upsell deal): AutoElevate is the upsell, DNS is co-termed", async () => {
   const r = mk();
-  const res = Object.assign({}, CATALOG_RESPONSE, {
-    deal: Object.assign({}, CATALOG_RESPONSE.deal, {
-      properties: Object.assign({}, CATALOG_RESPONSE.deal.properties, { pipeline: '7659799' }),
-      company: { id: '9', name: 'Example MSP', activeProducts: ['autoelevate', 'dns'] },
-    }),
-  });
+  const res = withCompany({ activeProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', dns_device_commit: '600' } }, { pipeline: '7659799' });
   r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: res }));
   r.render(<QuoteBuilderApp />);
-  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
-  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  await toProducts(r);
+  // Only DNS was added automatically.
+  assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 600);
+  assert.equal(r.maybeFind(NumberInput, { name: 'qty-2' }), null);
   r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
-  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
-  assert.equal(r.maybeFind(Checkbox, { name: 'coterm-1' }), null);
-  assert.ok(r.maybeFind(Checkbox, { name: 'coterm-2' }));
-  assert.equal(r.findAll(Tag).filter((t) => /Upsell/.test(text(t))).length, 2);
+  const tags = r.findAll(Tag).map((t) => text(t));
+  assert.equal(tags.filter((t) => /Co-term/.test(t)).length, 1);
+  assert.equal(tags.filter((t) => /Upsell/.test(t)).length, 1);
+});
+
+test('co-term: editing or copying an older quote adds the missing co-terms; Stop editing starts from them; co-term rows ignore Remove', () => {
+  const coterms = [{ family: 'autoelevate', coterm: true, edition: 'advanced', featureType: 'Advanced', quantity: 150, tier: '', discountPct: 0, ramp: false }];
+  const old = { setup: { segment: 'MSP' }, products: [{ uid: 1, family: 'optimize365', edition: 'standard', quantity: 40, discountPct: 0, ramp: false }] };
+  const edited = reducer(initialState, { type: 'editQuote', quote: { id: 'Q1', title: 'Old', state: old }, coterms });
+  assert.deepEqual(edited.products.map((p) => [p.uid, p.family, !!p.coterm]), [[1, 'optimize365', false], [2, 'autoelevate', true]]);
+  assert.equal(edited.nextUid, 3);
+  // A quote that already has the product (here as a one-off AutoElevate SKU) gets no second row.
+  const withOneOff = { setup: {}, products: [{ uid: 1, family: 'oneoff', baseFamily: 'autoelevate', productId: '5', quantity: 1, discountPct: 0 }] };
+  assert.equal(reducer(initialState, { type: 'loadState', state: withOneOff, coterms }).products.length, 1);
+  const stopped = reducer(edited, { type: 'stopEditing', coterms });
+  assert.deepEqual(stopped.products.map((p) => [p.uid, p.family]), [[1, 'autoelevate']]);
+  assert.equal(reducer(stopped, { type: 'removeProduct', uid: 1 }).products.length, 1);
+  // Switching to Enterprise moves a per-tenant Optimize co-term back to the company's user commit.
+  const tenant = Object.assign({}, initialState, { products: [{ uid: 1, family: 'optimize365', coterm: true, edition: 'tenant', quantity: 7, cotermCounts: { users: 40, tenants: 7 } }] });
+  const ent = reducer(tenant, { type: 'setup', patch: { segment: 'ENT' } });
+  assert.deepEqual([ent.products[0].edition, ent.products[0].quantity], ['standard', 40]);
 });

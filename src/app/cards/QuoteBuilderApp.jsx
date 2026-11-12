@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, cotermRows, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
 import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -86,14 +86,26 @@ function withOwnRamps(products, savedRamp) {
   });
 }
 
+// Automatic co-term: add a Co-term row for each product the company is Active on that the quote doesn't
+// have yet (a one-off SKU counts as its product). `coterms` come from cotermRows() at load.
+export function withCoterms(products, coterms, nextUid) {
+  const have = new Set(products.map((p) => (p.family === 'oneoff' ? p.baseFamily : p.family)));
+  const add = (coterms || []).filter((c) => !have.has(c.family)).map((c, i) => Object.assign({}, c, { uid: nextUid + i }));
+  return { products: products.concat(add), nextUid: nextUid + add.length };
+}
+
 const mapStages = (state, uid, fn) =>
   Object.assign({}, state, { products: state.products.map((p) => (p.uid === uid && p.ramp ? Object.assign({}, p, { rampStages: fn(p.rampStages || []) }) : p)) });
 
 /** @param {typeof initialState} state @param {any} action @returns {typeof initialState} */
 export function reducer(state, action) {
   switch (action.type) {
-    case 'hydrate':
-      return Object.assign({}, state, { setup: Object.assign({}, state.setup, action.setup) });
+    case 'hydrate': {
+      const next = Object.assign({}, state, { setup: Object.assign({}, state.setup, action.setup) });
+      // A fresh quote starts with the company's co-term rows.
+      if (state.products.length || state.editing) return next;
+      return Object.assign(next, withCoterms([], action.coterms, state.nextUid));
+    }
     case 'step':
       return Object.assign({}, state, { step: Math.max(0, Math.min(STEPS.length - 1, action.step)) });
     case 'setup': {
@@ -103,7 +115,11 @@ export function reducer(state, action) {
         const products = state.products.map((p) => {
           const fam = FAMILIES[p.family];
           const ed = fam && fam.editions.find((e) => e.value === p.edition);
-          return ed && ed.segments && !ed.segments.includes(setup.segment) ? Object.assign({}, p, { edition: fam.editions[0].value, tier: '' }) : p;
+          if (!(ed && ed.segments && !ed.segments.includes(setup.segment))) return p;
+          const reset = { edition: fam.editions[0].value, tier: '' };
+          // A per-tenant Optimize co-term falls back to the company's user commit.
+          if (p.coterm && p.cotermCounts) reset.quantity = p.cotermCounts.users || 0;
+          return Object.assign({}, p, reset);
         });
         state = Object.assign({}, state, { products });
       }
@@ -150,7 +166,8 @@ export function reducer(state, action) {
       return Object.assign({}, state, { products });
     }
     case 'removeProduct':
-      return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid) });
+      // Co-term rows stay: every product the company is Active on is co-termed.
+      return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid || p.coterm) });
     case 'clearRamp':
       return Object.assign({}, state, {
         products: state.products.map((p) => {
@@ -178,12 +195,13 @@ export function reducer(state, action) {
     case 'loadState': {
       // Start a new option from a saved builder quote: same inputs, fresh dates, not primary.
       const saved = action.state;
-      const products = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
+      const own = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
+      const { products, nextUid } = withCoterms(own, action.coterms, own.length + 1);
       return Object.assign({}, state, {
         step: 1,
         setup: Object.assign({}, state.setup, saved.setup, { expirationDate: state.setup.expirationDate, quoteName: '' }),
         products,
-        nextUid: products.length + 1,
+        nextUid,
         primary: false,
         editing: null,
       });
@@ -192,18 +210,19 @@ export function reducer(state, action) {
       // Edit an existing builder quote in place: its saved inputs, its own name and expiry.
       const q = action.quote;
       const saved = q.state || {};
-      const products = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
+      const own = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
+      const { products, nextUid } = withCoterms(own, action.coterms, own.length + 1);
       return Object.assign({}, state, {
         step: 0,
         setup: Object.assign({}, state.setup, saved.setup, { quoteName: q.title || '', expirationDate: q.expirationDate || (saved.setup && saved.setup.expirationDate) || state.setup.expirationDate }),
         products,
-        nextUid: products.length + 1,
+        nextUid,
         primary: !!q.primary,
         editing: { id: q.id, title: q.title, primary: !!q.primary },
       });
     }
     case 'stopEditing':
-      return Object.assign({}, initialState, { setup: state.setup, editing: null });
+      return Object.assign({}, initialState, { setup: state.setup, editing: null }, withCoterms([], action.coterms, 1));
     case 'nextOption':
       return Object.assign({}, state, { step: 1, primary: false, editing: null, setup: Object.assign({}, state.setup, { quoteName: '' }) });
     default:
@@ -235,13 +254,17 @@ export function QuoteBuilderApp() {
       if (!res.ok) throw new Error((res.errors || []).join('; ') || 'Could not load the product library.');
       // Priced in the deal's currency: a CAD deal uses each product's CAD price.
       const catalog = indexCatalog(res.products, quoteCurrency(res.deal && res.deal.properties && res.deal.properties.deal_currency_code));
-      setData(Object.assign({}, res, { catalog }));
-      if (refresh === true) return;
       const props = (res.deal && res.deal.properties) || {};
+      const segment = res.deal && res.deal.salesTeam === 'ENT' ? 'ENT' : 'MSP';
+      // Co-term rows for every product the company is Active on, sized from its commits.
+      const coterms = cotermRows(res.deal && res.deal.company, { dealFamily: pipelineFamily(props.pipeline), segment });
+      setData(Object.assign({}, res, { catalog, coterms }));
+      if (refresh === true) return;
       dispatch({
         type: 'hydrate',
+        coterms,
         setup: {
-          segment: res.deal && res.deal.salesTeam === 'ENT' ? 'ENT' : 'MSP',
+          segment,
           paymentMethod: props.payment_method || 'Credit Card',
           invoiceTerms: INVOICE_TERMS_DEFAULT, // always starts here, even if the deal holds Net-30 etc.
           signerContactId: res.deal && res.deal.contacts[0] ? res.deal.contacts[0].id : '',
@@ -388,7 +411,7 @@ export function QuoteBuilderApp() {
               variant="secondary"
               onClick={() => {
                 setResult(null);
-                dispatch({ type: 'stopEditing' });
+                dispatch({ type: 'stopEditing', coterms: data.coterms });
               }}
             >
               Stop editing
@@ -405,12 +428,12 @@ export function QuoteBuilderApp() {
           pendingPrimary={pendingPrimary}
           onStartFrom={(q) => {
             setResult(null);
-            dispatch({ type: 'loadState', state: q.state });
+            dispatch({ type: 'loadState', state: q.state, coterms: data.coterms });
           }}
           editingId={state.editing ? state.editing.id : ''}
           onEdit={(q) => {
             setResult(null);
-            dispatch({ type: 'editQuote', quote: q });
+            dispatch({ type: 'editQuote', quote: q, coterms: data.coterms });
           }}
           onMakePrimary={requestPrimary}
           onConfirmPrimary={() => makePrimary(pendingPrimary)}

@@ -188,6 +188,33 @@ export const COMPANY_PRODUCT_STATUS = {
   optimize365: { property: 'optimize_product', active: 'Optimize Active' },
 };
 
+// Automatic co-term (Nov 2026). When the builder opens, every product the company is Active on (other
+// than the deal's own product) gets a Co-term row sized from the company's current commit, in the
+// segment picked on Setup: 150 agents = the 100-agent plan + 50 additional agents. Reps can change the
+// count, plan and discount as a fail-safe, but can't remove the row: every active product is co-termed.
+// Co-term rows don't ramp.
+export const COTERM_COMMITS = {
+  autoelevate: { quantity: 'ae_agent_commit', featureType: 'ae_sku_type' },
+  password: { quantity: 'pb_user_commit', edition: 'pack' }, // 2026 User Packs: round up to whole packs
+  dns: { quantity: 'dns_device_commit' },
+  timus: { minimum: 'timus_committed_mrr', users: 'timus_user_commit' }, // a spend commit, not a user commit
+  optimize365: { quantity: 'optimize_user_commit', tenants: 'optimize_tenant_commit' },
+};
+// The company's AE Feature Type → the feature type the AutoElevate co-term is priced on.
+// Advanced (GrandFathered) partners co-term on Advanced SKUs.
+export const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Advanced' };
+// How the company properties are named on screen.
+export const COTERM_PROPERTY_LABELS = {
+  ae_agent_commit: 'AE Agent Commit',
+  ae_sku_type: 'AE Feature Type',
+  pb_user_commit: 'PM User Commit',
+  dns_device_commit: 'DNS Device Commit',
+  timus_committed_mrr: 'Timus Committed MRR',
+  timus_user_commit: 'Timus User Commit',
+  optimize_user_commit: 'Optimize User Commit',
+  optimize_tenant_commit: 'Optimize Tenant Commit',
+};
+
 // Multiple quotes per deal ("options"). Each builder quote stores its run id and the builder
 // state so a rep can start a new option from it or make it the primary option later.
 export const QUOTE_SESSION_PROPERTY = 'qb_session_id';

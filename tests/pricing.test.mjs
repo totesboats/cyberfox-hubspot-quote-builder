@@ -717,6 +717,7 @@ test('NetSuite auto-split fields: qb_family and qb_line_type (New / Upsell / Co-
   const q = P.buildQuote(setup, [ae({ coterm: true, ramp: true }), Object.assign({}, dnsRow, { coterm: true })], { enabled: true, months: 3 }, CATALOG);
   const byFamily = (f) => q.lines.filter((l) => l.qbFamily === f);
   assert.ok(byFamily('autoelevate').length > 0 && byFamily('autoelevate').every((l) => l.lineType === 'coterm'));
+  assert.ok(byFamily('autoelevate').every((l) => !l.ramp)); // co-term rows never ramp
   assert.ok(byFamily('dns').length > 0 && byFamily('dns').every((l) => l.lineType === 'New'));
   assert.deepEqual(q.rows.map((r) => r.cotermAllowed), [true, false]); // the card shows Co-term on AutoElevate only
   const props = q.lines.map((l) => P.lineItemProperties(l, { billing: 'monthly', rampMonths: 3, sessionId: 's' }));
@@ -728,4 +729,91 @@ test('NetSuite auto-split fields: qb_family and qb_line_type (New / Upsell / Co-
   // No company or no active products: every row is New and none offers Co-term.
   const none = P.buildQuote(MSP, [ae()], {}, CATALOG);
   assert.ok(none.lines.every((l) => l.lineType === 'New') && none.rows.every((r) => !r.cotermAllowed));
+});
+
+// ---------------------------------------------------------------------------
+// Automatic co-term (Nov 2026)
+
+const COTERM_CATALOG = P.indexCatalog(RECORDS.concat([
+  prod('Advanced-AE-100-Agent-Commit-2026', 200, 'autoelevate', 'advanced', 'MSP', 'monthly', 100),
+  prod('Advanced-AE-100-Agent-Commit-Additional-Agents+2026', 2, 'autoelevate', 'advanced', 'MSP', 'monthly', 100, 'additional'),
+  prod('Advanced-AE-250-Agent-Commit-2026', 450, 'autoelevate', 'advanced', 'MSP', 'monthly', 250),
+  prod('Advanced-AE-250-Agent-Commit-Additional-Agents+2026', 1.8, 'autoelevate', 'advanced', 'MSP', 'monthly', 250, 'additional'),
+]));
+const company = (active, commits) => ({ activeProducts: active, commits });
+
+test('co-term: one row per active product except the deal\'s own, in product order', () => {
+  const rows = P.cotermRows(company(['optimize365', 'autoelevate', 'dns'], { ae_agent_commit: '150', ae_sku_type: 'Advanced', dns_device_commit: '600', optimize_user_commit: '40' }), { dealFamily: 'optimize365', segment: 'MSP' });
+  assert.deepEqual(rows.map((r) => r.family), ['autoelevate', 'dns']);
+  assert.ok(rows.every((r) => r.coterm === true && r.discountPct === 0 && r.ramp === false && r.uid === undefined));
+  assert.deepEqual(P.cotermRows(null), []);
+  assert.deepEqual(P.cotermRows(company([], {})), []);
+});
+
+test('co-term: AutoElevate from AE Agent Commit and AE Feature Type; Grandfathered uses Advanced SKUs', () => {
+  for (const [type, want] of [['Standard', 'Standard'], ['Advanced', 'Advanced'], ['Advanced (GrandFathered)', 'Advanced'], ['', 'Standard']]) {
+    const [row] = P.cotermRows(company(['autoelevate'], { ae_agent_commit: '150', ae_sku_type: type }), { dealFamily: 'optimize365' });
+    assert.equal(row.featureType, want, type);
+    assert.equal(row.edition, want === 'Advanced' ? 'advanced' : 'standard');
+    assert.equal(row.quantity, 150);
+  }
+  // 150 agents = the 100-agent plan + 50 additional agents.
+  const [row] = P.cotermRows(company(['autoelevate'], { ae_agent_commit: '150', ae_sku_type: 'Advanced (GrandFathered)' }), { dealFamily: 'optimize365' });
+  assert.match(row.cotermNote, /AE Agent Commit 150 · AE Feature Type Advanced \(GrandFathered\) → Advanced SKUs/);
+  const q = P.buildQuote(Object.assign({}, MSP, { activeProducts: ['autoelevate'], dealFamily: 'optimize365' }), [Object.assign({ uid: 1 }, row)], {}, COTERM_CATALOG);
+  assert.deepEqual(q.lines.map((l) => [l.sku, l.quantity, l.lineType]), [['Advanced-AE-100-Agent-Commit-2026', 1, 'coterm'], ['Advanced-AE-100-Agent-Commit-Additional-Agents+2026', 50, 'coterm']]);
+  assert.equal(q.aeFeature.type, 'Advanced');
+});
+
+test('co-term: the rep can still discount it, and the discount counts toward approval', () => {
+  const [row] = P.cotermRows(company(['autoelevate'], { ae_agent_commit: '1250', ae_sku_type: 'Standard' }), { dealFamily: 'dns' });
+  const q = P.buildQuote(Object.assign({}, MSP, { activeProducts: ['autoelevate'], dealFamily: 'dns' }), [Object.assign({ uid: 1 }, row, { discountPct: 30 })], {}, CATALOG);
+  assert.ok(q.lines.every((l) => l.discountPct === 30 && l.lineType === 'coterm'));
+  assert.equal(q.approval.required, true);
+});
+
+test('co-term: Password Manager rounds up to whole 2026 User Packs; DNS adds additional devices', () => {
+  const rows = P.cotermRows(company(['password', 'dns'], { pb_user_commit: '200', dns_device_commit: '600' }), { dealFamily: 'autoelevate' });
+  const q = P.buildQuote(Object.assign({}, MSP, { activeProducts: ['password', 'dns'], dealFamily: 'autoelevate' }), rows.map((r, i) => Object.assign({ uid: i + 1 }, r)), {}, CATALOG);
+  const lines = q.lines.map((l) => [l.sku, l.quantity]);
+  assert.deepEqual(lines, [['PB-100-User-Pack-2026', 2], ['DNS-500-Device-Commit-2026', 1], ['DNS-500-Device-Commit-Additional-Devices+2026', 100]]);
+  assert.equal(rows[0].edition, 'pack');
+});
+
+test('co-term: a blank commit asks the rep for the count instead of guessing', () => {
+  const [row] = P.cotermRows(company(['password'], { pb_user_commit: null }), { dealFamily: 'autoelevate' });
+  assert.equal(row.quantity, 0);
+  assert.match(row.cotermNote, /PM User Commit blank/);
+  const r = P.priceProduct(Object.assign({ uid: 1 }, row), MSP, CATALOG);
+  assert.match(r.error, /no users commit for Password Manager.*ask Ops/);
+});
+
+test('co-term: Timus re-signs the Timus Committed MRR as the monthly minimum; rates are optional and not written', () => {
+  const [row] = P.cotermRows(company(['timus'], { timus_committed_mrr: '612.5', timus_user_commit: '90' }), { dealFamily: 'autoelevate' });
+  assert.equal(row.minimum, 612.5);
+  const setup = Object.assign({}, MSP, { activeProducts: ['timus'], dealFamily: 'autoelevate' });
+  const q = P.buildQuote(setup, [Object.assign({ uid: 1 }, row)], {}, CATALOG);
+  assert.deepEqual(q.blocking, []);
+  assert.deepEqual(q.lines.map((l) => [l.sku, l.unitPrice, l.lineType]), [['Timus SASE - Monthly Minimum', 612.5, 'coterm']]);
+  assert.match(q.rows[0].priced.hint, /Co-term at a \$612\.50\/mo monthly minimum/);
+  const w = P.dealWrites(q, { setup });
+  assert.equal(w.properties.timus_price_per_user, undefined); // the Timus deal fields are left alone
+  assert.equal(w.properties.new_minimum_commitment_amount, undefined);
+  // No Committed MRR on the company: the rep enters the minimum (the SKU price is never assumed).
+  const [blank] = P.cotermRows(company(['timus'], { timus_committed_mrr: '' }), { dealFamily: 'autoelevate' });
+  assert.match(P.priceProduct(Object.assign({ uid: 1 }, blank), MSP, CATALOG).error, /Timus Committed MRR is blank/);
+  assert.equal(P.priceProduct(Object.assign({ uid: 1 }, blank, { minimum: 300 }), MSP, CATALOG).error, '');
+});
+
+test('co-term: Optimize365 per tenant when the company has a tenant commit (MSP), else per user', () => {
+  const opt = (commits, segment = 'MSP') => P.cotermRows(company(['optimize365'], commits), { dealFamily: 'autoelevate', segment })[0];
+  assert.deepEqual([opt({ optimize_user_commit: '40' }).edition, opt({ optimize_user_commit: '40' }).quantity], ['standard', 40]);
+  const t = opt({ optimize_user_commit: '40', optimize_tenant_commit: '7' });
+  assert.deepEqual([t.edition, t.quantity, t.cotermCounts], ['tenant', 7, { users: 40, tenants: 7 }]);
+  assert.match(t.cotermNote, /Optimize Tenant Commit 7 \(Optimize User Commit 40 not used\)/);
+  assert.deepEqual([opt({ optimize_tenant_commit: '7' }, 'ENT').edition, opt({ optimize_tenant_commit: '7' }, 'ENT').quantity], ['standard', 0]); // per tenant is MSP only
+});
+
+test('co-term: the company properties it reads', () => {
+  assert.deepEqual(P.cotermCompanyProperties(), ['ae_agent_commit', 'ae_sku_type', 'pb_user_commit', 'dns_device_commit', 'timus_committed_mrr', 'timus_user_commit', 'optimize_user_commit', 'optimize_tenant_commit']);
 });

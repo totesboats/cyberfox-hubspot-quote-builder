@@ -348,16 +348,27 @@ test('line type: Upsell for a product the company is Active on, New otherwise, f
   assert.ok(opt.length === 1 && opt.every((l) => l.qb_family === 'optimize365' && l.qb_line_type === 'New'));
 });
 
-test('line type: a Co-term row writes coterm on every line, ramp lines included', async () => {
+test('line type: a Co-term row writes coterm on every line and never ramps', async () => {
   const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active' } });
   const res = await submitFn().main({
+    // An older saved quote may still have Ramp ticked on a co-term row: it's ignored.
     parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: true, coterm: true }] }),
     accountId: 1,
   });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
   const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
-  assert.equal(lines.length, 4);
-  assert.ok(lines.every((l) => l.qb_line_type === 'coterm' && l.qb_family === 'autoelevate'));
+  assert.equal(lines.length, 2); // 1,000 plan + 250 additional, no RAMP lines
+  assert.ok(lines.every((l) => l.qb_line_type === 'coterm' && l.qb_family === 'autoelevate' && l.ramp === 'false'));
+});
+
+test('the catalog loads the company commits that size the co-term rows', async () => {
+  const { store } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', ae_agent_commit: '150', ae_sku_type: 'Advanced (GrandFathered)' } });
+  const res = await catalogFn().main({ parameters: { dealId: '123' }, accountId: 1 });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  for (const p of ['ae_agent_commit', 'ae_sku_type', 'pb_user_commit', 'dns_device_commit', 'timus_committed_mrr', 'optimize_user_commit', 'optimize_tenant_commit']) assert.ok(store.companyRead.properties.includes(p), p);
+  assert.equal(res.deal.company.commits.ae_agent_commit, '150');
+  assert.equal(res.deal.company.commits.ae_sku_type, 'Advanced (GrandFathered)');
+  assert.equal(res.deal.company.commits.dns_device_commit, null);
 });
 
 test("line type: no Co-term on the deal's own product (an AutoElevate line on an AutoElevate Upsell deal is the upsell)", async () => {
