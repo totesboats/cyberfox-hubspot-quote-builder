@@ -8,6 +8,8 @@ import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
 function StandardFields({ input, priced, family, segment, onUpdate }) {
+  // Co-term rows come from the company record: only the discount can change.
+  const locked = !!input.coterm;
   const per = priced.annual ? '/yr' : '/mo';
   const units = unitsFor(input.family, input.edition);
   const editions = editionsFor(input.family, segment);
@@ -25,6 +27,7 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
           name={`feature-${input.uid}`}
           tooltip={`Priced on ${(AE_FEATURE_TYPES.find((f) => f.value === input.featureType) || AE_FEATURE_TYPES[0]).edition} SKUs; sets the quote's feature wording.`}
           options={AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))}
+          readOnly={locked}
           value={input.featureType || 'Standard'}
           onChange={(v) => onUpdate({ featureType: String(v), tier: '' })}
         />
@@ -33,16 +36,18 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
           label={family.pickerLabel || 'Edition'}
           name={`edition-${input.uid}`}
           options={editions.map((e) => ({ label: e.label, value: e.value }))}
+          readOnly={locked}
           value={input.edition}
           onChange={(v) => onUpdate({ edition: String(v), tier: '' })}
         />
       )}
-      <NumberInput label={`Total ${units.unit}`} name={`qty-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
+      <NumberInput label={`Total ${units.unit}`} name={`qty-${input.uid}`} min={0} precision={0} readOnly={locked} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
       <Select
         label="Commit tier"
         name={`tier-${input.uid}`}
         tooltip={`Prices are list ${per}. Default is the highest tier at or below the count, plus additional ${units.unit}. Pick a bigger tier to round up.`}
         options={tierOptions}
+        readOnly={locked}
         value={toSelect(input.tier)}
         onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
       />
@@ -53,6 +58,7 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
           tooltip={`Optional Optimize TDR add-on, volume priced per user per month (every user at the rate of the tier the total falls into): ${tdrTiers}. 0 = no TDR.`}
           min={0}
           precision={0}
+          readOnly={locked}
           value={Number(input.tdrUsers) || 0}
           onChange={(v) => onUpdate({ tdrUsers: v })}
         />
@@ -91,6 +97,8 @@ function OneOffFields({ input, priced, oneOffs, onUpdate }) {
 
 function TimusFields({ input, priced, onUpdate }) {
   const t = priced.timus || { satgatTiers: [] };
+  // A Timus co-term re-signs the company's Timus Committed MRR: only the discount can change.
+  const locked = !!input.coterm;
   const satgat = input.agreement === 'satgat';
   const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
   return (
@@ -104,6 +112,7 @@ function TimusFields({ input, priced, onUpdate }) {
           { label: 'Satisfaction guarantee (SATGAT)', value: 'satgat' },
         ]}
         value={input.agreement || 'standard'}
+        readOnly={locked}
         onChange={(v) => onUpdate({ agreement: String(v) })}
       />
       {satgat ? (
@@ -118,15 +127,17 @@ function TimusFields({ input, priced, onUpdate }) {
         <NumberInput
           label="Monthly minimum"
           name={`min-${input.uid}`}
-          tooltip="Leave blank for the Monthly Minimum SKU price."
+          tooltip={locked ? "The company's Timus Committed MRR." : 'Leave blank for the Monthly Minimum SKU price.'}
           min={0}
           precision={2}
+          readOnly={locked}
           value={num(input.minimum)}
           onChange={(v) => onUpdate({ minimum: v })}
         />
       )}
       <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
     </Row>
+    {!locked && (
     <Row>
       <NumberInput label="Users" name={`users-${input.uid}`} min={0} precision={0} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
       <NumberInput label="Gateways" name={`gw-${input.uid}`} min={0} precision={0} value={Number(input.gateways) || 0} onChange={(v) => onUpdate({ gateways: v })} />
@@ -151,6 +162,7 @@ function TimusFields({ input, priced, onUpdate }) {
         onChange={(v) => onUpdate({ gatewayRate: v })}
       />
     </Row>
+    )}
     </Flex>
   );
 }
@@ -190,7 +202,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
 
         {input.coterm && (
           <Text variant="microcopy">
-            {`Added automatically: the company is Active on ${family.label}, so it's co-termed with this deal. From the company record: ${input.cotermNote || 'its current commit'}. Change the count or plan if the record is out of date; the discount is yours to set.`}
+            {`Added automatically: the company is Active on ${family.label} and pays Month-to-Month, so it's co-termed with this deal. From the company record: ${input.cotermNote || 'its current commit'}. Only the discount can change here; if the record is out of date, ask Ops to fix the company and refresh the page.`}
           </Text>
         )}
 

@@ -781,12 +781,12 @@ test('co-term: Password Manager rounds up to whole 2026 User Packs; DNS adds add
   assert.equal(rows[0].edition, 'pack');
 });
 
-test('co-term: a blank commit asks the rep for the count instead of guessing', () => {
+test('co-term: a blank commit blocks the row until Ops fixes the company (nothing is guessed)', () => {
   const [row] = P.cotermRows(company(['password'], { pb_user_commit: null }), { dealFamily: 'autoelevate' });
   assert.equal(row.quantity, 0);
   assert.match(row.cotermNote, /PM User Commit blank/);
   const r = P.priceProduct(Object.assign({ uid: 1 }, row), MSP, CATALOG);
-  assert.match(r.error, /no users commit for Password Manager.*ask Ops/);
+  assert.match(r.error, /no users commit for Password Manager, so it can't be co-termed yet\. Ask Ops/);
 });
 
 test('co-term: Timus re-signs the Timus Committed MRR as the monthly minimum; rates are optional and not written', () => {
@@ -816,7 +816,34 @@ test('co-term: Optimize365 per tenant when the company has a tenant commit (MSP)
 });
 
 test('co-term: the company properties it reads', () => {
-  assert.deepEqual(P.cotermCompanyProperties(), ['ae_agent_commit', 'ae_sku_type', 'ae_payment_terms', 'pb_user_commit', 'pb_payment_terms', 'dns_device_commit', 'dns_payment_terms', 'timus_committed_mrr', 'timus_user_commit', 'timus_payment_terms', 'optimize_user_commit', 'optimize_tenant_commit', 'optimize_payment_terms']);
+  const props = P.cotermCompanyProperties();
+  for (const p of ['ae_agent_commit', 'ae_sku_type', 'ae_payment_terms', 'ae_current_discount__percentage____number_based', 'ae_initial_discount____property_', 'pb_user_commit', 'pb_current_discount__percentage____number_based', 'pb_initial_discount____property_', 'dns_device_commit', 'dns_current_discount__percentage____number_based', 'dns_initial_discount____property_', 'timus_committed_mrr', 'timus_current_discount__property', 'timus_initial_discount__property', 'optimize_user_commit', 'optimize_tenant_commit', 'optimize_current_discount__property', 'optimize_initial_discount__property']) assert.ok(props.includes(p), p);
+  assert.ok(!props.includes('pack'));
+});
+
+test('co-term: the discount starts at Current Discount, else Initial Discount, else 0 (fractions → percent)', () => {
+  const ae1 = (commits) => P.cotermRows(company(['autoelevate'], Object.assign({ ae_agent_commit: '1250' }, commits)), { dealFamily: 'dns' })[0];
+  assert.equal(ae1({ ae_current_discount__percentage____number_based: '0.10', ae_initial_discount____property_: '0.20' }).discountPct, 10);
+  assert.equal(ae1({ ae_current_discount__percentage____number_based: '0', ae_initial_discount____property_: '0.20' }).discountPct, 0); // 0 is known
+  assert.equal(ae1({ ae_current_discount__percentage____number_based: null, ae_initial_discount____property_: '0.20' }).discountPct, 20);
+  assert.equal(ae1({ ae_current_discount__percentage____number_based: '', ae_initial_discount____property_: '0.375' }).discountPct, 37.5);
+  assert.equal(ae1({}).discountPct, 0);
+  assert.equal(ae1({ ae_current_discount__percentage____number_based: '15' }).discountPct, 15); // already a percent
+  assert.match(ae1({ ae_initial_discount____property_: '0.2' }).cotermNote, /AE Initial Discount 20%$/);
+  assert.match(ae1({ ae_current_discount__percentage____number_based: '0.1' }).cotermNote, /AE Current Discount 10%$/);
+  const timus = P.cotermRows(company(['timus'], { timus_committed_mrr: '500', timus_current_discount__property: '0.05' }), { dealFamily: 'dns' })[0];
+  assert.equal(timus.discountPct, 5);
+});
+
+test('co-term: saved or submitted co-term rows are reset to the company record, keeping only the discount', () => {
+  const seeds = P.cotermRows(company(['autoelevate', 'dns'], { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600' }), { dealFamily: 'optimize365' });
+  const saved = [
+    { uid: 4, family: 'autoelevate', coterm: true, edition: 'advanced', featureType: 'Advanced', quantity: 9999, discountPct: 22 },
+    { uid: 5, family: 'password', coterm: true, edition: 'pack', quantity: 200, discountPct: 5 }, // can't co-term any more
+    { uid: 6, family: 'optimize365', edition: 'standard', quantity: 40, discountPct: 0 },
+  ];
+  const out = P.refreshCoterms(saved, seeds);
+  assert.deepEqual(out.map((p) => [p.uid, p.family, !!p.coterm, p.quantity, p.featureType || '', p.discountPct]), [[4, 'autoelevate', true, 1250, 'Standard', 22], [5, 'password', false, 200, '', 5], [6, 'optimize365', false, 40, '', 0]]);
 });
 
 test('co-term: only products paid Month-to-Month; Annual Payments, Quarterly, One Time or blank terms are an Upsell', () => {

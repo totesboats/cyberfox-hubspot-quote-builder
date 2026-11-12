@@ -192,16 +192,46 @@ const COMPANY_PRODUCT_STATUS = {
 
 // Automatic co-term (Nov 2026). When the builder opens, every product the company is Active on (other
 // than the deal's own product) gets a Co-term row sized from the company's current commit, in the
-// segment picked on Setup: 150 agents = the 100-agent plan + 50 additional agents. Reps can change the
-// count, plan and discount as a fail-safe, but can't remove the row: every active product is co-termed.
-// Co-term rows don't ramp. Only a product paid Month-to-Month is co-termed (its Payment Terms on the
+// segment picked on Setup: 150 agents = the 100-agent plan + 50 additional agents. The count and plan come
+// from the company record and are locked; the rep can only change the discount, which starts at the
+// company's Current Discount (Initial Discount when Current is unknown; both stored as fractions, 0.1 = 10%).
+// The row can't be removed (every active product is co-termed) and doesn't ramp. Only a product paid Month-to-Month is co-termed (its Payment Terms on the
 // company): Annual Payments, Quarterly, One Time or blank never co-term, so that product is an Upsell.
 const COTERM_COMMITS = {
-  autoelevate: { quantity: 'ae_agent_commit', featureType: 'ae_sku_type', paymentTerms: 'ae_payment_terms' },
-  password: { quantity: 'pb_user_commit', edition: 'pack', paymentTerms: 'pb_payment_terms' }, // 2026 User Packs: round up to whole packs
-  dns: { quantity: 'dns_device_commit', paymentTerms: 'dns_payment_terms' },
-  timus: { minimum: 'timus_committed_mrr', users: 'timus_user_commit', paymentTerms: 'timus_payment_terms' }, // a spend commit, not a user commit
-  optimize365: { quantity: 'optimize_user_commit', tenants: 'optimize_tenant_commit', paymentTerms: 'optimize_payment_terms' },
+  autoelevate: {
+    quantity: 'ae_agent_commit',
+    featureType: 'ae_sku_type',
+    paymentTerms: 'ae_payment_terms',
+    currentDiscount: 'ae_current_discount__percentage____number_based',
+    initialDiscount: 'ae_initial_discount____property_',
+  },
+  password: {
+    quantity: 'pb_user_commit',
+    edition: 'pack', // 2026 User Packs: round up to whole packs
+    paymentTerms: 'pb_payment_terms',
+    currentDiscount: 'pb_current_discount__percentage____number_based',
+    initialDiscount: 'pb_initial_discount____property_',
+  },
+  dns: {
+    quantity: 'dns_device_commit',
+    paymentTerms: 'dns_payment_terms',
+    currentDiscount: 'dns_current_discount__percentage____number_based',
+    initialDiscount: 'dns_initial_discount____property_',
+  },
+  timus: {
+    minimum: 'timus_committed_mrr', // a spend commit, not a user commit
+    users: 'timus_user_commit',
+    paymentTerms: 'timus_payment_terms',
+    currentDiscount: 'timus_current_discount__property',
+    initialDiscount: 'timus_initial_discount__property',
+  },
+  optimize365: {
+    quantity: 'optimize_user_commit',
+    tenants: 'optimize_tenant_commit',
+    paymentTerms: 'optimize_payment_terms',
+    currentDiscount: 'optimize_current_discount__property',
+    initialDiscount: 'optimize_initial_discount__property',
+  },
 };
 // The only company Payment Terms value that co-terms.
 const COTERM_PAYMENT_TERMS = ['Month-to-Month'];
@@ -223,6 +253,16 @@ const COTERM_PROPERTY_LABELS = {
   dns_payment_terms: 'DNS Payment Terms',
   timus_payment_terms: 'Timus Payment Terms',
   optimize_payment_terms: 'Optimize Payment Terms',
+  ae_current_discount__percentage____number_based: 'AE Current Discount',
+  ae_initial_discount____property_: 'AE Initial Discount',
+  pb_current_discount__percentage____number_based: 'PM Current Discount',
+  pb_initial_discount____property_: 'PM Initial Discount',
+  dns_current_discount__percentage____number_based: 'DNS Current Discount',
+  dns_initial_discount____property_: 'DNS Initial Discount',
+  timus_current_discount__property: 'Timus Current Discount',
+  timus_initial_discount__property: 'Timus Initial Discount',
+  optimize_current_discount__property: 'Optimize Current Discount',
+  optimize_initial_discount__property: 'Optimize Initial Discount',
 };
 
 // Multiple quotes per deal ("options"). Each builder quote stores its run id and the builder

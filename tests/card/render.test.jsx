@@ -585,7 +585,7 @@ test('co-term: every active product is added automatically from the company comm
   const r = mk();
   const calls = [];
   // An Optimize deal for a partner Active on AutoElevate and DNS Filtering.
-  const res = withCompany({ activeProducts: ['autoelevate', 'dns', 'password'], cotermProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600', pb_user_commit: '200' } }, { pipeline: '917642399' });
+  const res = withCompany({ activeProducts: ['autoelevate', 'dns', 'password'], cotermProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600', pb_user_commit: '200', dns_initial_discount____property_: '0.2' } }, { pipeline: '917642399' });
   r.mocks.runServerlessFunction.willCall(async (params) => {
     calls.push(params);
     return { status: 'SUCCESS', response: params.name === 'quote_builder_catalog' ? res : { ok: false, errors: ['stop'] } };
@@ -602,9 +602,13 @@ test('co-term: every active product is added automatically from the company comm
   assert.equal(r.maybeFind(Checkbox, { name: 'coterm-1' }), null);
   assert.equal(r.maybeFind(Checkbox, { name: 'ramp-1' }), null);
   assert.equal(r.findAll(Button).filter((b) => /Remove/.test(text(b))).length, 0);
-  // The rep can still change the count and discount as a fail-safe.
+  // Only the discount can change: count, plan and feature type are read-only. DNS starts at the company's Initial Discount.
+  assert.ok(['qty-1', 'qty-2'].every((n) => r.find(NumberInput, { name: n }).props.readOnly === true));
+  assert.ok(['feature-1', 'tier-1', 'tier-2'].every((n) => r.find(Select, { name: n }).props.readOnly === true));
+  assert.equal(r.find(NumberInput, { name: 'disc-1' }).props.readOnly, undefined);
+  assert.equal(r.find(NumberInput, { name: 'disc-2' }).props.value, 20);
+  assert.match(text(r.getRootNode()), /DNS Device Commit 600 · DNS Initial Discount 20%/);
   r.find(NumberInput, { name: 'disc-1' }).trigger('onChange', 15);
-  r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 700);
   // Password Manager is Active but not paid Month-to-Month: not co-termed, and added by hand it's an Upsell.
   r.find(Button, (n) => /\+ Password Manager/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'qty-3' })));
@@ -615,7 +619,7 @@ test('co-term: every active product is added automatically from the company comm
   r.find(Button, (n) => /Create quote/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(calls.some((c) => c.name === 'quote_builder_submit')));
   const sent = calls.find((c) => c.name === 'quote_builder_submit').parameters.products;
-  assert.deepEqual(sent.map((p) => [p.family, !!p.coterm, p.quantity, p.discountPct]), [['autoelevate', true, 1250, 15], ['dns', true, 700, 0], ['password', false, 100, 0]]);
+  assert.deepEqual(sent.map((p) => [p.family, !!p.coterm, p.quantity, p.discountPct]), [['autoelevate', true, 1250, 15], ['dns', true, 600, 20], ['password', false, 100, 0]]);
 });
 
 test('co-term: a company with no active products starts empty', async () => {

@@ -349,7 +349,7 @@ test('line type: Upsell for a product the company is Active on, New otherwise, f
 });
 
 test('line type: a Co-term row writes coterm on every line and never ramps', async () => {
-  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', ae_payment_terms: 'Month-to-Month' } });
+  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', ae_payment_terms: 'Month-to-Month', ae_agent_commit: '1250', ae_sku_type: 'Standard' } });
   const res = await submitFn().main({
     // An older saved quote may still have Ramp ticked on a co-term row: it's ignored.
     parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'standard', quantity: 1250, tier: '', discountPct: 0, ramp: true, coterm: true }] }),
@@ -359,6 +359,18 @@ test('line type: a Co-term row writes coterm on every line and never ramps', asy
   const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
   assert.equal(lines.length, 2); // 1,000 plan + 250 additional, no RAMP lines
   assert.ok(lines.every((l) => l.qb_line_type === 'coterm' && l.qb_family === 'autoelevate' && l.ramp === 'false'));
+});
+
+test('co-term rows are reset to the company record on submit; only the discount is the rep\'s', async () => {
+  const { log } = fakeHubSpot({ companyProps: { ae_product: 'AE Active', ae_payment_terms: 'Month-to-Month', ae_agent_commit: '1250', ae_sku_type: 'Standard', ae_current_discount__percentage____number_based: '0.10' } });
+  const res = await submitFn().main({
+    // A tampered card sends 5,000 agents on Advanced: the server uses the company's 1,250 Standard.
+    parameters: payload({ products: [{ uid: 1, family: 'autoelevate', edition: 'advanced', featureType: 'Advanced', quantity: 5000, tier: '', discountPct: 12, ramp: false, coterm: true }], ramp: { enabled: false } }),
+    accountId: 1,
+  });
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const lines = log.find((l) => l.path === '/crm/objects/2026-09/line_items/batch/create').body.inputs.map((i) => i.properties);
+  assert.deepEqual(lines.map((l) => [l.hs_sku, l.quantity, l.hs_discount_percentage]), [['Standard-AE-1000-Agent-Commit-2026', '1', '12'], ['Standard-AE-1000-Agent-Commit-Additional-Agents+2026', '250', '12']]);
 });
 
 test('the catalog loads the company commits that size the co-term rows', async () => {

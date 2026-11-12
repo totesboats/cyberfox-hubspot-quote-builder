@@ -9,7 +9,7 @@
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
 const { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
-const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
+const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, cotermRows, refreshCoterms, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
 const ASSOC = {
@@ -63,6 +63,8 @@ exports.main = async (context) => {
     cotermProducts: deal.company ? deal.company.cotermProducts || [] : null,
     dealFamily: pipelineFamily(deal.properties.pipeline),
   });
+  // Co-term rows come from the company record (count, plan, minimum); only the rep's discount is kept.
+  payload.products = refreshCoterms(payload.products, cotermRows(deal.company, { dealFamily: setup.dealFamily, segment: payload.setup.segment }));
   // Priced in the deal's currency (CAD deals use each product's CAD price).
   const currency = quoteCurrency(deal.properties.deal_currency_code);
   const catalog = indexCatalog(products, currency);

@@ -170,13 +170,42 @@ var require_config = __commonJS({
       optimize365: { property: "optimize_product", active: "Optimize Active" }
     };
     var COTERM_COMMITS = {
-      autoelevate: { quantity: "ae_agent_commit", featureType: "ae_sku_type", paymentTerms: "ae_payment_terms" },
-      password: { quantity: "pb_user_commit", edition: "pack", paymentTerms: "pb_payment_terms" },
-      // 2026 User Packs: round up to whole packs
-      dns: { quantity: "dns_device_commit", paymentTerms: "dns_payment_terms" },
-      timus: { minimum: "timus_committed_mrr", users: "timus_user_commit", paymentTerms: "timus_payment_terms" },
-      // a spend commit, not a user commit
-      optimize365: { quantity: "optimize_user_commit", tenants: "optimize_tenant_commit", paymentTerms: "optimize_payment_terms" }
+      autoelevate: {
+        quantity: "ae_agent_commit",
+        featureType: "ae_sku_type",
+        paymentTerms: "ae_payment_terms",
+        currentDiscount: "ae_current_discount__percentage____number_based",
+        initialDiscount: "ae_initial_discount____property_"
+      },
+      password: {
+        quantity: "pb_user_commit",
+        edition: "pack",
+        // 2026 User Packs: round up to whole packs
+        paymentTerms: "pb_payment_terms",
+        currentDiscount: "pb_current_discount__percentage____number_based",
+        initialDiscount: "pb_initial_discount____property_"
+      },
+      dns: {
+        quantity: "dns_device_commit",
+        paymentTerms: "dns_payment_terms",
+        currentDiscount: "dns_current_discount__percentage____number_based",
+        initialDiscount: "dns_initial_discount____property_"
+      },
+      timus: {
+        minimum: "timus_committed_mrr",
+        // a spend commit, not a user commit
+        users: "timus_user_commit",
+        paymentTerms: "timus_payment_terms",
+        currentDiscount: "timus_current_discount__property",
+        initialDiscount: "timus_initial_discount__property"
+      },
+      optimize365: {
+        quantity: "optimize_user_commit",
+        tenants: "optimize_tenant_commit",
+        paymentTerms: "optimize_payment_terms",
+        currentDiscount: "optimize_current_discount__property",
+        initialDiscount: "optimize_initial_discount__property"
+      }
     };
     var COTERM_PAYMENT_TERMS = ["Month-to-Month"];
     var COTERM_AE_FEATURE = { Standard: "Standard", Advanced: "Advanced", "Advanced (GrandFathered)": "Advanced" };
@@ -193,7 +222,17 @@ var require_config = __commonJS({
       pb_payment_terms: "PM Payment Terms",
       dns_payment_terms: "DNS Payment Terms",
       timus_payment_terms: "Timus Payment Terms",
-      optimize_payment_terms: "Optimize Payment Terms"
+      optimize_payment_terms: "Optimize Payment Terms",
+      ae_current_discount__percentage____number_based: "AE Current Discount",
+      ae_initial_discount____property_: "AE Initial Discount",
+      pb_current_discount__percentage____number_based: "PM Current Discount",
+      pb_initial_discount____property_: "PM Initial Discount",
+      dns_current_discount__percentage____number_based: "DNS Current Discount",
+      dns_initial_discount____property_: "DNS Initial Discount",
+      timus_current_discount__property: "Timus Current Discount",
+      timus_initial_discount__property: "Timus Initial Discount",
+      optimize_current_discount__property: "Optimize Current Discount",
+      optimize_initial_discount__property: "Optimize Initial Discount"
     };
     var QUOTE_SESSION_PROPERTY = "qb_session_id";
     var QUOTE_STATE_PROPERTY = "qb_builder_state";
@@ -565,7 +604,7 @@ var require_pricing = __commonJS({
         );
       }
       if (quantity === 0) {
-        result.error = input.coterm ? `The company has no ${units.unit} commit for ${family.label}. Enter the ${units.unit} to co-term, and ask Ops to update the company record.` : `Enter how many ${units.unit} to quote.`;
+        result.error = input.coterm ? `The company has no ${units.unit} commit for ${family.label}, so it can't be co-termed yet. Ask Ops to fill it in on the company, then refresh the page.` : `Enter how many ${units.unit} to quote.`;
       } else if (chosen !== best && chosen.cost > cheapest.cost + 1e-9) {
         result.hint = `The ${formatInt(cheapest.tier)} tier covers ${formatInt(quantity)} ${units.unit} for ${formatMoney(cheapest.cost)}${per}, ${formatMoney(chosen.cost - cheapest.cost)}${per} less than the tier selected.`;
         result.hintLevel = "warning";
@@ -673,7 +712,8 @@ var require_pricing = __commonJS({
       const shown = (prop) => count(prop) ? formatInt(count(prop)) : "blank";
       return FAMILY_ORDER.filter((f) => COTERM_COMMITS[f] && canCoterm(f, active, dealFamily)).map((family) => {
         const src = COTERM_COMMITS[family];
-        const row = { family, coterm: true, edition: FAMILIES[family].editions[0].value, quantity: 0, tier: "", discountPct: 0, ramp: false };
+        const discount = cotermDiscount(c, src);
+        const row = { family, coterm: true, edition: FAMILIES[family].editions[0].value, quantity: 0, tier: "", discountPct: discount.pct, ramp: false };
         if (family === "autoelevate") {
           const companyType = c[src.featureType] || "";
           row.featureType = COTERM_AE_FEATURE[companyType] || "Standard";
@@ -698,7 +738,27 @@ var require_pricing = __commonJS({
           row.quantity = count(src.quantity);
           row.cotermNote = `${label(src.quantity)} ${shown(src.quantity)}`;
         }
+        if (discount.from) row.cotermNote += ` \xB7 ${label(discount.from)} ${formatPct(discount.pct)}`;
         return row;
+      });
+    }
+    var formatPct = (n) => `${Number.isInteger(n) ? n : n.toFixed(2).replace(/0$/, "")}%`;
+    function cotermDiscount(c, src) {
+      for (const prop of [src.currentDiscount, src.initialDiscount]) {
+        const raw = c[prop];
+        if (raw === null || raw === void 0 || String(raw).trim() === "") continue;
+        const n = toNum(raw, NaN);
+        if (!Number.isFinite(n)) continue;
+        return { pct: clamp(round2(n <= 1 ? n * 100 : n), 0, 100), from: prop };
+      }
+      return { pct: 0, from: null };
+    }
+    function refreshCoterms(products, seeds) {
+      return (products || []).map((p) => {
+        if (!p || !p.coterm) return p;
+        const seed = (seeds || []).find((s) => s.family === p.family);
+        if (!seed) return Object.assign({}, p, { coterm: false });
+        return Object.assign({}, seed, { uid: p.uid, discountPct: p.discountPct });
       });
     }
     function lineTypeLabel(value) {
@@ -747,7 +807,7 @@ var require_pricing = __commonJS({
         }
         const repMinimum = entered(input.minimum) && toNum(input.minimum) > 0;
         if (input.coterm && !repMinimum) {
-          result.error = "Timus Committed MRR is blank on the company. Enter the monthly minimum to co-term, and ask Ops to update the company record.";
+          result.error = "Timus Committed MRR is blank on the company, so Timus can't be co-termed yet. Ask Ops to fill it in, then refresh the page.";
           return result;
         }
         if (!repMinimum && product.missingPrice) {
@@ -1182,7 +1242,7 @@ var require_pricing = __commonJS({
       if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], "ramp");
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 

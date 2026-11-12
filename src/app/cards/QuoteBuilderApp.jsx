@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, cotermRows, dealWrites, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, cotermRows, dealWrites, refreshCoterms, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
 import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -88,10 +88,11 @@ function withOwnRamps(products, savedRamp) {
 
 // Automatic co-term: add a Co-term row for each product the company is Active on (and pays Month-to-Month)
 // that the quote doesn't have yet (a one-off SKU counts as its product). `coterms` come from cotermRows()
-// at load. A saved row marked co-term on a product that can no longer co-term becomes a normal row.
+// at load. Saved co-term rows are reset to the company record (keeping the rep's discount); one on a product
+// that can no longer co-term becomes a normal row.
 export function withCoterms(products, coterms, nextUid) {
   const list = coterms || [];
-  const kept = products.map((p) => (p.coterm && !list.some((c) => c.family === p.family) ? Object.assign({}, p, { coterm: false }) : p));
+  const kept = refreshCoterms(products, list);
   const have = new Set(kept.map((p) => (p.family === 'oneoff' ? p.baseFamily : p.family)));
   const add = list.filter((c) => !have.has(c.family)).map((c, i) => Object.assign({}, c, { uid: nextUid + i }));
   return { products: kept.concat(add), nextUid: nextUid + add.length };

@@ -331,7 +331,7 @@ function priceProduct(input, setup, catalog) {
 
   if (quantity === 0) {
     result.error = input.coterm
-      ? `The company has no ${units.unit} commit for ${family.label}. Enter the ${units.unit} to co-term, and ask Ops to update the company record.`
+      ? `The company has no ${units.unit} commit for ${family.label}, so it can't be co-termed yet. Ask Ops to fill it in on the company, then refresh the page.`
       : `Enter how many ${units.unit} to quote.`;
   } else if (chosen !== best && chosen.cost > cheapest.cost + 1e-9) {
     result.hint = `The ${formatInt(cheapest.tier)} tier covers ${formatInt(quantity)} ${units.unit} for ${formatMoney(cheapest.cost)}${per}, ${formatMoney(chosen.cost - cheapest.cost)}${per} less than the tier selected.`;
@@ -481,7 +481,8 @@ function cotermRows(company, { dealFamily = null, segment = 'MSP' } = {}) {
   const shown = (prop) => (count(prop) ? formatInt(count(prop)) : 'blank');
   return FAMILY_ORDER.filter((f) => COTERM_COMMITS[f] && canCoterm(f, active, dealFamily)).map((family) => {
     const src = COTERM_COMMITS[family];
-    const row = { family, coterm: true, edition: FAMILIES[family].editions[0].value, quantity: 0, tier: '', discountPct: 0, ramp: false };
+    const discount = cotermDiscount(c, src);
+    const row = { family, coterm: true, edition: FAMILIES[family].editions[0].value, quantity: 0, tier: '', discountPct: discount.pct, ramp: false };
     if (family === 'autoelevate') {
       const companyType = c[src.featureType] || '';
       row.featureType = COTERM_AE_FEATURE[companyType] || 'Standard';
@@ -507,7 +508,36 @@ function cotermRows(company, { dealFamily = null, segment = 'MSP' } = {}) {
       row.quantity = count(src.quantity);
       row.cotermNote = `${label(src.quantity)} ${shown(src.quantity)}`;
     }
+    if (discount.from) row.cotermNote += ` · ${label(discount.from)} ${formatPct(discount.pct)}`;
     return row;
+  });
+}
+
+const formatPct = (n) => `${Number.isInteger(n) ? n : n.toFixed(2).replace(/0$/, '')}%`;
+
+// The discount a co-term starts at: the company's Current Discount, else its Initial Discount, else 0.
+// HubSpot stores them as fractions (0.1 = 10%); a value above 1 is read as a percent already.
+function cotermDiscount(c, src) {
+  for (const prop of [src.currentDiscount, src.initialDiscount]) {
+    const raw = c[prop];
+    if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+    const n = toNum(raw, NaN);
+    if (!Number.isFinite(n)) continue;
+    return { pct: clamp(round2(n <= 1 ? n * 100 : n), 0, 100), from: prop };
+  }
+  return { pct: 0, from: null };
+}
+
+// Co-term rows come from the company record, so a saved or submitted co-term row is reset to the
+// company's current values; only the rep's discount is kept. A co-term row for a product that can't
+// co-term any more (not Active or not Month-to-Month) becomes a normal row. `seeds` = cotermRows().
+/** @param {any[]} products @param {any[]} seeds @returns {any[]} */
+function refreshCoterms(products, seeds) {
+  return (products || []).map((p) => {
+    if (!p || !p.coterm) return p;
+    const seed = (seeds || []).find((s) => s.family === p.family);
+    if (!seed) return Object.assign({}, p, { coterm: false });
+    return Object.assign({}, seed, { uid: p.uid, discountPct: p.discountPct });
   });
 }
 
@@ -563,7 +593,7 @@ function priceTimus(input, setup, catalog, result) {
     }
     const repMinimum = entered(input.minimum) && toNum(input.minimum) > 0;
     if (input.coterm && !repMinimum) {
-      result.error = 'Timus Committed MRR is blank on the company. Enter the monthly minimum to co-term, and ask Ops to update the company record.';
+      result.error = "Timus Committed MRR is blank on the company, so Timus can't be co-termed yet. Ask Ops to fill it in, then refresh the page.";
       return result;
     }
     // The rep's minimum is in the deal's currency; the SKU's own price is only the default.
@@ -1096,4 +1126,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
