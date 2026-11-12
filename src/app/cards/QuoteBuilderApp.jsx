@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, cotermRows, dealWrites, refreshCoterms, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, cotermRows, dealWrites, pipelineAllowsCoterm, refreshCoterms, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
 import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -261,7 +261,7 @@ export function QuoteBuilderApp() {
       const props = (res.deal && res.deal.properties) || {};
       const segment = res.deal && res.deal.salesTeam === 'ENT' ? 'ENT' : 'MSP';
       // Co-term rows for every product the company is Active on, sized from its commits.
-      const coterms = cotermRows(res.deal && res.deal.company, { dealFamily: pipelineFamily(props.pipeline), segment });
+      const coterms = cotermRows(res.deal && res.deal.company, { dealFamily: pipelineFamily(props.pipeline), segment, pipeline: props.pipeline });
       setData(Object.assign({}, res, { catalog, coterms }));
       if (refresh === true) return;
       dispatch({
@@ -297,7 +297,8 @@ export function QuoteBuilderApp() {
       templateType: template ? template.templateType : 'CPQ_QUOTE',
       activeProducts: data.deal.company ? data.deal.company.activeProducts || null : null,
       // undefined for an older catalog response (then any Active product can co-term)
-      cotermProducts: data.deal.company ? data.deal.company.cotermProducts : null,
+      // none on a Downgrade deal (new 12-month commit)
+      cotermProducts: !pipelineAllowsCoterm(data.deal.properties && data.deal.properties.pipeline) ? [] : data.deal.company ? data.deal.company.cotermProducts : null,
       dealFamily: pipelineFamily(data.deal.properties && data.deal.properties.pipeline),
     });
     return buildQuote(setup, state.products, rampFor(state), data.catalog);

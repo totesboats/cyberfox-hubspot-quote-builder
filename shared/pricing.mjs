@@ -38,6 +38,7 @@ import {
   COTERM_AE_FEATURE,
   COTERM_PROPERTY_LABELS,
   COTERM_PAYMENT_TERMS,
+  NO_COTERM_PIPELINES,
   FAMILY_ORDER,
 } from './config.mjs';
 
@@ -470,6 +471,12 @@ export function pipelineFamily(pipelineId) {
   return PIPELINE_FAMILY[String(pipelineId || '')] || null;
 }
 
+// False for a deal pipeline that never co-terms (Downgrade: the partner signs a new 12-month commit).
+/** @param {string | number | null | undefined} pipelineId */
+export function pipelineAllowsCoterm(pipelineId) {
+  return !NO_COTERM_PIPELINES[String(pipelineId || '')];
+}
+
 // Active products the company pays Month-to-Month (its product Payment Terms on the company). Only these
 // co-term; an Active product paid annually, quarterly, one time (or with no terms) is an Upsell.
 /** @param {Record<string, any> | null | undefined} companyProps @returns {string[]} */
@@ -507,9 +514,9 @@ export function cotermCompanyProperties() {
 // own product, that it pays Month-to-Month, sized from the company's commit.
 // `company` = { activeProducts, cotermProducts, commits } from loadDeal.
 // Rows carry `coterm: true` and a note saying where the numbers came from. No uid: the card adds it.
-/** @param {any} company @param {{ dealFamily?: string | null, segment?: string }} [ctx] @returns {any[]} */
-export function cotermRows(company, { dealFamily = null, segment = 'MSP' } = {}) {
-  if (!company) return [];
+/** @param {any} company @param {{ dealFamily?: string | null, segment?: string, pipeline?: string | number | null }} [ctx] @returns {any[]} */
+export function cotermRows(company, { dealFamily = null, segment = 'MSP', pipeline = null } = {}) {
+  if (!company || !pipelineAllowsCoterm(pipeline)) return [];
   const c = company.commits || {};
   // Active and paid Month-to-Month (worked out from the commits when loadDeal didn't send the list).
   const active = company.cotermProducts || cotermProducts(Object.assign({}, c, Object.fromEntries((company.activeProducts || []).map((f) => [COMPANY_PRODUCT_STATUS[f].property, COMPANY_PRODUCT_STATUS[f].active]))));

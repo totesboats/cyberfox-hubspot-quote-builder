@@ -864,3 +864,18 @@ test('co-term: only products paid Month-to-Month; Annual Payments, Quarterly, On
   assert.ok(ok.lines.every((l) => l.lineType === 'coterm'));
   assert.equal(P.lineTypeFor('autoelevate', true, ['autoelevate'], null, []), 'Upsell');
 });
+
+test('co-term: never on a Downgrade Pipeline deal (the partner signs a new 12-month commit)', () => {
+  const co = company(['autoelevate', 'dns'], { ae_agent_commit: '1250', dns_device_commit: '600' });
+  assert.equal(P.cotermRows(co, { dealFamily: null, pipeline: '30582866' }).length, 0);
+  assert.equal(P.cotermRows(co, { dealFamily: null, pipeline: 30582866 }).length, 0);
+  assert.equal(P.cotermRows(co, { dealFamily: 'optimize365', pipeline: '917642399' }).length, 2);
+  assert.equal(P.pipelineAllowsCoterm('30582866'), false);
+  assert.equal(P.pipelineAllowsCoterm('7659799'), true);
+  assert.equal(P.pipelineAllowsCoterm(null), true);
+  // A saved co-term row on a Downgrade deal becomes a normal row (Upsell, since the partner is Active).
+  const out = P.refreshCoterms([{ uid: 1, family: 'autoelevate', coterm: true, quantity: 500, discountPct: 10 }], P.cotermRows(co, { pipeline: '30582866' }));
+  assert.equal(out[0].coterm, false);
+  const q = P.buildQuote(Object.assign({}, MSP, { activeProducts: ['autoelevate'], cotermProducts: [], dealFamily: null }), [ae({ coterm: true, ramp: false })], {}, CATALOG);
+  assert.ok(q.lines.every((l) => l.lineType === 'Upsell'));
+});

@@ -234,6 +234,10 @@ export const COTERM_COMMITS = {
 };
 // The only company Payment Terms value that co-terms.
 export const COTERM_PAYMENT_TERMS = ['Month-to-Month'];
+// Deal pipelines that never co-term: a downgrade always puts the partner on a new 12-month commit.
+export const NO_COTERM_PIPELINES = {
+  '30582866': 'Downgrade Pipeline',
+};
 // The company's AE Feature Type → the feature type the AutoElevate co-term is priced on.
 // Advanced (GrandFathered) partners co-term on Advanced SKUs.
 export const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Advanced' };
