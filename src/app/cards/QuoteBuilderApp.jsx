@@ -473,8 +473,6 @@ export function QuoteBuilderApp() {
           templates={data.templates}
           suggested={suggested}
           contacts={data.deal.contacts}
-          owner={data.deal.owner}
-          user={context && context.user}
           dealOptions={data.dealOptions}
           onChange={(patch) => dispatch({ type: 'setup', patch, coterms: data && data.coterms })}
         />
@@ -517,6 +515,8 @@ export function QuoteBuilderApp() {
           editing={state.editing}
           firstBuilderQuote={!quotes.some((q) => q.builder)}
           onPrimary={(value) => dispatch({ type: 'primary', value })}
+          onQuoteName={(quoteName) => dispatch({ type: 'setup', patch: { quoteName }, coterms: data.coterms })}
+          seller={context && context.user ? [[context.user.firstName, context.user.lastName].filter(Boolean).join(' '), context.user.email].filter(Boolean).join(' · ') : ''}
           affectedQuotes={affected}
           onAnotherOption={() => {
             setResult(null);

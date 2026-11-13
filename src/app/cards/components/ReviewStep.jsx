@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, StatusTag, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Alert, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Input, StatusTag, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { autoQuoteName } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 
@@ -16,7 +16,7 @@ const TOKEN_ROWS = [
   ['new_minimum_commitment_amount', 'Timus New Minimum Commitment Amount'],
 ];
 
-export function ReviewStep({ quote, setup, template, deal, products, primary, editing, firstBuilderQuote, onPrimary, affectedQuotes = [], onAnotherOption, onReloadPage, result, writes, dealOptions }) {
+export function ReviewStep({ quote, setup, template, deal, products, primary, editing, firstBuilderQuote, onPrimary, onQuoteName, seller, affectedQuotes = [], onAnotherOption, onReloadPage, result, writes, dealOptions }) {
   const labelFor = (name, value) => {
     const o = ((dealOptions && dealOptions[name]) || []).find((x) => x.value === value);
     return o && o.label !== value ? `${o.label} (${value})` : value;
@@ -26,7 +26,7 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
     const shown = labelFor(name, v);
     return { name, label, value: shown === '' ? 'Cleared' : shown };
   });
-  const title = (setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, products, quote.anyRamp ? quote.ramp.months : 0, { oneOffs: quote.oneOffs });
+  const autoTitle = autoQuoteName(deal.company && deal.company.name, products, quote.anyRamp ? quote.ramp.months : 0, { oneOffs: quote.oneOffs });
   const rampCount = quote.lines.filter((l) => l.ramp).length;
   const signer = deal.contacts.find((c) => c.id === setup.signerContactId);
 
@@ -112,11 +112,12 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
       <Tile>
         <Flex direction="column" gap="medium">
           <Heading>Quote</Heading>
+          <Input label="Quote name" name="quoteName" placeholder={autoTitle} value={setup.quoteName} onChange={(v) => onQuoteName && onQuoteName(v)} />
           <DescriptionList direction="row">
-            <DescriptionListItem label="Quote name">{title}</DescriptionListItem>
             <DescriptionListItem label="Template">{template ? template.name : 'Not chosen'}</DescriptionListItem>
             <DescriptionListItem label="Expires">{setup.expirationDate}</DescriptionListItem>
             <DescriptionListItem label="Signer">{signer ? signer.label : 'None'}</DescriptionListItem>
+            <DescriptionListItem label="Seller">{seller || 'You'}</DescriptionListItem>
           </DescriptionList>
           {editing ? (
             <Text variant="microcopy">{editing.primary ? 'Primary option.' : 'Alternative option: use Make primary under Quotes on this deal to switch.'}</Text>

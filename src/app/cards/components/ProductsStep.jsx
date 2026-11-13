@@ -1,5 +1,5 @@
 import React from 'react';
-import { Accordion, Alert, Button, Checkbox, Dropdown, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Accordion, Alert, Button, Checkbox, Dropdown, Flex, Heading, NumberInput, RadioButton, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, M2M_FAMILIES, OPTIMIZE_TDR, SEGMENTS } from '../lib/config.js';
 import { editionsFor, formatMoney, lineTypeLabel, unitsFor } from '../lib/pricing.js';
@@ -7,12 +7,14 @@ import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
-// The main row: count, plan and discount. Edition / AE Feature Type and the TDR add-on sit in the tile's
-// Details section (StandardOptions).
+// The main row: count, plan, the Optimize TDR add-on (per tenant) and discount.
 function StandardFields({ input, priced, onUpdate }) {
   // Co-term rows come from the company record: only the discount can change.
   const locked = !!input.coterm;
   const units = unitsFor(input.family, input.edition);
+  // Per-tenant Optimize365 can carry the Optimize TDR add-on on the same row.
+  const tdrField = input.family === 'optimize365' && input.edition === OPTIMIZE_TDR.withEdition;
+  const tdrTiers = OPTIMIZE_TDR.tiers.map((t) => `${t.from.toLocaleString('en-US')}${t.to == null ? '+' : `–${t.to.toLocaleString('en-US')}`}: ${formatMoney(t.price)}`).join(', ');
   const tierOptions = priced.tierOptions.length
     ? [{ label: `Default${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
     : [{ label: 'No tiers for this combination', value: NONE }];
@@ -28,41 +30,6 @@ function StandardFields({ input, priced, onUpdate }) {
         value={toSelect(input.tier)}
         onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
       />
-      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
-    </Row>
-  );
-}
-
-function StandardOptions({ input, family, segment, onUpdate }) {
-  const locked = !!input.coterm;
-  const editions = editionsFor(input.family, segment);
-  // Per-tenant Optimize365 can carry the Optimize TDR add-on on the same row.
-  const tdrField = input.family === 'optimize365' && input.edition === OPTIMIZE_TDR.withEdition;
-  const tdrTiers = OPTIMIZE_TDR.tiers.map((t) => `${t.from.toLocaleString('en-US')}${t.to == null ? '+' : `–${t.to.toLocaleString('en-US')}`}: ${formatMoney(t.price)}`).join(', ');
-  const picker =
-    input.family === 'autoelevate' ? (
-      <Select
-        label="AE Feature Type"
-        name={`feature-${input.uid}`}
-        options={AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))}
-        readOnly={locked}
-        value={input.featureType || 'Standard'}
-        onChange={(v) => onUpdate({ featureType: String(v), tier: '' })}
-      />
-    ) : editions.length > 1 ? (
-      <Select
-        label={family.pickerLabel || 'Edition'}
-        name={`edition-${input.uid}`}
-        options={editions.map((e) => ({ label: e.label, value: e.value }))}
-        readOnly={locked}
-        value={input.edition}
-        onChange={(v) => onUpdate({ edition: String(v), tier: '' })}
-      />
-    ) : null;
-  if (!picker && !tdrField) return null;
-  return (
-    <Row>
-      {picker}
       {tdrField && (
         <NumberInput
           label="TDR users"
@@ -75,7 +42,38 @@ function StandardOptions({ input, family, segment, onUpdate }) {
           onChange={(v) => onUpdate({ tdrUsers: v })}
         />
       )}
+      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
     </Row>
+  );
+}
+
+// AutoElevate's Feature Type (Standard / Advanced) or a product's edition (Optimize365 Per user / Per tenant)
+// as radio buttons in the tile header, next to the product name. null when there's nothing to choose.
+function TypePicker({ input, family, segment, onUpdate }) {
+  const locked = !!input.coterm;
+  const ae = input.family === 'autoelevate';
+  const choices = ae
+    ? AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))
+    : editionsFor(input.family, segment).map((e) => ({ label: e.label, value: e.value }));
+  if (input.family === 'oneoff' || input.family === 'timus' || choices.length < 2) return null;
+  const current = ae ? input.featureType || 'Standard' : input.edition;
+  const name = ae ? `feature-${input.uid}` : `edition-${input.uid}`;
+  return (
+    <Flex gap="small" align="center">
+      {choices.map((c) => (
+        <RadioButton
+          key={c.value}
+          name={name}
+          value={c.value}
+          inline
+          checked={current === c.value}
+          readOnly={locked}
+          onChange={(checked) => checked && onUpdate(ae ? { featureType: c.value, tier: '' } : { edition: c.value, tier: '' })}
+        >
+          {c.label}
+        </RadioButton>
+      ))}
+    </Flex>
   );
 }
 
@@ -187,6 +185,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         : family.editions.find((e) => e.value === input.edition) || family.editions[0];
   const mrr = row.mainLines.length ? `${formatMoney(row.mainMrr)}/mo` : '—';
   const update = (patch) => onUpdate(input.uid, patch);
+  const picker = TypePicker({ input, family, segment: quote.segment, onUpdate: update });
   const optimizeLocked = row.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp;
   const lineCount = row.rampLines.length + row.mainLines.length;
   const detailsTitle = lineCount ? `Details · ${lineCount} line item${lineCount === 1 ? '' : 's'}` : 'Details';
@@ -196,7 +195,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         <Flex justify="between" align="center" gap="medium">
           <Flex gap="small" align="center">
             <Heading>{input.family === 'oneoff' ? priced.productName || family.label : family.label}</Heading>
-            <Tag>{edition.label}</Tag>
+            {picker || <Tag>{edition.label}</Tag>}
             {row.ramped && <Tag variant="warning">{`${row.rampMonths}-mo ramp`}</Tag>}
             {row.lineType && <Tag variant={row.lineType === 'coterm' ? 'info' : row.lineType === 'Downgrade' ? 'warning' : 'default'}>{lineTypeLabel(row.lineType)}</Tag>}
           </Flex>
@@ -235,10 +234,9 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
           )
         ) : null}
 
-        {/* Edition / feature type, ramp and the line items, out of the way until needed. */}
+        {/* Ramp and the line items, out of the way until needed. */}
         <Accordion title={detailsTitle} size="sm" defaultOpen={!!input.ramp}>
           <Flex direction="column" gap="medium">
-            {input.family !== 'timus' && input.family !== 'oneoff' && <StandardOptions input={input} family={family} segment={quote.segment} onUpdate={update} />}
             {/* Optimize365 can only ramp 1–3 free months on a 13/14/15-month monthly agreement; otherwise the box
                 is locked (still untickable if it was ticked before Setup changed). */}
             {!input.coterm && (
