@@ -1,5 +1,5 @@
 import React from 'react';
-import { DateInput, Flex, Heading, Select, Text, Tile } from '@hubspot/ui-extensions';
+import { DateInput, Divider, Flex, Heading, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { BILLING, BILLING_ORDER, FALLBACK_OPTIONS, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, SEGMENTS } from '../lib/config.js';
 import { effectiveBilling } from '../lib/pricing.js';
@@ -26,10 +26,14 @@ export function SetupStep({ setup, templates, suggested, contacts, dealOptions, 
   const templateOptions = [{ label: suggested ? `Suggested — ${suggested.name} (${kind(suggested)})` : 'Suggest from products', value: NONE }].concat(
     templates.map((t) => ({ label: `${t.name} (${kind(t)})`, value: t.id }))
   );
+  // Each group starts with a divider and a blue label chip so the three sections stand out.
   const group = (label) => (
-    <Text variant="microcopy" format={{ fontWeight: 'demibold' }}>
-      {label}
-    </Text>
+    <Flex direction="column" gap="small">
+      <Divider />
+      <Flex>
+        <Tag variant="info">{label}</Tag>
+      </Flex>
+    </Flex>
   );
 
   // Three equal columns per group so every row lines up. Quote name is set on Review; the seller is always
@@ -45,7 +49,7 @@ export function SetupStep({ setup, templates, suggested, contacts, dealOptions, 
         </Flex>
 
         <Flex direction="column" gap="extra-small">
-          {group('PRICING')}
+          {group('Pricing')}
           <Row>
             <Select
               label="Segment"
@@ -75,7 +79,7 @@ export function SetupStep({ setup, templates, suggested, contacts, dealOptions, 
         </Flex>
 
         <Flex direction="column" gap="extra-small">
-          {group('PRINTS ON THE QUOTE')}
+          {group('Prints on the quote')}
           <Row>
             <Select
               label="Payment Frequency"
@@ -90,7 +94,7 @@ export function SetupStep({ setup, templates, suggested, contacts, dealOptions, 
         </Flex>
 
         <Flex direction="column" gap="extra-small">
-          {group('SIGNING')}
+          {group('Signing')}
           <Row>
             <Select
               label="Signer"

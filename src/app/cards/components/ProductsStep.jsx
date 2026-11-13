@@ -1,5 +1,5 @@
 import React from 'react';
-import { Accordion, Alert, Button, Checkbox, Dropdown, Flex, Heading, NumberInput, RadioButton, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Accordion, Alert, Button, Checkbox, Dropdown, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, M2M_FAMILIES, OPTIMIZE_TDR, SEGMENTS } from '../lib/config.js';
 import { editionsFor, formatMoney, lineTypeLabel, unitsFor } from '../lib/pricing.js';
@@ -7,72 +7,69 @@ import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
-// The main row: count, plan, the Optimize TDR add-on (per tenant) and discount.
-function StandardFields({ input, priced, onUpdate }) {
+// The main row: Feature Type / Pricing (when the product has a choice), count, plan and discount. Per-tenant
+// Optimize365 adds the Optimize TDR users field on a second row.
+function StandardFields({ input, priced, family, segment, onUpdate }) {
   // Co-term rows come from the company record: only the discount can change.
   const locked = !!input.coterm;
   const units = unitsFor(input.family, input.edition);
-  // Per-tenant Optimize365 can carry the Optimize TDR add-on on the same row.
+  const ae = input.family === 'autoelevate';
+  const editions = editionsFor(input.family, segment);
   const tdrField = input.family === 'optimize365' && input.edition === OPTIMIZE_TDR.withEdition;
   const tdrTiers = OPTIMIZE_TDR.tiers.map((t) => `${t.from.toLocaleString('en-US')}${t.to == null ? '+' : `–${t.to.toLocaleString('en-US')}`}: ${formatMoney(t.price)}`).join(', ');
   const tierOptions = priced.tierOptions.length
     ? [{ label: `Default${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
     : [{ label: 'No tiers for this combination', value: NONE }];
+  const picker = ae ? (
+    <Select
+      label="Feature Type"
+      name={`feature-${input.uid}`}
+      options={AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))}
+      readOnly={locked}
+      value={input.featureType || 'Standard'}
+      onChange={(v) => onUpdate({ featureType: String(v), tier: '' })}
+    />
+  ) : editions.length > 1 ? (
+    <Select
+      label={family.pickerLabel || 'Edition'}
+      name={`edition-${input.uid}`}
+      options={editions.map((e) => ({ label: e.label, value: e.value }))}
+      readOnly={locked}
+      value={input.edition}
+      onChange={(v) => onUpdate({ edition: String(v), tier: '' })}
+    />
+  ) : null;
   return (
-    <Row>
-      <NumberInput label={`Total ${units.unit}`} name={`qty-${input.uid}`} min={0} precision={0} readOnly={locked} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
-      <Select
-        label="Plan"
-        name={`tier-${input.uid}`}
-        tooltip="Highest tier at or below the count, plus additional units. Pick a bigger tier to round up."
-        options={tierOptions}
-        readOnly={locked}
-        value={toSelect(input.tier)}
-        onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
-      />
-      {tdrField && (
-        <NumberInput
-          label="TDR users"
-          name={`tdr-${input.uid}`}
-          tooltip={`Volume priced per user per month: ${tdrTiers}. 0 = no TDR.`}
-          min={0}
-          precision={0}
+    <Flex direction="column" gap="medium">
+      <Row>
+        {picker}
+        <NumberInput label={`Total ${units.unit}`} name={`qty-${input.uid}`} min={0} precision={0} readOnly={locked} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
+        <Select
+          label="Plan"
+          name={`tier-${input.uid}`}
+          tooltip="Highest tier at or below the count, plus additional units. Pick a bigger tier to round up."
+          options={tierOptions}
           readOnly={locked}
-          value={Number(input.tdrUsers) || 0}
-          onChange={(v) => onUpdate({ tdrUsers: v })}
+          value={toSelect(input.tier)}
+          onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
         />
+        <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
+      </Row>
+      {tdrField && (
+        <Row weights={[1, 3]}>
+          <NumberInput
+            label="TDR users"
+            name={`tdr-${input.uid}`}
+            tooltip={`Volume priced per user per month: ${tdrTiers}. 0 = no TDR.`}
+            min={0}
+            precision={0}
+            readOnly={locked}
+            value={Number(input.tdrUsers) || 0}
+            onChange={(v) => onUpdate({ tdrUsers: v })}
+          />
+          <Text> </Text>
+        </Row>
       )}
-      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
-    </Row>
-  );
-}
-
-// AutoElevate's Feature Type (Standard / Advanced) or a product's edition (Optimize365 Per user / Per tenant)
-// as radio buttons in the tile header, next to the product name. null when there's nothing to choose.
-function TypePicker({ input, family, segment, onUpdate }) {
-  const locked = !!input.coterm;
-  const ae = input.family === 'autoelevate';
-  const choices = ae
-    ? AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))
-    : editionsFor(input.family, segment).map((e) => ({ label: e.label, value: e.value }));
-  if (input.family === 'oneoff' || input.family === 'timus' || choices.length < 2) return null;
-  const current = ae ? input.featureType || 'Standard' : input.edition;
-  const name = ae ? `feature-${input.uid}` : `edition-${input.uid}`;
-  return (
-    <Flex gap="small" align="center">
-      {choices.map((c) => (
-        <RadioButton
-          key={c.value}
-          name={name}
-          value={c.value}
-          inline
-          checked={current === c.value}
-          readOnly={locked}
-          onChange={(checked) => checked && onUpdate(ae ? { featureType: c.value, tier: '' } : { edition: c.value, tier: '' })}
-        >
-          {c.label}
-        </RadioButton>
-      ))}
     </Flex>
   );
 }
@@ -185,7 +182,6 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         : family.editions.find((e) => e.value === input.edition) || family.editions[0];
   const mrr = row.mainLines.length ? `${formatMoney(row.mainMrr)}/mo` : '—';
   const update = (patch) => onUpdate(input.uid, patch);
-  const picker = TypePicker({ input, family, segment: quote.segment, onUpdate: update });
   const optimizeLocked = row.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp;
   const lineCount = row.rampLines.length + row.mainLines.length;
   const detailsTitle = lineCount ? `Details · ${lineCount} line item${lineCount === 1 ? '' : 's'}` : 'Details';
@@ -195,7 +191,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         <Flex justify="between" align="center" gap="medium">
           <Flex gap="small" align="center">
             <Heading>{input.family === 'oneoff' ? priced.productName || family.label : family.label}</Heading>
-            {picker || <Tag>{edition.label}</Tag>}
+            {input.family === 'oneoff' && <Tag>{edition.label}</Tag>}
             {row.ramped && <Tag variant="warning">{`${row.rampMonths}-mo ramp`}</Tag>}
             {row.lineType && <Tag variant={row.lineType === 'coterm' ? 'info' : row.lineType === 'Downgrade' ? 'warning' : 'default'}>{lineTypeLabel(row.lineType)}</Tag>}
           </Flex>
@@ -217,7 +213,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         ) : input.family === 'oneoff' ? (
           <OneOffFields input={input} priced={priced} oneOffs={quote.oneOffs || []} onUpdate={update} />
         ) : (
-          <StandardFields input={input} priced={priced} onUpdate={update} />
+          <StandardFields input={input} priced={priced} family={family} segment={quote.segment} onUpdate={update} />
         )}
 
         {priced.error ? (

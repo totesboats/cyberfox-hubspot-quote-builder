@@ -2,7 +2,7 @@ import React from 'react';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer } from '@hubspot/ui-extensions/testing';
-import { Accordion, Alert, Button, Checkbox, DescriptionListItem, Dropdown, Input, NumberInput, RadioButton, Select, StatusTag, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
+import { Accordion, Alert, Button, Checkbox, DescriptionListItem, Dropdown, Input, NumberInput, Select, StatusTag, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
 import { QuoteBuilderApp, reducer, initialState } from '../../src/app/cards/QuoteBuilderApp.jsx';
 
 // The platform exposes hubspot.serverless via a worker global; route it to the renderer's mock.
@@ -39,10 +39,7 @@ const text = (node) => node.toString();
 
 // Products are added from the Add product dropdown.
 const addProduct = (r, label) => r.find(Dropdown.ButtonItem, (n) => text(n).includes(label)).trigger('onClick');
-// Feature Type / edition are radio buttons in the tile header.
-const radios = (r, name) => r.findAll(RadioButton, (n) => n.props.name === name);
-const picked = (r, name) => (radios(r, name).find((n) => n.props.checked) || { props: {} }).props.value;
-const pick = (r, name, value) => r.find(RadioButton, (n) => n.props.name === name && n.props.value === value).trigger('onChange', true, value);
+
 
 test('card renders, prices AutoElevate, ramps, and submits', async () => {
   const r = mk();
@@ -66,7 +63,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(r.find(Select, { name: 'segment' }).props.value, 'MSP');
   // Three groups of three fields, no collapsed section. Invoice Terms always starts at Due Upon Receipt, even though the deal holds Net-30.
   assert.equal(r.maybeFind(Accordion, (n) => /Quote details/.test(n.props.title)), null);
-  assert.match(text(r.getRootNode()), /PRICING[\s\S]*PRINTS ON THE QUOTE[\s\S]*SIGNING/);
+  assert.deepEqual(r.findAll(Tag, (n) => n.props.variant === 'info').map((t) => t.text), ['Pricing', 'Prints on the quote', 'Signing']);
   assert.equal(r.find(Select, { name: 'paymentFrequency' }).props.options[0].label, 'Monthly (matches SKU pricing)');
   assert.equal(r.find(Select, { name: 'invoiceTerms' }).props.value, 'Due Upon Receipt');
   assert.equal(r.find(Select, { name: 'paymentMethod' }).props.value, 'Credit Card');
@@ -82,8 +79,9 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(r.find(Select, { name: 'tier-1' }).props.value, '__none__');
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(NumberInput, { name: 'disc-1' }).trigger('onChange', 10);
-  assert.equal(picked(r, 'feature-1'), 'Standard');
-  assert.deepEqual(radios(r, 'feature-1').map((n) => n.props.value), ['Standard', 'Advanced']); // Advanced (GrandFathered) retired
+  assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
+  assert.equal(r.find(Select, { name: 'feature-1' }).props.label, 'Feature Type');
+  assert.deepEqual(r.find(Select, { name: 'feature-1' }).props.options.map((o) => o.value), ['Standard', 'Advanced']); // Advanced (GrandFathered) retired
   await r.waitFor(() => assert.match(text(r.getRootNode()), /\$1,181\.25\/mo/));
   // Feature type, ramp and line items sit in the tile's collapsed Details section.
   assert.equal(r.find(Accordion, (n) => /^Details/.test(n.props.title)).props.title, 'Details · 2 line items');
@@ -151,8 +149,8 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   addProduct(r, 'AutoElevate');
   addProduct(r, 'AutoElevate');
-  await r.waitFor(() => assert.equal(radios(r, 'feature-2').length, 2));
-  pick(r, 'feature-2', 'Advanced');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'feature-2' })));
+  r.find(Select, { name: 'feature-2' }).trigger('onChange', 'Advanced');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Fix before continuing' })));
   assert.equal(r.find(Button, (n) => /Continue/.test(text(n))).props.disabled, true);
 });
@@ -540,8 +538,8 @@ test('a deal still on Advanced (GrandFathered) starts new AutoElevate rows as St
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   addProduct(r, 'AutoElevate');
-  await r.waitFor(() => assert.equal(radios(r, 'feature-1').length, 2));
-  assert.equal(picked(r, 'feature-1'), 'Standard');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'feature-1' })));
+  assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
 });
 
 test('one-off SKU: pick a product from the One-Off SKUs folder; it prices at its own price', async () => {
@@ -585,14 +583,14 @@ test('MSP Optimize365: Pricing picker switches to per tenant, which adds the Opt
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   addProduct(r, 'Optimize365');
   // Starts per user: 100 users, no TDR field.
-  await r.waitFor(() => assert.equal(radios(r, 'edition-1').length, 2));
-  assert.deepEqual(radios(r, 'edition-1').map((n) => n.text), ['Per user', 'Per tenant']);
-  assert.equal(picked(r, 'edition-1'), 'standard');
+  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'edition-1' })));
+  assert.equal(r.find(Select, { name: 'edition-1' }).props.label, 'Pricing');
+  assert.deepEqual(r.find(Select, { name: 'edition-1' }).props.options.map((o) => o.label), ['Per user', 'Per tenant']);
   assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.label, 'Total users');
   assert.equal(r.maybeFind(NumberInput, { name: 'tdr-1' }), null);
   await r.waitFor(() => assert.match(text(r.getRootNode()), /\$240\.00\/mo/));
   // Per tenant: 7 tenants = 5-tenant plan + 2 additional; 100 TDR users at $1.00.
-  pick(r, 'edition-1', 'tenant');
+  r.find(Select, { name: 'edition-1' }).trigger('onChange', 'tenant');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'tdr-1' })));
   assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.label, 'Total tenants');
   assert.match(r.find(NumberInput, { name: 'tdr-1' }).props.tooltip, /5,000–7,499: \$0\.85/);
@@ -625,7 +623,7 @@ test('co-term: every active product is added automatically from the company comm
   await toProducts(r);
   // Both rows are already there, priced from the commits: 1,250 agents = 1,000 plan + 250 additional.
   assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 1250);
-  assert.equal(picked(r, 'feature-1'), 'Standard');
+  assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
   assert.equal(r.find(NumberInput, { name: 'qty-2' }).props.value, 600);
   assert.equal(r.findAll(Tag).filter((t) => /Co-term/.test(text(t))).length, 2);
   assert.match(text(r.getRootNode()), /From the company record: AE Agent Commit 1,250 · AE Feature Type Standard → Standard SKUs/);
@@ -635,8 +633,7 @@ test('co-term: every active product is added automatically from the company comm
   assert.equal(r.findAll(Button).filter((b) => /Remove/.test(text(b))).length, 0);
   // Only the discount can change: count, plan and feature type are read-only. DNS starts at the company's Initial Discount.
   assert.ok(['qty-1', 'qty-2'].every((n) => r.find(NumberInput, { name: n }).props.readOnly === true));
-  assert.ok(['tier-1', 'tier-2'].every((n) => r.find(Select, { name: n }).props.readOnly === true));
-  assert.ok(radios(r, 'feature-1').every((n) => n.props.readOnly === true));
+  assert.ok(['feature-1', 'tier-1', 'tier-2'].every((n) => r.find(Select, { name: n }).props.readOnly === true));
   assert.equal(r.find(NumberInput, { name: 'disc-1' }).props.readOnly, undefined);
   assert.equal(r.find(NumberInput, { name: 'disc-2' }).props.value, 20);
   assert.match(text(r.getRootNode()), /DNS Device Commit 600 · DNS Initial Discount 20%/);
