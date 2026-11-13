@@ -40,6 +40,7 @@ import {
   COTERM_PROPERTY_LABELS,
   COTERM_PAYMENT_TERMS,
   NO_COTERM_PIPELINES,
+  DOWNGRADE_PIPELINES,
   FAMILY_ORDER,
 } from './config.js';
 
@@ -478,6 +479,12 @@ export function pipelineAllowsCoterm(pipelineId) {
   return !NO_COTERM_PIPELINES[String(pipelineId || '')];
 }
 
+// True for a Downgrade Pipeline deal: every line on it is tagged Downgrade.
+/** @param {string | number | null | undefined} pipelineId */
+export function isDowngradePipeline(pipelineId) {
+  return !!DOWNGRADE_PIPELINES[String(pipelineId || '')];
+}
+
 // Active products the company pays Month-to-Month (its product Payment Terms on the company). Only these
 // co-term; an Active product paid annually, quarterly, one time (or with no terms) is an Upsell.
 /** @param {Record<string, any> | null | undefined} companyProps @returns {string[]} */
@@ -841,7 +848,8 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
     const family = rowFamily({ input, priced });
     const cotermable = setup.cotermProducts !== undefined ? setup.cotermProducts : setup.activeProducts;
     const cotermAllowed = canCoterm(family, cotermable, setup.dealFamily);
-    const lineType = lineTypeFor(family, !!input.coterm, setup.activeProducts, setup.dealFamily, cotermable);
+    // Every line on a Downgrade Pipeline deal is Downgrade; otherwise New / Upsell / Co-term.
+    const lineType = setup.downgrade ? LINE_TYPES.downgrade : lineTypeFor(family, !!input.coterm, setup.activeProducts, setup.dealFamily, cotermable);
     const tag = { qbFamily: family, lineType };
     const mainTerm = m2m ? 1 : Math.max(1, agreement - rampMonths);
     const valueMonths = m2m ? 12 : mainTerm; // months used to value an open-ended M2M quote

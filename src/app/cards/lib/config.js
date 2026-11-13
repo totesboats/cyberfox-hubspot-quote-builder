@@ -159,13 +159,14 @@ export const LINE_SESSION_PROPERTY = 'qb_session_id';
 // qb_family: the product a line belongs to (a one-off SKU counts as its product's family when the name
 // says which, else "oneoff"). The auto-split moves each family's lines to that product's own deal.
 export const LINE_FAMILY_PROPERTY = 'qb_family';
-// qb_line_type: New / Upsell / Co-term. Internal values exactly as created in HubSpot ("New" and "Upsell"
-// are capitalized, "coterm" is not). New or Upsell is set from the company's product status; Co-term is
+// qb_line_type: New / Upsell / Co-term / Downgrade. Internal values exactly as created in HubSpot ("New",
+// "Upsell" and "Downgrade" are capitalized, "coterm" is not). Every line on a Downgrade Pipeline deal is
+// Downgrade. New or Upsell is set from the company's product status; Co-term is
 // the rep's choice: an existing product re-signed so its renewal lines up with the new product. Co-term
 // lines stay on the deal they were sold on (no extra deal or Sale Review).
 export const LINE_TYPE_PROPERTY = 'qb_line_type';
-export const LINE_TYPES = { new: 'New', upsell: 'Upsell', coterm: 'coterm' };
-export const LINE_TYPE_LABELS = { New: 'New', Upsell: 'Upsell', coterm: 'Co-term' };
+export const LINE_TYPES = { new: 'New', upsell: 'Upsell', coterm: 'coterm', downgrade: 'Downgrade' };
+export const LINE_TYPE_LABELS = { New: 'New', Upsell: 'Upsell', coterm: 'Co-term', Downgrade: 'Downgrade' };
 // The product each deal pipeline sells (Sales and Upsell), so Co-term is never offered on the deal's own
 // product: on an AutoElevate Upsell deal the AutoElevate line is the upsell itself.
 export const PIPELINE_FAMILY = {
@@ -236,6 +237,10 @@ export const COTERM_COMMITS = {
 export const COTERM_PAYMENT_TERMS = ['Month-to-Month'];
 // Deal pipelines that never co-term: a downgrade always puts the partner on a new 12-month commit.
 export const NO_COTERM_PIPELINES = {
+  '30582866': 'Downgrade Pipeline',
+};
+// Deal pipelines whose lines are all tagged Downgrade (qb_line_type).
+export const DOWNGRADE_PIPELINES = {
   '30582866': 'Downgrade Pipeline',
 };
 // The company's AE Feature Type → the feature type the AutoElevate co-term is priced on.

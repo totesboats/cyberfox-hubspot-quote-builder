@@ -879,3 +879,14 @@ test('co-term: never on a Downgrade Pipeline deal (the partner signs a new 12-mo
   const q = P.buildQuote(Object.assign({}, MSP, { activeProducts: ['autoelevate'], cotermProducts: [], dealFamily: null }), [ae({ coterm: true, ramp: false })], {}, CATALOG);
   assert.ok(q.lines.every((l) => l.lineType === 'Upsell'));
 });
+
+test('line type: every line on a Downgrade Pipeline deal is Downgrade', () => {
+  assert.equal(P.isDowngradePipeline('30582866'), true);
+  assert.equal(P.isDowngradePipeline('7659799'), false);
+  assert.equal(P.lineTypeLabel('Downgrade'), 'Downgrade');
+  const setup = Object.assign({}, MSP, { activeProducts: ['autoelevate'], cotermProducts: [], dealFamily: null, downgrade: true });
+  const q = P.buildQuote(setup, [ae({ coterm: true, ramp: false }), dnsRow({ ramp: false })], {}, CATALOG);
+  assert.deepEqual([...new Set(q.lines.map((l) => l.qbFamily))].sort(), ['autoelevate', 'dns']); // the active product and a new one
+  assert.ok(q.lines.every((l) => l.lineType === 'Downgrade'));
+  assert.equal(P.lineItemProperties(q.lines[0], { billing: 'monthly', sessionId: 'qb-1', currency: 'USD' }).qb_line_type, 'Downgrade');
+});

@@ -187,7 +187,7 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
             <Heading>{input.family === 'oneoff' ? priced.productName || family.label : family.label}</Heading>
             <Tag>{edition.label}</Tag>
             {row.ramped && <Tag variant="warning">{`${row.rampMonths}-mo ramp`}</Tag>}
-            {row.lineType && <Tag variant={row.lineType === 'coterm' ? 'info' : 'default'}>{lineTypeLabel(row.lineType)}</Tag>}
+            {row.lineType && <Tag variant={row.lineType === 'coterm' ? 'info' : row.lineType === 'Downgrade' ? 'warning' : 'default'}>{lineTypeLabel(row.lineType)}</Tag>}
           </Flex>
           <Flex gap="small" align="center">
             <Text format={{ fontWeight: 'demibold' }}>{mrr}</Text>

@@ -9,7 +9,7 @@
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
 const { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
-const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, cotermRows, refreshCoterms, pipelineAllowsCoterm, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
+const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, cotermRows, refreshCoterms, pipelineAllowsCoterm, isDowngradePipeline, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
 const ASSOC = {
@@ -55,7 +55,7 @@ exports.main = async (context) => {
   if (!template) return { ok: false, errors: ['The selected quote template no longer exists.'] };
 
   // activeProducts and dealFamily come from the company and deal records here, never from the card,
-  // so New / Upsell / Co-term can't be spoofed.
+  // so New / Upsell / Co-term / Downgrade can't be spoofed.
   const setup = Object.assign({}, payload.setup, {
     salesTeam: deal.salesTeam,
     templateType: template.templateType,
@@ -63,6 +63,8 @@ exports.main = async (context) => {
     // none on a Downgrade deal (the partner signs a new 12-month commit)
     cotermProducts: !pipelineAllowsCoterm(deal.properties.pipeline) ? [] : deal.company ? deal.company.cotermProducts || [] : null,
     dealFamily: pipelineFamily(deal.properties.pipeline),
+    // every line on a Downgrade Pipeline deal is tagged Downgrade
+    downgrade: isDowngradePipeline(deal.properties.pipeline),
   });
   // Co-term rows come from the company record (count, plan, minimum); only the rep's discount is kept.
   payload.products = refreshCoterms(payload.products, cotermRows(deal.company, { dealFamily: setup.dealFamily, segment: payload.setup.segment, pipeline: deal.properties.pipeline }));
