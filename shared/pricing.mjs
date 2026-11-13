@@ -3,6 +3,7 @@
 import {
   FAMILIES,
   BILLING,
+  M2M_FAMILIES,
   MAX_RAMP_MONTHS,
   MAX_RAMP_STAGES,
   APPROVAL,
@@ -16,6 +17,7 @@ import {
   TEMPLATE_HIDE,
   AE_FEATURE_TYPES,
   AGREEMENT_LENGTH_M2M,
+  AGREEMENT_LENGTH_DEFAULT,
   PAYMENT_FREQUENCY_DEFAULT,
   WRITE_CONTRACT_TERM,
   QUOTE_OPEN_STATUSES,
@@ -782,6 +784,26 @@ export function effectiveBilling(setup) {
   return setup.billing === 'annual' ? 'annual' : 'monthly';
 }
 
+// SKU pricing and Agreement Length move together: picking Month-to-Month SKU pricing sets the Month-to-Month
+// Agreement Length, and leaving it (to Annual billed monthly or yearly) puts a Month-to-Month agreement back
+// to the default length. Picking the Month-to-Month Agreement Length sets Month-to-Month SKU pricing (as
+// effectiveBilling already does), and picking a fixed length leaves Month-to-Month pricing for Annual (billed
+// monthly). Returns the patch to apply to the setup.
+export function syncBillingPatch(setup, patch) {
+  const out = Object.assign({}, patch);
+  const wasM2M = (setup || {}).agreementLength === AGREEMENT_LENGTH_M2M;
+  if (patch.billing === 'm2m') {
+    out.agreementLength = AGREEMENT_LENGTH_M2M;
+  } else if (patch.billing && wasM2M && !patch.agreementLength) {
+    out.agreementLength = AGREEMENT_LENGTH_DEFAULT;
+  }
+  if (patch.agreementLength && !patch.billing) {
+    if (patch.agreementLength === AGREEMENT_LENGTH_M2M) out.billing = 'm2m';
+    else if ((setup || {}).billing === 'm2m') out.billing = 'monthly';
+  }
+  return out;
+}
+
 // Can Optimize365 ramp on this Setup, and for how long? { allowed, months, reason }.
 export function optimizeRampRule(setup) {
   const billing = effectiveBilling(setup || {});
@@ -822,7 +844,18 @@ export function buildQuote(setup, inputs, rampInput, catalog) {
   const optimizeRamp = optimizeRampRule(setup);
 
   const rows = (inputs || []).map((input) => {
-    const priced = priceProduct(input, priceSetup, catalog);
+    let priced = priceProduct(input, priceSetup, catalog);
+    // A Month-to-Month quote is AutoElevate only (the only product with M2M SKUs), with no co-term rows.
+    if (m2m) {
+      const fam = rowFamily({ input, priced });
+      const name = rowLabel({ input, priced });
+      const m2mError = input.coterm
+        ? `${name}: co-term isn't available on a Month-to-Month quote.`
+        : !M2M_FAMILIES.includes(fam)
+          ? `${name} can't be on a Month-to-Month quote: only AutoElevate has Month-to-Month SKUs. Remove it, or switch SKU pricing to Annual (billed monthly or yearly).`
+          : '';
+      if (m2mError) priced = Object.assign({}, priced, { error: m2mError, lines: [] });
+    }
     const usable = !priced.error && priced.lines.length > 0;
     const ramp = productRamp(input, legacyRamp);
     // Co-term rows re-sign an existing product at its commit: no ramp.

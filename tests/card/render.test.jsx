@@ -199,6 +199,29 @@ test('wrong billing for a product blocks Continue', async () => {
   assert.equal(r.find(Button, (n) => /Continue/.test(text(n))).props.disabled, true);
 });
 
+test('SKU pricing offers Month-to-Month, Annual (billed monthly), Annual (billed yearly) and moves with Agreement Length', async () => {
+  const r = mk();
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: CATALOG_RESPONSE }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  const billing = () => r.find(Select, { name: 'billing' });
+  const agreement = () => r.find(Select, { name: 'agreementLength' });
+  assert.deepEqual(billing().props.options.map((o) => [o.value, o.label]), [['m2m', 'Month-to-Month'], ['monthly', 'Annual (billed monthly)'], ['annual', 'Annual (billed yearly)']]);
+  assert.equal(billing().props.value, 'monthly');
+  assert.equal(billing().props.readOnly, undefined);
+  // Month-to-Month pricing sets the Month-to-Month agreement…
+  billing().trigger('onChange', 'm2m');
+  await r.waitFor(() => assert.equal(agreement().props.value, '12 Months - Month-to-Month'));
+  assert.equal(billing().props.value, 'm2m');
+  // …and back to Annual (billed yearly) puts the agreement back to 12 Months.
+  billing().trigger('onChange', 'annual');
+  await r.waitFor(() => assert.equal(agreement().props.value, '12 Months'));
+  assert.equal(billing().props.value, 'annual');
+  // Picking the Month-to-Month agreement switches SKU pricing to Month-to-Month.
+  agreement().trigger('onChange', '12 Months - Month-to-Month');
+  await r.waitFor(() => assert.equal(billing().props.value, 'm2m'));
+});
+
 test('catalog failure shows an error state with retry', async () => {
   const r = mk();
   r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: { ok: false, errors: ['HubSpot GET /crm/v3/objects/quote_templates failed (403)'] } }));
@@ -620,6 +643,29 @@ test('co-term: every active product is added automatically from the company comm
   await r.waitFor(() => assert.ok(calls.some((c) => c.name === 'quote_builder_submit')));
   const sent = calls.find((c) => c.name === 'quote_builder_submit').parameters.products;
   assert.deepEqual(sent.map((p) => [p.family, !!p.coterm, p.quantity, p.discountPct]), [['autoelevate', true, 1250, 15], ['dns', true, 600, 20], ['password', false, 100, 0]]);
+});
+
+test('Month-to-Month is AutoElevate only: co-term rows leave, only + AutoElevate is offered, and Annual brings them back', async () => {
+  const r = mk();
+  const res = withCompany({ activeProducts: ['autoelevate', 'dns'], cotermProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600' } }, { pipeline: '917642399' });
+  r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: res }));
+  r.render(<QuoteBuilderApp />);
+  await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
+  r.find(Select, { name: 'billing' }).trigger('onChange', 'm2m');
+  await r.waitFor(() => assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '12 Months - Month-to-Month'));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  assert.equal(r.findAll(Tag).filter((t) => /Co-term/.test(text(t))).length, 0);
+  const addLabels = r.findAll(Button).map((b) => (text(b).match(/"\+ ([^"]+)"/) || [])[1]).filter(Boolean);
+  assert.deepEqual(addLabels, ['AutoElevate']);
+  assert.match(text(r.getRootNode()), /Month-to-Month quotes are AutoElevate only/);
+  // Back to Annual (billed monthly) on Setup: the co-term rows come back from the company record.
+  r.find(Button, (n) => /Back/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
+  r.find(Select, { name: 'billing' }).trigger('onChange', 'monthly');
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
+  await r.waitFor(() => assert.equal(r.findAll(Tag).filter((t) => /Co-term/.test(text(t))).length, 2));
 });
 
 test('co-term: a company with no active products starts empty', async () => {

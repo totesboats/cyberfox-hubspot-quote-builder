@@ -2,7 +2,7 @@
 'use strict';
 // Pure pricing, ramp and approval logic shared by the card (live preview) and the
 // submit function (authoritative rebuild). No HubSpot calls in here.
-const { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, FAMILY_ORDER } = require('./config.js');
+const { FAMILIES, BILLING, M2M_FAMILIES, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, FAMILY_ORDER } = require('./config.js');
 
 function toNum(v, fallback = 0) {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -743,6 +743,26 @@ function effectiveBilling(setup) {
   return setup.billing === 'annual' ? 'annual' : 'monthly';
 }
 
+// SKU pricing and Agreement Length move together: picking Month-to-Month SKU pricing sets the Month-to-Month
+// Agreement Length, and leaving it (to Annual billed monthly or yearly) puts a Month-to-Month agreement back
+// to the default length. Picking the Month-to-Month Agreement Length sets Month-to-Month SKU pricing (as
+// effectiveBilling already does), and picking a fixed length leaves Month-to-Month pricing for Annual (billed
+// monthly). Returns the patch to apply to the setup.
+function syncBillingPatch(setup, patch) {
+  const out = Object.assign({}, patch);
+  const wasM2M = (setup || {}).agreementLength === AGREEMENT_LENGTH_M2M;
+  if (patch.billing === 'm2m') {
+    out.agreementLength = AGREEMENT_LENGTH_M2M;
+  } else if (patch.billing && wasM2M && !patch.agreementLength) {
+    out.agreementLength = AGREEMENT_LENGTH_DEFAULT;
+  }
+  if (patch.agreementLength && !patch.billing) {
+    if (patch.agreementLength === AGREEMENT_LENGTH_M2M) out.billing = 'm2m';
+    else if ((setup || {}).billing === 'm2m') out.billing = 'monthly';
+  }
+  return out;
+}
+
 // Can Optimize365 ramp on this Setup, and for how long? { allowed, months, reason }.
 function optimizeRampRule(setup) {
   const billing = effectiveBilling(setup || {});
@@ -783,7 +803,18 @@ function buildQuote(setup, inputs, rampInput, catalog) {
   const optimizeRamp = optimizeRampRule(setup);
 
   const rows = (inputs || []).map((input) => {
-    const priced = priceProduct(input, priceSetup, catalog);
+    let priced = priceProduct(input, priceSetup, catalog);
+    // A Month-to-Month quote is AutoElevate only (the only product with M2M SKUs), with no co-term rows.
+    if (m2m) {
+      const fam = rowFamily({ input, priced });
+      const name = rowLabel({ input, priced });
+      const m2mError = input.coterm
+        ? `${name}: co-term isn't available on a Month-to-Month quote.`
+        : !M2M_FAMILIES.includes(fam)
+          ? `${name} can't be on a Month-to-Month quote: only AutoElevate has Month-to-Month SKUs. Remove it, or switch SKU pricing to Annual (billed monthly or yearly).`
+          : '';
+      if (m2mError) priced = Object.assign({}, priced, { error: m2mError, lines: [] });
+    }
     const usable = !priced.error && priced.lines.length > 0;
     const ramp = productRamp(input, legacyRamp);
     // Co-term rows re-sign an existing product at its commit: no ramp.
@@ -1139,4 +1170,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, pipelineAllowsCoterm, isDowngradePipeline, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, pipelineAllowsCoterm, isDowngradePipeline, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, syncBillingPatch, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };

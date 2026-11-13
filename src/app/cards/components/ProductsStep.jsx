@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, Button, Checkbox, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
-import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, OPTIMIZE_TDR, SEGMENTS } from '../lib/config.js';
+import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, M2M_FAMILIES, OPTIMIZE_TDR, SEGMENTS } from '../lib/config.js';
 import { editionsFor, formatMoney, lineTypeLabel, unitsFor } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
@@ -277,8 +277,9 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
       <Tile compact>
         <Flex direction="column" gap="small">
           <Text format={{ fontWeight: 'demibold' }}>Add a product</Text>
+          {quote.m2m && <Text variant="microcopy">Month-to-Month quotes are AutoElevate only: no other product has Month-to-Month SKUs, and co-term isn't available.</Text>}
           <Flex gap="small" wrap>
-            {FAMILY_ORDER.map((f) => (
+            {FAMILY_ORDER.filter((f) => !quote.m2m || M2M_FAMILIES.includes(f)).map((f) => (
               <Button key={f} variant="secondary" size="sm" onClick={() => onAdd(f)}>
                 + {FAMILIES[f].label}
               </Button>

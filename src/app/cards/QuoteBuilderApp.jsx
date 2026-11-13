@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, cotermRows, dealWrites, isDowngradePipeline, pipelineAllowsCoterm, refreshCoterms, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate } from './lib/pricing.js';
+import { buildQuote, cotermRows, dealWrites, isDowngradePipeline, pipelineAllowsCoterm, refreshCoterms, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate, syncBillingPatch, effectiveBilling } from './lib/pricing.js';
 import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -90,6 +90,13 @@ function withOwnRamps(products, savedRamp) {
 // that the quote doesn't have yet (a one-off SKU counts as its product). `coterms` come from cotermRows()
 // at load. Saved co-term rows are reset to the company record (keeping the rep's discount); one on a product
 // that can no longer co-term becomes a normal row.
+// A Month-to-Month quote (AutoElevate only) has no co-term rows: they're dropped, and added back from the
+// company record when SKU pricing leaves Month-to-Month.
+export function cotermsForSetup(setup, products, coterms, nextUid) {
+  if (effectiveBilling(setup || {}) === 'm2m') return { products: (products || []).filter((p) => !p.coterm), nextUid };
+  return withCoterms(products, coterms, nextUid);
+}
+
 export function withCoterms(products, coterms, nextUid) {
   const list = coterms || [];
   const kept = refreshCoterms(products, list);
@@ -108,11 +115,13 @@ export function reducer(state, action) {
       const next = Object.assign({}, state, { setup: Object.assign({}, state.setup, action.setup) });
       // A fresh quote starts with the company's co-term rows.
       if (state.products.length || state.editing) return next;
-      return Object.assign(next, withCoterms([], action.coterms, state.nextUid));
+      return Object.assign(next, cotermsForSetup(next.setup, [], action.coterms, state.nextUid));
     }
     case 'step':
       return Object.assign({}, state, { step: Math.max(0, Math.min(STEPS.length - 1, action.step)) });
     case 'setup': {
+      // SKU pricing and Agreement Length move together (Month-to-Month on one sets the other).
+      action = Object.assign({}, action, { patch: syncBillingPatch(state.setup, action.patch) });
       const setup = Object.assign({}, state.setup, action.patch);
       if (action.patch.segment && action.patch.segment !== state.setup.segment) {
         // An edition the new segment doesn't sell (Optimize365 per tenant on Enterprise) goes back to the first one.
@@ -126,6 +135,10 @@ export function reducer(state, action) {
           return Object.assign({}, p, reset);
         });
         state = Object.assign({}, state, { products });
+      }
+      // Month-to-Month is AutoElevate only: entering it drops the co-term rows; leaving it adds them back.
+      if (effectiveBilling(state.setup) !== effectiveBilling(setup) && (effectiveBilling(setup) === 'm2m' || effectiveBilling(state.setup) === 'm2m')) {
+        state = Object.assign({}, state, cotermsForSetup(setup, state.products, action.coterms, state.nextUid));
       }
       if (!action.patch.agreementLength) return Object.assign({}, state, { setup });
       // Agreement Length changed: a product ramp still at its default single stage follows the new default.
@@ -200,7 +213,7 @@ export function reducer(state, action) {
       // Start a new option from a saved builder quote: same inputs, fresh dates, not primary.
       const saved = action.state;
       const own = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
-      const { products, nextUid } = withCoterms(own, action.coterms, own.length + 1);
+      const { products, nextUid } = cotermsForSetup(Object.assign({}, state.setup, saved.setup), own, action.coterms, own.length + 1);
       return Object.assign({}, state, {
         step: 1,
         setup: Object.assign({}, state.setup, saved.setup, { expirationDate: state.setup.expirationDate, quoteName: '' }),
@@ -215,7 +228,7 @@ export function reducer(state, action) {
       const q = action.quote;
       const saved = q.state || {};
       const own = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
-      const { products, nextUid } = withCoterms(own, action.coterms, own.length + 1);
+      const { products, nextUid } = cotermsForSetup(Object.assign({}, state.setup, saved.setup), own, action.coterms, own.length + 1);
       return Object.assign({}, state, {
         step: 0,
         setup: Object.assign({}, state.setup, saved.setup, { quoteName: q.title || '', expirationDate: q.expirationDate || (saved.setup && saved.setup.expirationDate) || state.setup.expirationDate }),
@@ -226,7 +239,7 @@ export function reducer(state, action) {
       });
     }
     case 'stopEditing':
-      return Object.assign({}, initialState, { setup: state.setup, editing: null }, withCoterms([], action.coterms, 1));
+      return Object.assign({}, initialState, { setup: state.setup, editing: null }, cotermsForSetup(state.setup, [], action.coterms, 1));
     case 'nextOption':
       return Object.assign({}, state, { step: 1, primary: false, editing: null, setup: Object.assign({}, state.setup, { quoteName: '' }) });
     default:
@@ -463,7 +476,7 @@ export function QuoteBuilderApp() {
           owner={data.deal.owner}
           user={context && context.user}
           dealOptions={data.dealOptions}
-          onChange={(patch) => dispatch({ type: 'setup', patch })}
+          onChange={(patch) => dispatch({ type: 'setup', patch, coterms: data && data.coterms })}
         />
       )}
       {state.step === 1 && (

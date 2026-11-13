@@ -116,11 +116,18 @@ export const SEGMENTS = [
   { value: 'ENT', label: 'Enterprise' },
 ];
 
+// SKU pricing choices, in the order the Setup step lists them (Nov 2026). Month-to-Month uses the M2M SKUs
+// (e.g. M2M-Standard-AE-25-Agent-Commit-2026, priced above the annual-commit monthly SKUs) and goes hand in
+// hand with the Month-to-Month Agreement Length: picking either one sets the other.
 export const BILLING = {
-  monthly: { label: 'Monthly', frequency: 'monthly', periodsPerYear: 12 },
+  m2m: { label: 'Month-to-Month', frequency: 'monthly', periodsPerYear: 12 },
+  monthly: { label: 'Annual (billed monthly)', frequency: 'monthly', periodsPerYear: 12 },
   annual: { label: 'Annual (billed yearly)', frequency: 'annually', periodsPerYear: 1 },
-  m2m: { label: 'Month-to-month', frequency: 'monthly', periodsPerYear: 12 },
 };
+export const BILLING_ORDER = ['m2m', 'monthly', 'annual'];
+// Only AutoElevate has active Month-to-Month SKUs, so a Month-to-Month quote is AutoElevate only: no other
+// product, no one-off SKU from another product and no co-term rows (Nov 2026).
+export const M2M_FAMILIES = ['autoelevate'];
 
 export const MAX_RAMP_MONTHS = 12; // total across all ramp stages
 // A ramp can step down in stages, e.g. 2 months free then 2 months at 50% off.
@@ -243,8 +250,8 @@ export const DOWNGRADE_PIPELINES = {
   '30582866': 'Downgrade Pipeline',
 };
 // The company's AE Feature Type → the feature type the AutoElevate co-term is priced on.
-// Advanced (GrandFathered) partners co-term on Advanced SKUs.
-export const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Advanced' };
+// Advanced (GrandFathered) partners co-term on Standard SKUs (Nov 2026; was Advanced).
+export const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Standard' };
 // How the company properties are named on screen.
 export const COTERM_PROPERTY_LABELS = {
   ae_agent_commit: 'AE Agent Commit',

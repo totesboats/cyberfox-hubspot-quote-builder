@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button, DateInput, DescriptionList, DescriptionListItem, Divider, Flex, Heading, Input, Select, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
-import { BILLING, FALLBACK_OPTIONS, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, SEGMENTS } from '../lib/config.js';
+import { BILLING, BILLING_ORDER, FALLBACK_OPTIONS, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, SEGMENTS } from '../lib/config.js';
 import { effectiveBilling } from '../lib/pricing.js';
 
 const toDateValue = (iso) => {
@@ -89,10 +89,9 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, user, 
           <Select
             label="SKU pricing"
             name="billing"
-            readOnly={m2m}
-            tooltip={m2m ? 'Month-to-month SKUs, set by the Agreement Length.' : 'Which price book the products use.'}
-            options={m2m ? [{ label: BILLING.m2m.label, value: 'm2m' }] : ['monthly', 'annual'].map((k) => ({ label: BILLING[k].label, value: k }))}
-            value={m2m ? 'm2m' : billing}
+            tooltip={m2m ? 'Month-to-Month SKUs (M2M), priced above the annual-commit SKUs. Goes with the Month-to-Month Agreement Length.' : 'Which price book the products use. Month-to-Month uses the M2M SKUs and sets the Agreement Length to Month-to-Month.'}
+            options={BILLING_ORDER.map((k) => ({ label: BILLING[k].label, value: k }))}
+            value={billing}
             onChange={(v) => onChange({ billing: String(v) })}
           />
           <DateInput

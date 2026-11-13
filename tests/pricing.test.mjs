@@ -271,6 +271,64 @@ test('month-to-month uses the Month-to-Month agreement length option', () => {
   assert.match(q.blocking[0].error, /month-to-month SKUs/); // fixture has no M2M SKUs
 });
 
+test('SKU pricing: Month-to-Month, Annual (billed monthly), Annual (billed yearly), in that order', async () => {
+  const C = await import('../shared/config.mjs');
+  assert.deepEqual(C.BILLING_ORDER.map((k) => C.BILLING[k].label), ['Month-to-Month', 'Annual (billed monthly)', 'Annual (billed yearly)']);
+});
+
+test('Month-to-Month SKU pricing prices the M2M SKUs', () => {
+  const m2mCatalog = P.indexCatalog(RECORDS.concat([
+    prod('M2M-Standard-AE-1000-Agent-Commit-2026', 1260, 'autoelevate', 'standard', 'MSP', 'm2m', 1000),
+    prod('M2M-Standard-AE-1000-Agent-Commit-Additional-Agents+2026', 1.26, 'autoelevate', 'standard', 'MSP', 'm2m', 1000, 'additional'),
+  ]));
+  const setup = Object.assign({}, MSP, P.syncBillingPatch(MSP, { billing: 'm2m' }));
+  const q = P.buildQuote(setup, [ae({ ramp: false, quantity: 1250 })], {}, m2mCatalog);
+  assert.equal(q.billing, 'm2m');
+  assert.deepEqual(q.blocking, []);
+  assert.deepEqual(q.lines.map((l) => [l.sku, l.quantity]), [['M2M-Standard-AE-1000-Agent-Commit-2026', 1], ['M2M-Standard-AE-1000-Agent-Commit-Additional-Agents+2026', 250]]);
+  // Back to Annual (billed monthly): the annual-commit monthly SKUs again.
+  const back = Object.assign({}, setup, P.syncBillingPatch(setup, { billing: 'monthly' }));
+  const q2 = P.buildQuote(back, [ae({ ramp: false, quantity: 1250 })], {}, m2mCatalog);
+  assert.equal(q2.lines[0].sku, 'Standard-AE-1000-Agent-Commit-2026');
+});
+
+test('Month-to-Month quotes are AutoElevate only: other products and co-term rows are errors', () => {
+  const m2mCatalog = P.indexCatalog(RECORDS.concat([
+    prod('M2M-Standard-AE-1000-Agent-Commit-2026', 1260, 'autoelevate', 'standard', 'MSP', 'm2m', 1000),
+    prod('M2M-Standard-AE-1000-Agent-Commit-Additional-Agents+2026', 1.26, 'autoelevate', 'standard', 'MSP', 'm2m', 1000, 'additional'),
+  ]));
+  const setup = Object.assign({}, MSP, { billing: 'm2m', agreementLength: '12 Months - Month-to-Month' });
+  const dns = { uid: 2, family: 'dns', edition: 'standard', quantity: 600, discountPct: 0 };
+  const q = P.buildQuote(setup, [ae({ ramp: false }), dns], {}, m2mCatalog);
+  assert.equal(q.blocking.length, 1);
+  assert.equal(q.blocking[0].uid, 2);
+  assert.match(q.blocking[0].error, /DNS Filtering can't be on a Month-to-Month quote: only AutoElevate has Month-to-Month SKUs/);
+  assert.ok(q.lines.every((l) => l.qbFamily === 'autoelevate'));
+  // A co-term row (even AutoElevate) isn't allowed on Month-to-Month.
+  const qc = P.buildQuote(setup, [ae({ ramp: false, coterm: true })], {}, m2mCatalog);
+  assert.match(qc.blocking[0].error, /co-term isn't available on a Month-to-Month quote/);
+  // The same DNS row prices normally on Annual (billed monthly).
+  const annual = P.buildQuote(MSP, [ae({ ramp: false }), dns], {}, m2mCatalog);
+  assert.ok(!annual.blocking.some((b) => b.uid === 2));
+});
+
+test('SKU pricing and Agreement Length stay in step', () => {
+  const M2M_LEN = '12 Months - Month-to-Month';
+  // Month-to-Month pricing sets the Month-to-Month agreement.
+  assert.deepEqual(P.syncBillingPatch({ billing: 'monthly', agreementLength: '15 Months' }, { billing: 'm2m' }), { billing: 'm2m', agreementLength: M2M_LEN });
+  // Leaving Month-to-Month pricing puts the agreement back to 12 Months.
+  assert.deepEqual(P.syncBillingPatch({ billing: 'm2m', agreementLength: M2M_LEN }, { billing: 'annual' }), { billing: 'annual', agreementLength: '12 Months' });
+  // Annual ↔ monthly on a fixed length leaves the length alone.
+  assert.deepEqual(P.syncBillingPatch({ billing: 'monthly', agreementLength: '15 Months' }, { billing: 'annual' }), { billing: 'annual' });
+  // The Month-to-Month agreement sets Month-to-Month pricing; a fixed length leaves it for Annual (billed monthly).
+  assert.deepEqual(P.syncBillingPatch({ billing: 'annual', agreementLength: '12 Months' }, { agreementLength: M2M_LEN }), { agreementLength: M2M_LEN, billing: 'm2m' });
+  assert.deepEqual(P.syncBillingPatch({ billing: 'm2m', agreementLength: M2M_LEN }, { agreementLength: '24 Months' }), { agreementLength: '24 Months', billing: 'monthly' });
+  assert.deepEqual(P.syncBillingPatch({ billing: 'annual', agreementLength: '12 Months' }, { agreementLength: '24 Months' }), { agreementLength: '24 Months' });
+  // Other fields pass through.
+  assert.deepEqual(P.syncBillingPatch({ billing: 'monthly' }, { segment: 'ENT' }), { segment: 'ENT' });
+  assert.equal(P.effectiveBilling({ billing: 'm2m', agreementLength: M2M_LEN }), 'm2m');
+});
+
 test('a value the property does not offer is an error, not a write', () => {
   const { w } = W({ agreementLength: '41 Months' }, [ae()], { enabled: true, months: 5 });
   assert.equal(w.properties.agreement_length, undefined);
@@ -739,6 +797,8 @@ const COTERM_CATALOG = P.indexCatalog(RECORDS.concat([
   prod('Advanced-AE-100-Agent-Commit-Additional-Agents+2026', 2, 'autoelevate', 'advanced', 'MSP', 'monthly', 100, 'additional'),
   prod('Advanced-AE-250-Agent-Commit-2026', 450, 'autoelevate', 'advanced', 'MSP', 'monthly', 250),
   prod('Advanced-AE-250-Agent-Commit-Additional-Agents+2026', 1.8, 'autoelevate', 'advanced', 'MSP', 'monthly', 250, 'additional'),
+  prod('Standard-AE-100-Agent-Commit-2026', 105, 'autoelevate', 'standard', 'MSP', 'monthly', 100),
+  prod('Standard-AE-100-Agent-Commit-Additional-Agents+2026', 1.05, 'autoelevate', 'standard', 'MSP', 'monthly', 100, 'additional'),
 ]));
 const M2M = { ae_payment_terms: 'Month-to-Month', pb_payment_terms: 'Month-to-Month', dns_payment_terms: 'Month-to-Month', timus_payment_terms: 'Month-to-Month', optimize_payment_terms: 'Month-to-Month' };
 const company = (active, commits) => ({ activeProducts: active, commits: Object.assign({}, M2M, commits) });
@@ -751,8 +811,8 @@ test('co-term: one row per active product except the deal\'s own, in product ord
   assert.deepEqual(P.cotermRows(company([], {})), []);
 });
 
-test('co-term: AutoElevate from AE Agent Commit and AE Feature Type; Grandfathered uses Advanced SKUs', () => {
-  for (const [type, want] of [['Standard', 'Standard'], ['Advanced', 'Advanced'], ['Advanced (GrandFathered)', 'Advanced'], ['', 'Standard']]) {
+test('co-term: AutoElevate from AE Agent Commit and AE Feature Type; Grandfathered uses Standard SKUs', () => {
+  for (const [type, want] of [['Standard', 'Standard'], ['Advanced', 'Advanced'], ['Advanced (GrandFathered)', 'Standard'], ['', 'Standard']]) {
     const [row] = P.cotermRows(company(['autoelevate'], { ae_agent_commit: '150', ae_sku_type: type }), { dealFamily: 'optimize365' });
     assert.equal(row.featureType, want, type);
     assert.equal(row.edition, want === 'Advanced' ? 'advanced' : 'standard');
@@ -760,10 +820,14 @@ test('co-term: AutoElevate from AE Agent Commit and AE Feature Type; Grandfather
   }
   // 150 agents = the 100-agent plan + 50 additional agents.
   const [row] = P.cotermRows(company(['autoelevate'], { ae_agent_commit: '150', ae_sku_type: 'Advanced (GrandFathered)' }), { dealFamily: 'optimize365' });
-  assert.match(row.cotermNote, /AE Agent Commit 150 · AE Feature Type Advanced \(GrandFathered\) → Advanced SKUs/);
+  assert.match(row.cotermNote, /AE Agent Commit 150 · AE Feature Type Advanced \(GrandFathered\) → Standard SKUs/);
   const q = P.buildQuote(Object.assign({}, MSP, { activeProducts: ['autoelevate'], dealFamily: 'optimize365' }), [Object.assign({ uid: 1 }, row)], {}, COTERM_CATALOG);
-  assert.deepEqual(q.lines.map((l) => [l.sku, l.quantity, l.lineType]), [['Advanced-AE-100-Agent-Commit-2026', 1, 'coterm'], ['Advanced-AE-100-Agent-Commit-Additional-Agents+2026', 50, 'coterm']]);
-  assert.equal(q.aeFeature.type, 'Advanced');
+  assert.deepEqual(q.lines.map((l) => [l.sku, l.quantity, l.lineType]), [['Standard-AE-100-Agent-Commit-2026', 1, 'coterm'], ['Standard-AE-100-Agent-Commit-Additional-Agents+2026', 50, 'coterm']]);
+  assert.equal(q.aeFeature.type, 'Standard');
+  // An Advanced partner still co-terms on Advanced SKUs.
+  const [adv] = P.cotermRows(company(['autoelevate'], { ae_agent_commit: '150', ae_sku_type: 'Advanced' }), { dealFamily: 'optimize365' });
+  const qa = P.buildQuote(Object.assign({}, MSP, { activeProducts: ['autoelevate'], dealFamily: 'optimize365' }), [Object.assign({ uid: 1 }, adv)], {}, COTERM_CATALOG);
+  assert.equal(qa.lines[0].sku, 'Advanced-AE-100-Agent-Commit-2026');
 });
 
 test('co-term: the rep can still discount it, and the discount counts toward approval', () => {

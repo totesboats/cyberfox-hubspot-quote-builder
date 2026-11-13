@@ -107,10 +107,12 @@ var require_config = __commonJS({
       { value: "ENT", label: "Enterprise" }
     ];
     var BILLING = {
-      monthly: { label: "Monthly", frequency: "monthly", periodsPerYear: 12 },
-      annual: { label: "Annual (billed yearly)", frequency: "annually", periodsPerYear: 1 },
-      m2m: { label: "Month-to-month", frequency: "monthly", periodsPerYear: 12 }
+      m2m: { label: "Month-to-Month", frequency: "monthly", periodsPerYear: 12 },
+      monthly: { label: "Annual (billed monthly)", frequency: "monthly", periodsPerYear: 12 },
+      annual: { label: "Annual (billed yearly)", frequency: "annually", periodsPerYear: 1 }
     };
+    var BILLING_ORDER = ["m2m", "monthly", "annual"];
+    var M2M_FAMILIES = ["autoelevate"];
     var MAX_RAMP_MONTHS = 12;
     var MAX_RAMP_STAGES = 4;
     var APPROVAL = {
@@ -214,7 +216,7 @@ var require_config = __commonJS({
     var DOWNGRADE_PIPELINES = {
       "30582866": "Downgrade Pipeline"
     };
-    var COTERM_AE_FEATURE = { Standard: "Standard", Advanced: "Advanced", "Advanced (GrandFathered)": "Advanced" };
+    var COTERM_AE_FEATURE = { Standard: "Standard", Advanced: "Advanced", "Advanced (GrandFathered)": "Standard" };
     var COTERM_PROPERTY_LABELS = {
       ae_agent_commit: "AE Agent Commit",
       ae_sku_type: "AE Feature Type",
@@ -331,7 +333,7 @@ var require_config = __commonJS({
     var RAMP_NAME_PREFIX = "RAMP ";
     var QUOTE_DEFAULTS = { language: "en", currency: "USD", expirationDays: 30, paymentEnabled: false };
     var CURRENCIES = ["USD", "CAD", "GBP", "EUR", "AUD"];
-    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, LINE_FAMILY_PROPERTY: LINE_FAMILY_PROPERTY2, LINE_TYPE_PROPERTY: LINE_TYPE_PROPERTY2, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, COTERM_COMMITS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };
+    module2.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, BILLING_ORDER, M2M_FAMILIES, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, LINE_FAMILY_PROPERTY: LINE_FAMILY_PROPERTY2, LINE_TYPE_PROPERTY: LINE_TYPE_PROPERTY2, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, COTERM_COMMITS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };
   }
 });
 
@@ -339,7 +341,7 @@ var require_config = __commonJS({
 var require_pricing = __commonJS({
   "functions-src/lib/pricing.js"(exports2, module2) {
     "use strict";
-    var { FAMILIES, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY: LINE_FAMILY_PROPERTY2, LINE_TYPE_PROPERTY: LINE_TYPE_PROPERTY2, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, FAMILY_ORDER } = require_config();
+    var { FAMILIES, BILLING, M2M_FAMILIES, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY: LINE_SOURCE_PROPERTY2, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY: LINE_SESSION_PROPERTY2, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY: LINE_FAMILY_PROPERTY2, LINE_TYPE_PROPERTY: LINE_TYPE_PROPERTY2, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, FAMILY_ORDER } = require_config();
     function toNum(v, fallback = 0) {
       const n = typeof v === "number" ? v : parseFloat(v);
       return Number.isFinite(n) ? n : fallback;
@@ -925,6 +927,20 @@ var require_pricing = __commonJS({
       if (setup.agreementLength === AGREEMENT_LENGTH_M2M) return "m2m";
       return setup.billing === "annual" ? "annual" : "monthly";
     }
+    function syncBillingPatch(setup, patch) {
+      const out = Object.assign({}, patch);
+      const wasM2M = (setup || {}).agreementLength === AGREEMENT_LENGTH_M2M;
+      if (patch.billing === "m2m") {
+        out.agreementLength = AGREEMENT_LENGTH_M2M;
+      } else if (patch.billing && wasM2M && !patch.agreementLength) {
+        out.agreementLength = AGREEMENT_LENGTH_DEFAULT;
+      }
+      if (patch.agreementLength && !patch.billing) {
+        if (patch.agreementLength === AGREEMENT_LENGTH_M2M) out.billing = "m2m";
+        else if ((setup || {}).billing === "m2m") out.billing = "monthly";
+      }
+      return out;
+    }
     function optimizeRampRule(setup) {
       const billing = effectiveBilling(setup || {});
       const frequency = setup && setup.paymentFrequency || PAYMENT_FREQUENCY_DEFAULT[billing];
@@ -955,7 +971,13 @@ var require_pricing = __commonJS({
       if (!m2m && !months) conflicts.push("Pick an Agreement Length on the Setup step.");
       const optimizeRamp = optimizeRampRule(setup);
       const rows = (inputs || []).map((input) => {
-        const priced = priceProduct(input, priceSetup, catalog);
+        let priced = priceProduct(input, priceSetup, catalog);
+        if (m2m) {
+          const fam = rowFamily({ input, priced });
+          const name = rowLabel({ input, priced });
+          const m2mError = input.coterm ? `${name}: co-term isn't available on a Month-to-Month quote.` : !M2M_FAMILIES.includes(fam) ? `${name} can't be on a Month-to-Month quote: only AutoElevate has Month-to-Month SKUs. Remove it, or switch SKU pricing to Annual (billed monthly or yearly).` : "";
+          if (m2mError) priced = Object.assign({}, priced, { error: m2mError, lines: [] });
+        }
         const usable = !priced.error && priced.lines.length > 0;
         const ramp2 = productRamp(input, legacyRamp);
         const ramped = ramp2.enabled && usable && !input.coterm;
@@ -1254,7 +1276,7 @@ var require_pricing = __commonJS({
       if (ramp.enabled && (Array.isArray(ramp.stages) ? ramp.stages.length : ramp.months)) checkStages(Array.isArray(ramp.stages) ? ramp.stages : [ramp], "ramp");
       return errors;
     }
-    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, pipelineAllowsCoterm, isDowngradePipeline, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+    module2.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, pipelineAllowsCoterm, isDowngradePipeline, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, syncBillingPatch, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
   }
 });
 

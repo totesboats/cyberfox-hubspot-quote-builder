@@ -118,11 +118,18 @@ const SEGMENTS = [
   { value: 'ENT', label: 'Enterprise' },
 ];
 
+// SKU pricing choices, in the order the Setup step lists them (Nov 2026). Month-to-Month uses the M2M SKUs
+// (e.g. M2M-Standard-AE-25-Agent-Commit-2026, priced above the annual-commit monthly SKUs) and goes hand in
+// hand with the Month-to-Month Agreement Length: picking either one sets the other.
 const BILLING = {
-  monthly: { label: 'Monthly', frequency: 'monthly', periodsPerYear: 12 },
+  m2m: { label: 'Month-to-Month', frequency: 'monthly', periodsPerYear: 12 },
+  monthly: { label: 'Annual (billed monthly)', frequency: 'monthly', periodsPerYear: 12 },
   annual: { label: 'Annual (billed yearly)', frequency: 'annually', periodsPerYear: 1 },
-  m2m: { label: 'Month-to-month', frequency: 'monthly', periodsPerYear: 12 },
 };
+const BILLING_ORDER = ['m2m', 'monthly', 'annual'];
+// Only AutoElevate has active Month-to-Month SKUs, so a Month-to-Month quote is AutoElevate only: no other
+// product, no one-off SKU from another product and no co-term rows (Nov 2026).
+const M2M_FAMILIES = ['autoelevate'];
 
 const MAX_RAMP_MONTHS = 12; // total across all ramp stages
 // A ramp can step down in stages, e.g. 2 months free then 2 months at 50% off.
@@ -245,8 +252,8 @@ const DOWNGRADE_PIPELINES = {
   '30582866': 'Downgrade Pipeline',
 };
 // The company's AE Feature Type → the feature type the AutoElevate co-term is priced on.
-// Advanced (GrandFathered) partners co-term on Advanced SKUs.
-const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Advanced' };
+// Advanced (GrandFathered) partners co-term on Standard SKUs (Nov 2026; was Advanced).
+const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Standard' };
 // How the company properties are named on screen.
 const COTERM_PROPERTY_LABELS = {
   ae_agent_commit: 'AE Agent Commit',
@@ -403,4 +410,4 @@ const QUOTE_DEFAULTS = { language: 'en', currency: 'USD', expirationDays: 30, pa
 // currency (Deal currency code); a SKU with no price in that currency stops the quote instead of falling back to USD.
 const CURRENCIES = ['USD', 'CAD', 'GBP', 'EUR', 'AUD'];
 
-module.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, COTERM_COMMITS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };
+module.exports = { HS_API_VERSION, HS_PATHS, FAMILIES, OPTIMIZE_RAMP, FAMILY_ORDER, OPTIMIZE_TDR, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, SEGMENTS, BILLING, BILLING_ORDER, M2M_FAMILIES, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, PIPELINE_FAMILY, COMPANY_PRODUCT_STATUS, COTERM_COMMITS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, QUOTE_EDITABLE_STATUSES, SET_BILLING_DELAY_AFTER_RAMP, TEMPLATE_HINTS, TEMPLATE_HIDE, DEAL_PROPERTIES, PRINTED_DEAL_PROPERTIES, QUOTE_TOKEN_PROPERTIES, ENUM_PROPERTIES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, INVOICE_TERMS_DEFAULT, WRITE_CONTRACT_TERM, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, FALLBACK_OPTIONS, AE_FEATURE_TYPES, AE_FEATURE_TYPES_RETIRED, RAMP_NAME_PREFIX, QUOTE_DEFAULTS, CURRENCIES };
