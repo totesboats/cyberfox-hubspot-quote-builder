@@ -115,16 +115,14 @@ export function ProductRamp({ row, quote, onStage, onAddStage, onRemoveStage }) 
 // Below the products: the combined billing schedule for every product's ramp.
 export function RampSection({ quote, onClear }) {
   const schedule = scheduleRows(quote);
-  const length = quote.m2m ? 'month-to-month' : `${quote.term}-month agreement`;
+  const length = quote.m2m ? 'Month-to-month' : `${quote.term}-month agreement`;
   return (
     <Tile>
       <Flex direction="column" gap="medium">
         <Flex justify="between" align="start" gap="medium">
           <Flex direction="column" gap="extra-small">
             <Heading>Ramp & schedule</Heading>
-            <Text variant="microcopy">
-              {`Each product with Ramp ticked has its own ramp (set it in the product above): RAMP line items for its first months of the ${length}, then its plan for the rest. Ramps of ${APPROVAL.rampMonthsThreshold}+ months in total route for approval.`}
-            </Text>
+            <Text variant="microcopy">{`${length} · ramps of ${APPROVAL.rampMonthsThreshold}+ months need approval`}</Text>
           </Flex>
           <Button variant="secondary" size="sm" onClick={onClear}>
             Remove all ramps

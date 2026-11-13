@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, DescriptionList, DescriptionListItem, Flex, Text, Tile } from '@hubspot/ui-extensions';
+import { Button, DescriptionList, DescriptionListItem, Flex, Tile } from '@hubspot/ui-extensions';
 
 // The quote-token fields chosen on Setup, read-only, so reps can see them while building
 // products and ramps. Values come from the same validated deal writes the quote will use.
@@ -17,27 +17,9 @@ export function PrintedReference({ writes, dealOptions, ramp, quote, onEdit }) {
     const o = ((dealOptions && dealOptions[name]) || []).find((x) => x.value === value);
     return o ? o.label : value;
   };
-  // Products can ramp for different lengths; say so when they do.
-  const lengths = [...new Set(quote.rows.filter((r) => r.ramped).map((r) => r.rampMonths))];
-  const split = quote.m2m
-    ? 'Month-to-month: plans renew monthly.'
-    : !quote.anyRamp
-      ? `Plan runs months 1–${quote.term}.`
-      : lengths.length === 1
-        ? `Ramp months 1–${lengths[0]}, plan months ${lengths[0] + 1}–${quote.term}.`
-        : `Ramps run up to ${quote.ramp.months} months; each product's plan bills after its own ramp, through month ${quote.term}.`;
   return (
     <Tile compact>
-      <Flex direction="column" gap="small">
-        <Flex justify="between" align="center" gap="medium">
-          <Flex direction="column" gap="extra-small">
-            <Text format={{ fontWeight: 'demibold' }}>Prints on the quote</Text>
-            <Text variant="microcopy">{`Set on the Setup step. ${split}`}</Text>
-          </Flex>
-          <Button variant="secondary" size="sm" onClick={onEdit}>
-            Change on Setup
-          </Button>
-        </Flex>
+      <Flex justify="between" align="center" gap="medium">
         <DescriptionList direction="row">
           {FIELDS.map(([name, title]) => (
             <DescriptionListItem key={name} label={title}>
@@ -45,6 +27,9 @@ export function PrintedReference({ writes, dealOptions, ramp, quote, onEdit }) {
             </DescriptionListItem>
           ))}
         </DescriptionList>
+        <Button variant="transparent" size="sm" onClick={onEdit}>
+          Change
+        </Button>
       </Flex>
     </Tile>
   );

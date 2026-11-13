@@ -2,7 +2,7 @@ import React from 'react';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer } from '@hubspot/ui-extensions/testing';
-import { Alert, Button, Checkbox, DescriptionListItem, Input, NumberInput, Select, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
+import { Accordion, Alert, Button, Checkbox, DescriptionListItem, Dropdown, Input, NumberInput, Select, StatusTag, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
 import { QuoteBuilderApp, reducer, initialState } from '../../src/app/cards/QuoteBuilderApp.jsx';
 
 // The platform exposes hubspot.serverless via a worker global; route it to the renderer's mock.
@@ -37,6 +37,9 @@ const CATALOG_RESPONSE = {
 
 const text = (node) => node.toString();
 
+// Products are added from the Add product dropdown.
+const addProduct = (r, label) => r.find(Dropdown.ButtonItem, (n) => text(n).includes(label)).trigger('onClick');
+
 test('card renders, prices AutoElevate, ramps, and submits', async () => {
   const r = mk();
   const calls = [];
@@ -56,25 +59,21 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(r.find(Select, { name: 'agreementLength' }).props.value, '12 Months');
   assert.equal(r.find(Input, { name: 'seller' }).props.value, 'fake_firstName fake_lastName · fake_email@example.com'); // whoever builds the quote
   assert.equal(r.find(Select, { name: 'segment' }).props.value, 'MSP');
-  // Printed fields other than Agreement Length show as one read-only line until Edit.
-  // Invoice Terms always starts at Due Upon Receipt, even though the deal holds Net-30.
-  assert.equal(r.maybeFind(Select, { name: 'invoiceTerms' }), null);
-  assert.equal(r.find(DescriptionListItem, { label: 'Invoice Terms' }).text, 'Due Upon Receipt');
-  assert.equal(r.find(DescriptionListItem, { label: 'Payment Frequency' }).text, 'Monthly (matches SKU pricing)');
-  assert.equal(r.find(DescriptionListItem, { label: 'Payment Method' }).text, 'Credit Card');
-  assert.equal(r.maybeFind(DescriptionListItem, { label: 'Promo' }), null); // Promo was removed from Setup
-  r.find(Button, (n) => /"Edit"/.test(text(n))).trigger('onClick');
-  await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'invoiceTerms' })));
+  // Expiry, acceptance, signer, seller and the printed terms sit in the collapsed Quote details, whose title
+  // summarizes them. Invoice Terms always starts at Due Upon Receipt, even though the deal holds Net-30.
+  const details = r.find(Accordion, (n) => /Quote details/.test(n.props.title));
+  assert.equal(details.props.defaultOpen, undefined);
+  assert.match(details.props.title, /E-signature · .* · Monthly · Credit Card · Due Upon Receipt$/);
   assert.equal(r.find(Select, { name: 'invoiceTerms' }).props.value, 'Due Upon Receipt');
-  assert.ok(r.maybeFind(Button, (n) => /"Done"/.test(text(n))));
-  // Nothing priced yet: the summary is one compact line, not four $0 figures.
+  assert.equal(r.find(Select, { name: 'paymentMethod' }).props.value, 'Credit Card');
+  assert.equal(r.maybeFind(Select, { name: 'promo' }), null); // Promo was removed from Setup
+  // Nothing priced yet: no $0 figures in the summary.
   assert.equal(r.findAll(StatisticsItem).length, 0);
-  assert.match(text(r.getRootNode()), /Totals and approval show here once you add products/);
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '15 Months');
   cont().trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
 
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'qty-1' })));
   assert.equal(r.find(Select, { name: 'tier-1' }).props.value, '__none__');
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
@@ -82,6 +81,9 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
   assert.deepEqual(r.find(Select, { name: 'feature-1' }).props.options.map((o) => o.value), ['Standard', 'Advanced']); // Advanced (GrandFathered) retired
   await r.waitFor(() => assert.match(text(r.getRootNode()), /\$1,181\.25\/mo/));
+  // Feature type, ramp and line items sit in the tile's collapsed Details section.
+  assert.equal(r.find(Accordion, (n) => /^Details/.test(n.props.title)).props.title, 'Details · 2 line items');
+  assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.description, undefined);
   // auto-suggested CPQ template appears in the summary
   assert.match(text(r.getRootNode()), /CPQ template/);
 
@@ -92,16 +94,14 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1-1' })));
   r.find(Select, { name: 'rampMonths-1-1' }).trigger('onChange', 3);
-  await r.waitFor(() => assert.match(text(r.getRootNode()), /Auto-approves/)); // 3 months is under the 4+ month rule
+  await r.waitFor(() => assert.equal(r.find(StatusTag).text, 'Auto-approved')); // 3 months is under the 4+ month rule
   const stats = r.findAll(StatisticsItem).map((s) => [s.props.label, s.props.number]);
   assert.deepEqual(stats, [['MRR (full plan)', '$1,181.25'], ['First 12 months', '$10,631'], ['Total contract value', '$14,175'], ['Savings vs list', '$5,513']]);
 
   cont().trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
   assert.match(text(r.getRootNode()), /4 lines · 2 ramp/);
-  assert.match(text(r.getRootNode()), /Quote summary/);
   assert.doesNotMatch(text(r.getRootNode()), /What Create quote writes|Approval Discount %|Notes for approvers/);
-  assert.equal(r.find(DescriptionListItem, { label: 'Line items' }).text, '4 (2 ramp)');
   const token = (label) => r.find(DescriptionListItem, { label }).text;
   assert.equal(token('Agreement Length'), '15 Months');
   assert.equal(token('Payment Frequency'), 'Monthly (Month-to-Month)');
@@ -111,7 +111,7 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Draft quote created' })));
   // The success message says to refresh (the deal's Quotes card only shows the new quote after a reload).
   assert.equal(r.maybeFind(Button, (n) => /Open quote in HubSpot/.test(text(n))), null);
-  assert.match(text(r.getRootNode()), /Refresh the page and the quote will appear in the Quotes card/);
+  assert.match(text(r.getRootNode()), /Refresh the page to see it in the Quotes card/);
   const refresh = r.find(Button, (n) => /Refresh page/.test(text(n)));
   assert.equal(refresh.props.variant, 'primary');
   refresh.trigger('onClick');
@@ -131,7 +131,6 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: CATALOG_RESPONSE }));
   r.render(<QuoteBuilderApp />);
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
-  r.find(Button, (n) => /"Edit"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'paymentFrequency' })));
   const freq = r.find(Select, { name: 'paymentFrequency' }).props.options.map((o) => o.value);
   assert.deepEqual(freq, ['__none__', 'Month-to-Month', 'Quarterly', 'Annual Payments']);
@@ -141,8 +140,8 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   assert.deepEqual(r.find(Select, { name: 'agreementLength' }).props.options.map((o) => o.value), ['12 Months - Month-to-Month', '12 Months', '15 Months', '16 Months', '18 Months', '24 Months']);
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
+  addProduct(r, 'AutoElevate');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'feature-2' })));
   r.find(Select, { name: 'feature-2' }).trigger('onChange', 'Advanced');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Fix before continuing' })));
@@ -194,7 +193,7 @@ test('wrong billing for a product blocks Continue', async () => {
   r.find(Select, { name: 'billing' }).trigger('onChange', 'annual');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
+  addProduct(r, 'DNS Filtering');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: "Can't price this product" })));
   assert.equal(r.find(Button, (n) => /Continue/.test(text(n))).props.disabled, true);
 });
@@ -244,7 +243,7 @@ test('Timus: rep enters per-user and per-gateway prices; they print as deal toke
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ Timus SASE/.test(text(n))).trigger('onClick');
+  addProduct(r, 'Timus SASE');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'rate-1' })));
   assert.equal(r.maybeFind(Select, { name: 'pl-1' }), null); // no price list picker
   assert.equal(r.find(NumberInput, { name: 'rate-1' }).props.label, 'Timus Price Per User');
@@ -278,8 +277,8 @@ test('remove a product, untick Ramp, Remove ramp clears every Ramp box', async (
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
-  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
+  addProduct(r, 'DNS Filtering');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
   r.find(Checkbox, { name: 'ramp-2' }).trigger('onChange', true);
@@ -356,7 +355,7 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '15 Months');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'rampMonths-1-1' })));
@@ -382,7 +381,7 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   // Removing stage 2 goes back to a single stage
   r.findAll(Button, (n) => /"Remove stage"/.test(text(n)))[1].trigger('onClick');
   await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-1-2' }), null));
-  r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /"Change"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
 });
 
@@ -394,20 +393,21 @@ test('ramp defaults to the months past 12 and follows Agreement Length; Bundles 
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '16 Months');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  assert.equal(r.maybeFind(Button, (n) => /CyberFOX Bundle/.test(text(n))), null);
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  assert.equal(r.maybeFind(Dropdown.ButtonItem, (n) => /CyberFOX Bundle/.test(text(n))), null);
+  assert.ok(r.maybeFind(Dropdown.ButtonItem, (n) => /AutoElevate/.test(text(n))));
+  addProduct(r, 'AutoElevate');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   r.find(Checkbox, { name: 'ramp-1' }).trigger('onChange', true);
   await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 4));
   // Change the agreement to 18 months: an untouched default ramp follows (6 months)
-  r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /"Change"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '18 Months');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(Select, { name: 'rampMonths-1-1' }).props.value, 6));
   // A ramp length the rep picked is left alone
   r.find(Select, { name: 'rampMonths-1-1' }).trigger('onChange', 2);
-  r.find(Button, (n) => /"Change on Setup"/.test(text(n))).trigger('onClick');
+  r.find(Button, (n) => /"Change"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '24 Months');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
@@ -426,7 +426,7 @@ test('Optimize365 Ramp box is locked on agreements past 15 months', async () => 
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '16 Months');
   cont().trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ Optimize365/.test(text(n))).trigger('onClick');
+  addProduct(r, 'Optimize365');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   // 16 months: Optimize can't ramp, so its Ramp box is locked and says why.
   assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.readOnly, true);
@@ -452,8 +452,8 @@ test('Optimize365 ramp on a 14-month agreement is 2 free months, one stage, lock
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   // AutoElevate ramps 4 months on a 16-month agreement; Optimize can't join that ramp.
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
-  r.find(Button, (n) => /\+ Optimize365/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
+  addProduct(r, 'Optimize365');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 100);
@@ -492,8 +492,8 @@ test('per-product ramps: AutoElevate 3 months free, DNS Filtering 2 months at 50
   r.find(Select, { name: 'agreementLength' }).trigger('onChange', '15 Months');
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
-  r.find(Button, (n) => /\+ DNS Filtering/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
+  addProduct(r, 'DNS Filtering');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
   r.find(NumberInput, { name: 'qty-1' }).trigger('onChange', 1250);
   r.find(NumberInput, { name: 'qty-2' }).trigger('onChange', 500);
@@ -530,7 +530,7 @@ test('a deal still on Advanced (GrandFathered) starts new AutoElevate rows as St
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'feature-1' })));
   assert.equal(r.find(Select, { name: 'feature-1' }).props.value, 'Standard');
 });
@@ -547,7 +547,7 @@ test('one-off SKU: pick a product from the One-Off SKUs folder; it prices at its
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ One-off SKU/.test(text(n))).trigger('onClick');
+  addProduct(r, 'One-off SKU');
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'oneoff-1' })));
   assert.deepEqual(r.find(Select, { name: 'oneoff-1' }).props.options.map((o) => o.label), ['Choose a one-off SKU', 'Optimize365 4000 User Plan — $4,800.00/mo']);
   assert.match(text(r.getRootNode()), /Pick a one-off SKU/);
@@ -574,7 +574,7 @@ test('MSP Optimize365: Pricing picker switches to per tenant, which adds the Opt
   await r.waitFor(() => assert.ok(r.maybeFind(StepIndicator)));
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
-  r.find(Button, (n) => /\+ Optimize365/.test(text(n))).trigger('onClick');
+  addProduct(r, 'Optimize365');
   // Starts per user: 100 users, no TDR field.
   await r.waitFor(() => assert.ok(r.maybeFind(Select, { name: 'edition-1' })));
   const picker = r.find(Select, { name: 'edition-1' });
@@ -633,7 +633,7 @@ test('co-term: every active product is added automatically from the company comm
   assert.match(text(r.getRootNode()), /DNS Device Commit 600 · DNS Initial Discount 20%/);
   r.find(NumberInput, { name: 'disc-1' }).trigger('onChange', 15);
   // Password Manager is Active but not paid Month-to-Month: not co-termed, and added by hand it's an Upsell.
-  r.find(Button, (n) => /\+ Password Manager/.test(text(n))).trigger('onClick');
+  addProduct(r, 'Password Manager');
   await r.waitFor(() => assert.ok(r.maybeFind(NumberInput, { name: 'qty-3' })));
   assert.ok(r.findAll(Tag).some((t) => /Upsell/.test(text(t))));
   assert.equal(r.findAll(Button).filter((b) => /Remove/.test(text(b))).length, 1); // only the new row
@@ -645,7 +645,7 @@ test('co-term: every active product is added automatically from the company comm
   assert.deepEqual(sent.map((p) => [p.family, !!p.coterm, p.quantity, p.discountPct]), [['autoelevate', true, 1250, 15], ['dns', true, 600, 20], ['password', false, 100, 0]]);
 });
 
-test('Month-to-Month is AutoElevate only: co-term rows leave, only + AutoElevate is offered, and Annual brings them back', async () => {
+test('Month-to-Month is AutoElevate only: co-term rows leave, only AutoElevate can be added, and Annual brings them back', async () => {
   const r = mk();
   const res = withCompany({ activeProducts: ['autoelevate', 'dns'], cotermProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600' } }, { pipeline: '917642399' });
   r.mocks.runServerlessFunction.willCall(async () => ({ status: 'SUCCESS', response: res }));
@@ -656,9 +656,9 @@ test('Month-to-Month is AutoElevate only: co-term rows leave, only + AutoElevate
   r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 1));
   assert.equal(r.findAll(Tag).filter((t) => /Co-term/.test(text(t))).length, 0);
-  const addLabels = r.findAll(Button).map((b) => (text(b).match(/"\+ ([^"]+)"/) || [])[1]).filter(Boolean);
+  const addLabels = r.findAll(Dropdown.ButtonItem).map((b) => (text(b).match(/"([^"]+)"/) || [])[1]);
   assert.deepEqual(addLabels, ['AutoElevate']);
-  assert.match(text(r.getRootNode()), /Month-to-Month quotes are AutoElevate only/);
+  assert.match(text(r.getRootNode()), /AutoElevate only/);
   // Back to Annual (billed monthly) on Setup: the co-term rows come back from the company record.
   r.find(Button, (n) => /Back/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
@@ -674,7 +674,7 @@ test('co-term: a company with no active products starts empty', async () => {
   r.render(<QuoteBuilderApp />);
   await toProducts(r);
   assert.equal(r.maybeFind(NumberInput, { name: 'qty-1' }), null);
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-1' })));
   assert.equal(r.maybeFind(Checkbox, { name: 'coterm-1' }), null);
   assert.ok(r.findAll(Tag).some((t) => /"New"/.test(text(t))));
@@ -689,7 +689,7 @@ test("co-term: not on the deal's own product (AutoElevate Upsell deal): AutoElev
   // Only DNS was added automatically.
   assert.equal(r.find(NumberInput, { name: 'qty-1' }).props.value, 600);
   assert.equal(r.maybeFind(NumberInput, { name: 'qty-2' }), null);
-  r.find(Button, (n) => /\+ AutoElevate/.test(text(n))).trigger('onClick');
+  addProduct(r, 'AutoElevate');
   await r.waitFor(() => assert.ok(r.maybeFind(Checkbox, { name: 'ramp-2' })));
   const tags = r.findAll(Tag).map((t) => text(t));
   assert.equal(tags.filter((t) => /Co-term/.test(t)).length, 1);

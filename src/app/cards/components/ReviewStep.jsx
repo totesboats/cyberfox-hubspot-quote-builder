@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Alert, Button, Checkbox, DescriptionList, DescriptionListItem, Flex, Heading, StatusTag, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { autoQuoteName } from '../lib/pricing.js';
 import { LineTable } from './LineTable.jsx';
 
@@ -36,20 +36,18 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
         <Alert title={result.edited ? 'Quote updated' : 'Draft quote created'} variant="success">
           <Flex direction="column" gap="extra-small">
             <Text>
-              {result.title} has {result.lineCount} line items
-              {result.primary ? ` and is the primary option${result.replaced ? ` (replaced ${result.replaced} earlier deal lines)` : ''}` : '; the deal line items were left alone'}.{' '}
+              {`${result.title} · ${result.lineCount} line items${result.primary ? ' · primary option' : ''}. `}
               {result.approval.required
                 ? result.approval.manual
-                  ? `It needs approval from ${result.approval.approver}; this template doesn't run Commerce Hub approvals, so request it manually.`
-                  : `It needs approval: open it from the deal's Quotes card and click Request approval. It routes to ${result.approval.approver}.`
-                : "No approval needed. Open it from the deal's Quotes card to review, publish and send."}
+                  ? `Needs approval from ${result.approval.approver}: request it manually (legacy template).`
+                  : `Needs approval: open it from the Quotes card and click Request approval (routes to ${result.approval.approver}).`
+                : 'No approval needed: open it from the Quotes card to publish and send.'}
             </Text>
-            <Text format={{ fontWeight: 'demibold' }}>{result.edited ? 'Refresh the page to see the changes in the Quotes card.' : 'Refresh the page and the quote will appear in the Quotes card.'}</Text>
-            {result.edited && quote.approval.required && <Text variant="microcopy">If it was approved or had changes requested, request approval again in HubSpot.</Text>}
+            <Text format={{ fontWeight: 'demibold' }}>Refresh the page to see it in the Quotes card.</Text>
+            {result.edited && quote.approval.required && <Text variant="microcopy">If it was already approved or had changes requested, request approval again.</Text>}
             {result.approval.required && !result.approval.manual && (
-              <Text variant="microcopy">If Request approval keeps showing "Saving…", rename the quote (any small change), save, then request approval again. It's a known HubSpot issue.</Text>
+              <Text variant="microcopy">If Request approval sticks on "Saving…", rename the quote, save, and try again (known HubSpot issue).</Text>
             )}
-            <Text variant="microcopy">Publish it before building another option, so it keeps these printed values.</Text>
             <Flex gap="small" align="center" wrap>
               {onReloadPage && (
                 <Button variant="primary" onClick={onReloadPage}>
@@ -60,14 +58,13 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
                 Build another option
               </Button>
             </Flex>
+            <Text variant="microcopy">Publish this quote before building another option.</Text>
           </Flex>
         </Alert>
       )}
       {affectedQuotes.length > 0 && !(result && result.ok) && (
         <Alert title="Unpublished quotes will pick up these values" variant="warning">
-          {`The printed fields live on the deal, and these quotes aren't published yet, so they would show this quote's values too: ${affectedQuotes
-            .map((q) => q.title)
-            .join(', ')}. Publish them first if they should keep their current values.`}
+          {`${affectedQuotes.map((q) => q.title).join(', ')}. Publish them first to keep their current values.`}
         </Alert>
       )}
       {result && !result.ok && (
@@ -79,8 +76,11 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
       <Tile>
         <Flex direction="column" gap="small">
           <Flex justify="between" align="center" wrap>
-            <Heading>Review line items</Heading>
-            <Tag>{`${quote.lines.length} lines · ${rampCount} ramp`}</Tag>
+            <Heading>Line items</Heading>
+            <Flex gap="small" align="center">
+              <Tag>{rampCount ? `${quote.lines.length} lines · ${rampCount} ramp` : `${quote.lines.length} lines`}</Tag>
+              <StatusTag variant={quote.approval.required ? 'warning' : 'success'}>{quote.approval.required ? `Needs approval · ${quote.approval.approver}` : 'Auto-approved'}</StatusTag>
+            </Flex>
           </Flex>
           <LineTable lines={quote.lines} detailed billing={setup.billing} />
         </Flex>
@@ -88,8 +88,7 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
 
       <Tile>
         <Flex direction="column" gap="small">
-          <Heading>Deal properties the quote prints</Heading>
-          <Text variant="microcopy">Chosen on the Setup step (AE Feature Type on the AutoElevate product). Go back to change any of them.</Text>
+          <Heading>Prints on the quote</Heading>
           {writes.errors.map((e) => (
             <Alert key={e} title="Can't write this value" variant="danger">
               {e}
@@ -112,27 +111,21 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
 
       <Tile>
         <Flex direction="column" gap="medium">
-          <Heading>Quote summary</Heading>
+          <Heading>Quote</Heading>
           <DescriptionList direction="row">
             <DescriptionListItem label="Quote name">{title}</DescriptionListItem>
             <DescriptionListItem label="Template">{template ? template.name : 'Not chosen'}</DescriptionListItem>
             <DescriptionListItem label="Expires">{setup.expirationDate}</DescriptionListItem>
             <DescriptionListItem label="Signer">{signer ? signer.label : 'None'}</DescriptionListItem>
-            <DescriptionListItem label="Line items">{rampCount ? `${quote.lines.length} (${rampCount} ramp)` : String(quote.lines.length)}</DescriptionListItem>
           </DescriptionList>
-          <Text variant="microcopy">{editing ? 'Update quote saves these changes to the existing draft.' : 'Create quote makes a draft you can review in HubSpot before sending.'}</Text>
           {editing ? (
-            <Text variant="microcopy">{editing.primary ? 'This quote is the primary option and stays primary.' : 'This quote is an alternative option; use Make primary under Quotes on this deal to switch.'}</Text>
+            <Text variant="microcopy">{editing.primary ? 'Primary option.' : 'Alternative option: use Make primary under Quotes on this deal to switch.'}</Text>
           ) : (
           <Checkbox
             name="primary"
             checked={primary}
             readOnly={firstBuilderQuote}
-            description={
-              firstBuilderQuote
-                ? "This is the deal's first quote, so it's the primary option."
-                : 'The primary option sets the deal amount. Leave unticked for an alternative (e.g. 250 instead of 100 agents); you can switch later.'
-            }
+            description={firstBuilderQuote ? "The deal's first quote is always primary." : 'Sets the deal amount. Untick for an alternative option.'}
             onChange={onPrimary}
           >
             Primary option

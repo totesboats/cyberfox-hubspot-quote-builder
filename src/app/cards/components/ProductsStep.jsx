@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Button, Checkbox, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Accordion, Alert, Button, Checkbox, Dropdown, Flex, Heading, NumberInput, Select, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { AE_FEATURE_TYPES, BILLING, FAMILIES, FAMILY_ORDER, M2M_FAMILIES, OPTIMIZE_TDR, SEGMENTS } from '../lib/config.js';
 import { editionsFor, formatMoney, lineTypeLabel, unitsFor } from '../lib/pricing.js';
@@ -7,55 +7,67 @@ import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
-function StandardFields({ input, priced, family, segment, onUpdate }) {
+// The main row: count, plan and discount. Edition / AE Feature Type and the TDR add-on sit in the tile's
+// Details section (StandardOptions).
+function StandardFields({ input, priced, onUpdate }) {
   // Co-term rows come from the company record: only the discount can change.
   const locked = !!input.coterm;
-  const per = priced.annual ? '/yr' : '/mo';
   const units = unitsFor(input.family, input.edition);
-  const editions = editionsFor(input.family, segment);
-  // Per-tenant Optimize365 can carry the Optimize TDR add-on on the same row.
-  const tdrField = input.family === 'optimize365' && input.edition === OPTIMIZE_TDR.withEdition;
-  const tdrTiers = OPTIMIZE_TDR.tiers.map((t) => `${t.from.toLocaleString('en-US')}${t.to == null ? '+' : `–${t.to.toLocaleString('en-US')}`}: ${formatMoney(t.price)}`).join(', ');
   const tierOptions = priced.tierOptions.length
     ? [{ label: `Default${priced.bestTier ? ` — ${priced.bestTier.toLocaleString('en-US')} tier` : ''}`, value: NONE }].concat(priced.tierOptions.map((o) => ({ label: o.label, value: String(o.value) })))
     : [{ label: 'No tiers for this combination', value: NONE }];
   return (
     <Row>
-      {input.family === 'autoelevate' ? (
-        <Select
-          label="AE Feature Type"
-          name={`feature-${input.uid}`}
-          tooltip={`Priced on ${(AE_FEATURE_TYPES.find((f) => f.value === input.featureType) || AE_FEATURE_TYPES[0]).edition} SKUs; sets the quote's feature wording.`}
-          options={AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))}
-          readOnly={locked}
-          value={input.featureType || 'Standard'}
-          onChange={(v) => onUpdate({ featureType: String(v), tier: '' })}
-        />
-      ) : editions.length > 1 && (
-        <Select
-          label={family.pickerLabel || 'Edition'}
-          name={`edition-${input.uid}`}
-          options={editions.map((e) => ({ label: e.label, value: e.value }))}
-          readOnly={locked}
-          value={input.edition}
-          onChange={(v) => onUpdate({ edition: String(v), tier: '' })}
-        />
-      )}
       <NumberInput label={`Total ${units.unit}`} name={`qty-${input.uid}`} min={0} precision={0} readOnly={locked} value={Number(input.quantity) || 0} onChange={(v) => onUpdate({ quantity: v })} />
       <Select
-        label="Commit tier"
+        label="Plan"
         name={`tier-${input.uid}`}
-        tooltip={`Prices are list ${per}. Default is the highest tier at or below the count, plus additional ${units.unit}. Pick a bigger tier to round up.`}
+        tooltip="Highest tier at or below the count, plus additional units. Pick a bigger tier to round up."
         options={tierOptions}
         readOnly={locked}
         value={toSelect(input.tier)}
         onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
       />
+      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
+    </Row>
+  );
+}
+
+function StandardOptions({ input, family, segment, onUpdate }) {
+  const locked = !!input.coterm;
+  const editions = editionsFor(input.family, segment);
+  // Per-tenant Optimize365 can carry the Optimize TDR add-on on the same row.
+  const tdrField = input.family === 'optimize365' && input.edition === OPTIMIZE_TDR.withEdition;
+  const tdrTiers = OPTIMIZE_TDR.tiers.map((t) => `${t.from.toLocaleString('en-US')}${t.to == null ? '+' : `–${t.to.toLocaleString('en-US')}`}: ${formatMoney(t.price)}`).join(', ');
+  const picker =
+    input.family === 'autoelevate' ? (
+      <Select
+        label="AE Feature Type"
+        name={`feature-${input.uid}`}
+        options={AE_FEATURE_TYPES.map((f) => ({ label: f.value, value: f.value }))}
+        readOnly={locked}
+        value={input.featureType || 'Standard'}
+        onChange={(v) => onUpdate({ featureType: String(v), tier: '' })}
+      />
+    ) : editions.length > 1 ? (
+      <Select
+        label={family.pickerLabel || 'Edition'}
+        name={`edition-${input.uid}`}
+        options={editions.map((e) => ({ label: e.label, value: e.value }))}
+        readOnly={locked}
+        value={input.edition}
+        onChange={(v) => onUpdate({ edition: String(v), tier: '' })}
+      />
+    ) : null;
+  if (!picker && !tdrField) return null;
+  return (
+    <Row>
+      {picker}
       {tdrField && (
         <NumberInput
           label="TDR users"
           name={`tdr-${input.uid}`}
-          tooltip={`Optional Optimize TDR add-on, volume priced per user per month (every user at the rate of the tier the total falls into): ${tdrTiers}. 0 = no TDR.`}
+          tooltip={`Volume priced per user per month: ${tdrTiers}. 0 = no TDR.`}
           min={0}
           precision={0}
           readOnly={locked}
@@ -63,7 +75,6 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
           onChange={(v) => onUpdate({ tdrUsers: v })}
         />
       )}
-      <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
     </Row>
   );
 }
@@ -80,7 +91,6 @@ function OneOffFields({ input, priced, oneOffs, onUpdate }) {
       <Select
         label="One-off SKU"
         name={`oneoff-${input.uid}`}
-        tooltip="Products in the One-Off SKUs folder of the product library. Price and billing frequency come from the product."
         options={options}
         value={toSelect(input.productId)}
         onChange={(v) => {
@@ -127,7 +137,7 @@ function TimusFields({ input, priced, onUpdate }) {
         <NumberInput
           label="Monthly minimum"
           name={`min-${input.uid}`}
-          tooltip={locked ? "The company's Timus Committed MRR." : 'Leave blank for the Monthly Minimum SKU price.'}
+          tooltip={locked ? undefined : 'Blank = the Monthly Minimum SKU price.'}
           min={0}
           precision={2}
           readOnly={locked}
@@ -147,7 +157,6 @@ function TimusFields({ input, priced, onUpdate }) {
         required={!input.coterm}
         min={0}
         precision={2}
-        tooltip={input.coterm ? 'Optional on a co-term: only the monthly minimum is re-signed.' : 'Prints on the quote.'}
         value={num(input.userRate)}
         onChange={(v) => onUpdate({ userRate: v })}
       />
@@ -157,7 +166,6 @@ function TimusFields({ input, priced, onUpdate }) {
         required={!input.coterm}
         min={0}
         precision={2}
-        tooltip={input.coterm ? 'Optional on a co-term: only the monthly minimum is re-signed.' : 'Prints on the quote.'}
         value={num(input.gatewayRate)}
         onChange={(v) => onUpdate({ gatewayRate: v })}
       />
@@ -179,6 +187,9 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
         : family.editions.find((e) => e.value === input.edition) || family.editions[0];
   const mrr = row.mainLines.length ? `${formatMoney(row.mainMrr)}/mo` : '—';
   const update = (patch) => onUpdate(input.uid, patch);
+  const optimizeLocked = row.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp;
+  const lineCount = row.rampLines.length + row.mainLines.length;
+  const detailsTitle = lineCount ? `Details · ${lineCount} line item${lineCount === 1 ? '' : 's'}` : 'Details';
   return (
     <Tile>
       <Flex direction="column" gap="medium">
@@ -200,18 +211,14 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
           </Flex>
         </Flex>
 
-        {input.coterm && (
-          <Text variant="microcopy">
-            {`Added automatically: the company is Active on ${family.label} and pays Month-to-Month, so it's co-termed with this deal. From the company record: ${input.cotermNote || 'its current commit'}. Only the discount can change here; if the record is out of date, ask Ops to fix the company and refresh the page.`}
-          </Text>
-        )}
+        {input.coterm && <Text variant="microcopy">{`From the company record: ${input.cotermNote || 'its current commit'}. Only the discount can change.`}</Text>}
 
         {input.family === 'timus' ? (
           <TimusFields input={input} priced={priced} onUpdate={update} />
         ) : input.family === 'oneoff' ? (
           <OneOffFields input={input} priced={priced} oneOffs={quote.oneOffs || []} onUpdate={update} />
         ) : (
-          <StandardFields input={input} priced={priced} family={family} segment={quote.segment} onUpdate={update} />
+          <StandardFields input={input} priced={priced} onUpdate={update} />
         )}
 
         {priced.error ? (
@@ -219,32 +226,36 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
             {priced.error}
           </Alert>
         ) : priced.hint ? (
-          <Alert title={priced.hintLevel === 'warning' ? 'Check this' : 'Pricing'} variant={priced.hintLevel === 'warning' ? 'warning' : 'info'}>
-            {priced.hint}
-          </Alert>
+          priced.hintLevel === 'warning' ? (
+            <Alert title="Check this" variant="warning">
+              {priced.hint}
+            </Alert>
+          ) : (
+            <Text variant="microcopy">{priced.hint}</Text>
+          )
         ) : null}
 
-        {/* Optimize365 can only ramp 1–3 free months on a 13/14/15-month monthly agreement; otherwise the box
-            is locked (still untickable if it was ticked before Setup changed). */}
-        {!input.coterm && (
-          <Checkbox
-            name={`ramp-${input.uid}`}
-            checked={!!input.ramp}
-            readOnly={row.family === 'optimize365' && optimizeRamp && !optimizeRamp.allowed && !input.ramp}
-            description={
-              row.family === 'optimize365' && optimizeRamp
-                ? optimizeRamp.reason
-                : 'Gives this product its own ramp: RAMP line items for its first months, at the length and discount you set below.'
-            }
-            onChange={(checked) => update({ ramp: checked })}
-          >
-            Ramp
-          </Checkbox>
-        )}
-
-        {input.ramp && !input.coterm && <ProductRamp row={row} quote={quote} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />}
-
-        {row.mainLines.length > 0 && <LineTable lines={row.rampLines.concat(row.mainLines)} />}
+        {/* Edition / feature type, ramp and the line items, out of the way until needed. */}
+        <Accordion title={detailsTitle} size="sm" defaultOpen={!!input.ramp}>
+          <Flex direction="column" gap="medium">
+            {input.family !== 'timus' && input.family !== 'oneoff' && <StandardOptions input={input} family={family} segment={quote.segment} onUpdate={update} />}
+            {/* Optimize365 can only ramp 1–3 free months on a 13/14/15-month monthly agreement; otherwise the box
+                is locked (still untickable if it was ticked before Setup changed). */}
+            {!input.coterm && (
+              <Checkbox
+                name={`ramp-${input.uid}`}
+                checked={!!input.ramp}
+                readOnly={optimizeLocked}
+                description={optimizeLocked ? optimizeRamp.reason : undefined}
+                onChange={(checked) => update({ ramp: checked })}
+              >
+                Ramp
+              </Checkbox>
+            )}
+            {input.ramp && !input.coterm && <ProductRamp row={row} quote={quote} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />}
+            {row.mainLines.length > 0 && <LineTable lines={row.rampLines.concat(row.mainLines)} />}
+          </Flex>
+        </Accordion>
       </Flex>
     </Tile>
   );
@@ -256,10 +267,7 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
     <Flex direction="column" gap="medium">
       <Flex direction="column" gap="extra-small">
         <Heading>Products & ramp</Heading>
-        <Text variant="microcopy">
-          Enter the total count. The builder uses the highest commit tier at or below the count and adds the overage SKU above it. Showing {segment} ·{' '}
-          {BILLING[quote.billing].label.toLowerCase()} SKUs{quote.currency && quote.currency !== 'USD' ? ` · prices in ${quote.currency} (the deal's currency)` : ''}.
-        </Text>
+        <Text variant="microcopy">{`${segment} · ${BILLING[quote.billing].label}${quote.currency && quote.currency !== 'USD' ? ` · ${quote.currency}` : ''}${quote.m2m ? ' · AutoElevate only' : ''}`}</Text>
       </Flex>
 
       <PrintedReference writes={writes} dealOptions={dealOptions} ramp={ramp} quote={quote} onEdit={onEditSetup} />
@@ -274,19 +282,15 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
         <ProductTile key={row.input.uid} row={row} quote={quote} onUpdate={onUpdate} onRemove={onRemove} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />
       ))}
 
-      <Tile compact>
-        <Flex direction="column" gap="small">
-          <Text format={{ fontWeight: 'demibold' }}>Add a product</Text>
-          {quote.m2m && <Text variant="microcopy">Month-to-Month quotes are AutoElevate only: no other product has Month-to-Month SKUs, and co-term isn't available.</Text>}
-          <Flex gap="small" wrap>
-            {FAMILY_ORDER.filter((f) => !quote.m2m || M2M_FAMILIES.includes(f)).map((f) => (
-              <Button key={f} variant="secondary" size="sm" onClick={() => onAdd(f)}>
-                + {FAMILIES[f].label}
-              </Button>
-            ))}
-          </Flex>
-        </Flex>
-      </Tile>
+      <Flex>
+        <Dropdown buttonText="Add product" variant="secondary" buttonSize="sm">
+          {FAMILY_ORDER.filter((f) => !quote.m2m || M2M_FAMILIES.includes(f)).map((f) => (
+            <Dropdown.ButtonItem key={f} onClick={() => onAdd(f)}>
+              {FAMILIES[f].label}
+            </Dropdown.ButtonItem>
+          ))}
+        </Dropdown>
+      </Flex>
 
       {quote.anyRamp && <RampSection quote={quote} onClear={onClearRamp} />}
     </Flex>

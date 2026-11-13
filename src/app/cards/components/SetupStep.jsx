@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Button, DateInput, DescriptionList, DescriptionListItem, Divider, Flex, Heading, Input, Select, Text, Tile } from '@hubspot/ui-extensions';
+import React from 'react';
+import { Accordion, DateInput, Flex, Heading, Input, Select, Text, Tile } from '@hubspot/ui-extensions';
 import { Row, NONE, toSelect, fromSelect } from './Layout.jsx';
 import { BILLING, BILLING_ORDER, FALLBACK_OPTIONS, PAYMENT_FREQUENCY_DEFAULT, PAYMENT_FREQUENCY_HIDDEN, SEGMENTS } from '../lib/config.js';
 import { effectiveBilling } from '../lib/pricing.js';
@@ -22,63 +22,45 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, user, 
   const autoFrequencyLabel = (frequencyOptions.find((o) => o.value === autoFrequency) || { label: autoFrequency }).label;
 
   const labelOf = (name, value) => (opts(name).find((o) => o.value === value) || { label: value }).label;
-  // Payment Frequency, Method and Invoice Terms start with sensible values, so they show as
-  // one read-only line until the rep clicks Edit. Agreement Length changes often, so it stays open.
-  const [editPrinted, setEditPrinted] = useState(false);
-  const printedSummary = [
-    ['Payment Frequency', setup.paymentFrequency ? labelOf('payment_terms', setup.paymentFrequency) : `${autoFrequencyLabel} (matches SKU pricing)`],
-    ['Payment Method', setup.paymentMethod ? labelOf('payment_method', setup.paymentMethod) : 'Not set'],
-    ['Invoice Terms', setup.invoiceTerms ? labelOf('invoice_terms', setup.invoiceTerms) : 'Not set'],
-  ];
 
   const selected = templates.find((t) => t.id === setup.templateId) || suggested;
   const today = new Date();
-  const templateOptions = [{ label: suggested ? `Suggest from products — ${suggested.name} (${kind(suggested)})` : 'Suggest from products', value: NONE }].concat(
+  const templateOptions = [{ label: suggested ? `Suggested — ${suggested.name} (${kind(suggested)})` : 'Suggest from products', value: NONE }].concat(
     templates.map((t) => ({ label: `${t.name} (${kind(t)})`, value: t.id }))
   );
-  const templateHelp = !selected
-    ? 'Pick a template, or add products and one is suggested.'
-    : selected.templateType === 'CPQ_QUOTE'
-      ? 'CPQ template: Commerce Hub approvals run on this quote.'
-      : 'Legacy custom-coded template: your HTML/CSS renders, but Commerce Hub approvals do not run on it.';
-
-  const agreementSelect = (
-    <Select
-      label="Agreement Length"
-      name="agreementLength"
-      required
-      tooltip={m2m ? 'Month-to-month: plans renew monthly.' : 'Total length, including any ramp. Optimize365 can only ramp on 13, 14 or 15 months paid monthly (1, 2 or 3 free months).'}
-      placeholder="Choose a length"
-      options={opts('agreement_length')}
-      value={setup.agreementLength}
-      onChange={(v) => onChange({ agreementLength: String(v) })}
-    />
-  );
+  const signer = contacts.find((c) => c.id === setup.signerContactId);
+  const acceptanceLabel = { esignature: 'E-signature', clickwrap: 'Clickwrap', print_and_sign: 'Print and sign' }[setup.acceptance] || 'E-signature';
+  // One line that says what's inside the collapsed Quote details, so reps only open it to change something.
+  const details = [
+    setup.expirationDate ? `Expires ${setup.expirationDate}` : '',
+    acceptanceLabel,
+    signer ? signer.label : 'No signer',
+    setup.paymentFrequency ? labelOf('payment_terms', setup.paymentFrequency) : autoFrequencyLabel,
+    setup.paymentMethod ? labelOf('payment_method', setup.paymentMethod) : '',
+    setup.invoiceTerms ? labelOf('invoice_terms', setup.invoiceTerms) : '',
+  ].filter(Boolean).join(' · ');
 
   return (
     <Tile>
       <Flex direction="column" gap="medium">
-        <Flex direction="column" gap="extra-small">
-          <Heading>Quote setup</Heading>
-          <Text variant="microcopy">Defaults come from the deal.</Text>
-        </Flex>
+        <Heading>Quote setup</Heading>
 
-        <Flex direction="column" gap="extra-small">
-          <Row weights={[2, 1]}>
-            <Select label="Quote template" name="templateId" options={templateOptions} value={toSelect(setup.templateId)} onChange={(v) => onChange({ templateId: fromSelect(v) })} />
-            <Input
-              label="Quote name"
-              name="quoteName"
-              placeholder="Named from company and products"
-              tooltip="Leave blank to name the quote from the company and products."
-              value={setup.quoteName}
-              onChange={(v) => onChange({ quoteName: v })}
-            />
-          </Row>
-          <Text variant="microcopy">{templateHelp}</Text>
-        </Flex>
+        <Row weights={[2, 1]}>
+          <Select label="Quote template" name="templateId" options={templateOptions} value={toSelect(setup.templateId)} onChange={(v) => onChange({ templateId: fromSelect(v) })} />
+          <Select
+            label="Agreement Length"
+            name="agreementLength"
+            required
+            tooltip={m2m ? undefined : 'Total length, including any ramp.'}
+            placeholder="Choose a length"
+            options={opts('agreement_length')}
+            value={setup.agreementLength}
+            onChange={(v) => onChange({ agreementLength: String(v) })}
+          />
+        </Row>
+        {selected && selected.templateType !== 'CPQ_QUOTE' && <Text variant="microcopy">Legacy template: Commerce Hub approvals don't run on it.</Text>}
 
-        <Row>
+        <Row weights={[1, 2]}>
           <Select
             label="Segment"
             name="segment"
@@ -89,89 +71,74 @@ export function SetupStep({ setup, templates, suggested, contacts, owner, user, 
           <Select
             label="SKU pricing"
             name="billing"
-            tooltip={m2m ? 'Month-to-Month SKUs (M2M), priced above the annual-commit SKUs. Goes with the Month-to-Month Agreement Length.' : 'Which price book the products use. Month-to-Month uses the M2M SKUs and sets the Agreement Length to Month-to-Month.'}
+            tooltip={m2m ? 'AutoElevate only.' : undefined}
             options={BILLING_ORDER.map((k) => ({ label: BILLING[k].label, value: k }))}
             value={billing}
             onChange={(v) => onChange({ billing: String(v) })}
           />
-          <DateInput
-            label="Quote expires"
-            name="expirationDate"
-            format="YYYY-MM-DD"
-            min={{ year: today.getFullYear(), month: today.getMonth(), date: today.getDate() }}
-            value={toDateValue(setup.expirationDate)}
-            onChange={(v) => onChange({ expirationDate: fromDateValue(v) })}
-          />
         </Row>
 
-        <Row>
-          <Select
-            label="Acceptance"
-            name="acceptance"
-            readOnly={selected && selected.templateType !== 'CPQ_QUOTE'}
-            options={[
-              { label: 'E-signature', value: 'esignature' },
-              { label: 'Clickwrap (no signature)', value: 'clickwrap' },
-              { label: 'Print and sign', value: 'print_and_sign' },
-            ]}
-            value={setup.acceptance}
-            onChange={(v) => onChange({ acceptance: String(v) })}
-          />
-          <Select
-            label="Buyer contact / signer"
-            name="signerContactId"
-            placeholder={contacts.length ? 'Choose a contact' : 'No contacts on this deal'}
-            options={contacts.map((c) => ({ label: c.label, value: c.id }))}
-            value={setup.signerContactId}
-            onChange={(v) => onChange({ signerContactId: String(v) })}
-          />
-          <Input
-            label="Seller contact"
-            name="seller"
-            readOnly
-            tooltip={`Whoever builds the quote owns it and is the seller, so they can request approval. The deal and its owner${owner ? ` (${owner.name})` : ''} don't change.`}
-            value={user ? [[user.firstName, user.lastName].filter(Boolean).join(' '), user.email].filter(Boolean).join(' · ') : 'You'}
-          />
-        </Row>
-
-        <Divider />
-
-        <Flex justify="between" align="center" gap="medium">
-          <Flex direction="column" gap="extra-small">
-            <Heading>Prints on the quote</Heading>
-            <Text variant="microcopy">Deal properties the quote templates print. The choices are the properties' own options in HubSpot.</Text>
+        <Accordion title={`Quote details · ${details}`} size="sm">
+          <Flex direction="column" gap="medium">
+            <Row>
+              <Input
+                label="Quote name"
+                name="quoteName"
+                placeholder="Named from company and products"
+                value={setup.quoteName}
+                onChange={(v) => onChange({ quoteName: v })}
+              />
+              <DateInput
+                label="Quote expires"
+                name="expirationDate"
+                format="YYYY-MM-DD"
+                min={{ year: today.getFullYear(), month: today.getMonth(), date: today.getDate() }}
+                value={toDateValue(setup.expirationDate)}
+                onChange={(v) => onChange({ expirationDate: fromDateValue(v) })}
+              />
+              <Select
+                label="Acceptance"
+                name="acceptance"
+                readOnly={selected && selected.templateType !== 'CPQ_QUOTE'}
+                options={[
+                  { label: 'E-signature', value: 'esignature' },
+                  { label: 'Clickwrap (no signature)', value: 'clickwrap' },
+                  { label: 'Print and sign', value: 'print_and_sign' },
+                ]}
+                value={setup.acceptance}
+                onChange={(v) => onChange({ acceptance: String(v) })}
+              />
+            </Row>
+            <Row>
+              <Select
+                label="Buyer contact / signer"
+                name="signerContactId"
+                placeholder={contacts.length ? 'Choose a contact' : 'No contacts on this deal'}
+                options={contacts.map((c) => ({ label: c.label, value: c.id }))}
+                value={setup.signerContactId}
+                onChange={(v) => onChange({ signerContactId: String(v) })}
+              />
+              <Input
+                label="Seller contact"
+                name="seller"
+                readOnly
+                tooltip={`Whoever builds the quote is the seller, so they can request approval.${owner ? ` The deal owner (${owner.name}) doesn't change.` : ''}`}
+                value={user ? [[user.firstName, user.lastName].filter(Boolean).join(' '), user.email].filter(Boolean).join(' · ') : 'You'}
+              />
+            </Row>
+            <Row>
+              <Select
+                label="Payment Frequency"
+                name="paymentFrequency"
+                options={[{ label: `Match SKU pricing — ${autoFrequencyLabel}`, value: NONE }].concat(frequencyOptions)}
+                value={toSelect(setup.paymentFrequency)}
+                onChange={(v) => onChange({ paymentFrequency: fromSelect(v) })}
+              />
+              <Select label="Payment Method" name="paymentMethod" options={opts('payment_method')} value={setup.paymentMethod} onChange={(v) => onChange({ paymentMethod: String(v) })} />
+              <Select label="Invoice Terms" name="invoiceTerms" options={opts('invoice_terms')} value={setup.invoiceTerms} onChange={(v) => onChange({ invoiceTerms: String(v) })} />
+            </Row>
           </Flex>
-          <Button variant="secondary" size="sm" onClick={() => setEditPrinted(!editPrinted)}>
-            {editPrinted ? 'Done' : 'Edit'}
-          </Button>
-        </Flex>
-        {editPrinted ? (
-          <Row>
-            {agreementSelect}
-            <Select
-              label="Payment Frequency"
-              name="paymentFrequency"
-              tooltip={`Blank matches the SKU pricing (${autoFrequencyLabel}).`}
-              options={[{ label: `Match SKU pricing — ${autoFrequencyLabel}`, value: NONE }].concat(frequencyOptions)}
-              value={toSelect(setup.paymentFrequency)}
-              onChange={(v) => onChange({ paymentFrequency: fromSelect(v) })}
-            />
-            <Select label="Payment Method" name="paymentMethod" options={opts('payment_method')} value={setup.paymentMethod} onChange={(v) => onChange({ paymentMethod: String(v) })} />
-            <Select label="Invoice Terms" name="invoiceTerms" options={opts('invoice_terms')} value={setup.invoiceTerms} onChange={(v) => onChange({ invoiceTerms: String(v) })} />
-          </Row>
-        ) : (
-          <Row weights={[1, 3]}>
-            {agreementSelect}
-            <DescriptionList direction="row">
-              {printedSummary.map(([label, value]) => (
-                <DescriptionListItem key={label} label={label}>
-                  {value}
-                </DescriptionListItem>
-              ))}
-            </DescriptionList>
-          </Row>
-        )}
-        <Text variant="microcopy">AE Feature Type is set on the AutoElevate product, because it decides which SKUs are used.</Text>
+        </Accordion>
       </Flex>
     </Tile>
   );

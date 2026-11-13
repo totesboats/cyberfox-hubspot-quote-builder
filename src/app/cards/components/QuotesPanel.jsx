@@ -27,10 +27,7 @@ export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, editingI
       <Flex direction="column" gap="small">
         <Flex direction="column" gap="extra-small">
           <Heading>Quotes on this deal</Heading>
-          <Text variant="microcopy">
-            Each quote is one option. The primary option's line items are on the deal, so they drive the deal amount. Published quotes keep the printed fields they had when
-            published; drafts and quotes awaiting approval show the deal's current values.
-          </Text>
+          <Text variant="microcopy">The primary option sets the deal amount. Published quotes keep their printed values.</Text>
         </Flex>
 
         {pendingPrimary && (

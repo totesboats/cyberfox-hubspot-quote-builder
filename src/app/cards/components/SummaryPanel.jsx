@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Flex, Statistics, StatisticsItem, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Flex, Statistics, StatisticsItem, StatusTag, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { FAMILIES } from '../lib/config.js';
 import { formatMoney } from '../lib/pricing.js';
 
@@ -25,7 +25,6 @@ export function SummaryPanel({ quote, template, dealQuoteCount }) {
       <Tile compact>
         <Flex justify="between" align="center" gap="medium" wrap>
           {header}
-          <Text variant="microcopy">Totals and approval show here once you add products.</Text>
         </Flex>
       </Tile>
     );
@@ -36,16 +35,15 @@ export function SummaryPanel({ quote, template, dealQuoteCount }) {
       <Flex direction="column" gap="medium">
         <Flex justify="between" align="center" wrap>
           {header}
-          <Tag variant={a.required ? 'warning' : 'success'}>{a.required ? 'Needs approval' : 'Auto-approves'}</Tag>
+          <StatusTag variant={a.required ? 'warning' : 'success'}>{a.required ? `Needs approval · ${a.approver}` : 'Auto-approved'}</StatusTag>
         </Flex>
+        {a.required && <Text variant="microcopy">{a.reasons.concat(a.manual ? ['Legacy template: request approval manually'] : []).join(' · ')}</Text>}
 
         <Statistics>
           <StatisticsItem label="MRR (full plan)" number={formatMoney(t.mrr)}>
             <Text variant="microcopy">{`${money0(t.arr)} ARR`}</Text>
           </StatisticsItem>
-          <StatisticsItem label="First 12 months" number={money0(t.firstYear)}>
-            <Text variant="microcopy">After ramp and discounts</Text>
-          </StatisticsItem>
+          <StatisticsItem label="First 12 months" number={money0(t.firstYear)} />
           <StatisticsItem label="Total contract value" number={money0(t.tcv)}>
             <Text variant="microcopy">{length}</Text>
           </StatisticsItem>
@@ -53,13 +51,6 @@ export function SummaryPanel({ quote, template, dealQuoteCount }) {
             <Text variant="microcopy">{`Max discount ${t.maxDiscountPct}%`}</Text>
           </StatisticsItem>
         </Statistics>
-
-        {a.required && (
-          <Alert title={`Approval: ${a.approver}`} variant="warning">
-            {a.reasons.join(' · ')}
-            {a.manual ? ' · Legacy template: Commerce Hub approvals will not run, so request approval manually.' : ''}
-          </Alert>
-        )}
 
         {usable.length > 0 && (
           <Flex gap="small" wrap>
