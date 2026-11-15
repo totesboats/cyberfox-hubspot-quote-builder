@@ -2,7 +2,7 @@ import React from 'react';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer } from '@hubspot/ui-extensions/testing';
-import { Accordion, Alert, Button, Checkbox, DescriptionListItem, Dropdown, Input, NumberInput, Select, StatusTag, StepIndicator, Tag, StatisticsItem, Table, TableRow } from '@hubspot/ui-extensions';
+import { Accordion, Alert, AutoGrid, Button, Checkbox, DescriptionListItem, Dropdown, Input, NumberInput, Select, StatusTag, StepIndicator, Tag, StatisticsItem, Table, TableHeader, TableRow } from '@hubspot/ui-extensions';
 import { QuoteBuilderApp, reducer, initialState } from '../../src/app/cards/QuoteBuilderApp.jsx';
 
 // The platform exposes hubspot.serverless via a worker global; route it to the renderer's mock.
@@ -83,6 +83,10 @@ test('card renders, prices AutoElevate, ramps, and submits', async () => {
   assert.equal(r.find(Select, { name: 'feature-1' }).props.label, 'Feature Type');
   assert.deepEqual(r.find(Select, { name: 'feature-1' }).props.options.map((o) => o.value), ['Standard', 'Advanced']); // Advanced (GrandFathered) retired
   await r.waitFor(() => assert.match(text(r.getRootNode()), /\$1,181\.25\/mo/));
+  // Narrow (split-screen) cards: every field row is a wrapping grid, and the line table is three columns.
+  assert.ok(r.findAll(AutoGrid).length > 0);
+  assert.ok(r.findAll(AutoGrid).every((g) => g.props.flexible === true && g.props.columnWidth === 180));
+  assert.deepEqual(r.findAll(TableHeader).map((h) => h.text), ['Line item', 'Qty', 'Net']);
   // Feature type, ramp and line items sit in the tile's collapsed Details section.
   assert.equal(r.find(Accordion, (n) => /^Details/.test(n.props.title)).props.title, 'Details · 2 line items');
   assert.equal(r.find(Checkbox, { name: 'ramp-1' }).props.description, undefined);
@@ -386,8 +390,11 @@ test('multi-stage ramp: add a 50% stage after 2 free months; schedule shows both
   assert.match(root, /"5–15"/);
   assert.match(root, /Ramp: 4 months \(2 mo free, then 2 mo 50% off\); plan bills months 5–15/);
   // Removing stage 2 goes back to a single stage
-  r.findAll(Button, (n) => /"Remove stage"/.test(text(n)))[1].trigger('onClick');
+  // Each stage has its own Remove button under its fields (only when there's more than one stage).
+  assert.ok(r.maybeFind(Button, (n) => /"Remove stage 1"/.test(text(n))));
+  r.find(Button, (n) => /"Remove stage 2"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.maybeFind(Select, { name: 'rampMonths-1-2' }), null));
+  assert.equal(r.maybeFind(Button, (n) => /"Remove stage/.test(text(n))), null); // a single stage can't be removed (untick Ramp instead)
   r.find(Button, (n) => /"Change"/.test(text(n))).trigger('onClick');
   await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 0));
 });

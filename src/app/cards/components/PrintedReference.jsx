@@ -19,7 +19,7 @@ export function PrintedReference({ writes, dealOptions, ramp, quote, onEdit }) {
   };
   return (
     <Tile compact>
-      <Flex justify="between" align="center" gap="medium">
+      <Flex justify="between" align="center" gap="small" wrap>
         <DescriptionList direction="row">
           {FIELDS.map(([name, title]) => (
             <DescriptionListItem key={name} label={title}>

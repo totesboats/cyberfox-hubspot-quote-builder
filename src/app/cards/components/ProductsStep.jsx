@@ -7,8 +7,8 @@ import { LineTable } from './LineTable.jsx';
 import { ProductRamp, RampSection } from './RampSection.jsx';
 import { PrintedReference } from './PrintedReference.jsx';
 
-// The main row: Feature Type / Pricing (when the product has a choice), count, plan and discount. Per-tenant
-// Optimize365 adds the Optimize TDR users field on a second row.
+// The main row: Feature Type / Pricing (when the product has a choice), count, plan, TDR users (per-tenant
+// Optimize365) and discount. The row wraps to fewer columns on a narrow card.
 function StandardFields({ input, priced, family, segment, onUpdate }) {
   // Co-term rows come from the company record: only the discount can change.
   const locked = !!input.coterm;
@@ -53,10 +53,7 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
           value={toSelect(input.tier)}
           onChange={(v) => onUpdate({ tier: fromSelect(v) === '' ? '' : Number(v) })}
         />
-        <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
-      </Row>
-      {tdrField && (
-        <Row weights={[1, 3]}>
+        {tdrField && (
           <NumberInput
             label="TDR users"
             name={`tdr-${input.uid}`}
@@ -67,9 +64,9 @@ function StandardFields({ input, priced, family, segment, onUpdate }) {
             value={Number(input.tdrUsers) || 0}
             onChange={(v) => onUpdate({ tdrUsers: v })}
           />
-          <Text> </Text>
-        </Row>
-      )}
+        )}
+        <NumberInput label="Discount %" name={`disc-${input.uid}`} min={0} max={100} precision={2} value={Number(input.discountPct) || 0} onChange={(v) => onUpdate({ discountPct: v })} />
+      </Row>
     </Flex>
   );
 }
@@ -82,7 +79,7 @@ function OneOffFields({ input, priced, oneOffs, onUpdate }) {
       )
     : [{ label: 'No active products in the One-Off SKUs folder', value: NONE }];
   return (
-    <Row weights={[3, 1, 1]}>
+    <Row>
       <Select
         label="One-off SKU"
         name={`oneoff-${input.uid}`}
@@ -188,8 +185,8 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
   return (
     <Tile>
       <Flex direction="column" gap="medium">
-        <Flex justify="between" align="center" gap="medium">
-          <Flex gap="small" align="center">
+        <Flex justify="between" align="center" gap="small" wrap>
+          <Flex gap="small" align="center" wrap>
             <Heading>{input.family === 'oneoff' ? priced.productName || family.label : family.label}</Heading>
             {input.family === 'oneoff' && <Tag>{edition.label}</Tag>}
             {row.ramped && <Tag variant="warning">{`${row.rampMonths}-mo ramp`}</Tag>}

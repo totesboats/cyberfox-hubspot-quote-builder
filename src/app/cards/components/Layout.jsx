@@ -1,18 +1,15 @@
 import React from 'react';
-import { Box, Flex } from '@hubspot/ui-extensions';
+import { AutoGrid } from '@hubspot/ui-extensions';
 
-// One row of equal-width fields (or weighted with `weights`). Help text goes in field tooltips
-// so every input in the row lines up.
-export function Row({ children, weights = [] }) {
+// A responsive row of equal-width fields: as many columns as fit at `min` px each, wrapping to fewer
+// (down to one) when the card is narrow, e.g. a split-screen window. Help text goes in field tooltips
+// so every input lines up.
+export function Row({ children, min = 180 }) {
   const items = React.Children.toArray(children).filter(Boolean);
   return (
-    <Flex direction="row" gap="medium" align="end">
-      {items.map((child, i) => (
-        <Box key={i} flex={weights[i] || 1}>
-          {child}
-        </Box>
-      ))}
-    </Flex>
+    <AutoGrid columnWidth={min} flexible gap="medium">
+      {items}
+    </AutoGrid>
   );
 }
 

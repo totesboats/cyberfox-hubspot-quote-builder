@@ -425,7 +425,7 @@ export function QuoteBuilderApp() {
 
       {state.editing && (
         <Alert title={`Editing ${state.editing.title || 'quote'}`} variant="info">
-          <Flex justify="between" align="center" gap="medium">
+          <Flex justify="between" align="center" gap="small" wrap>
             <Text>Update quote replaces its line items and settings, keeping the same quote and link.</Text>
             <Button
               size="sm"

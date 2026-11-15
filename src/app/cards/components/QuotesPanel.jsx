@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Button, Flex, Heading, Link, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag, Text, Tile } from '@hubspot/ui-extensions';
+import { Alert, Button, Divider, Flex, Heading, Link, Tag, Text, Tile } from '@hubspot/ui-extensions';
 import { formatMoney, quoteEditability, quoteUrl } from '../lib/pricing.js';
 
 const STATUS_LABEL = {
@@ -51,61 +51,45 @@ export function QuotesPanel({ quotes, portalId, busyId, pendingPrimary, editingI
           </Alert>
         )}
 
-        <Table bordered density="condensed">
-          <TableHead>
-            <TableRow>
-              <TableHeader>Quote</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader align="right">Amount</TableHeader>
-              <TableHeader>Actions</TableHeader>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {quotes.map((q) => (
-              <TableRow key={q.id}>
-                <TableCell>
-                  <Flex direction="column" gap="extra-small">
-                    <Link href={{ url: quoteUrl(portalId, q.id, q.templateType, q.progressionStatus), external: true }}>{q.title || `Quote ${q.id}`}</Link>
-                    <Flex gap="extra-small" wrap>
-                      {q.primary && <Tag variant="success">Primary</Tag>}
-                      {q.id === editingId && <Tag variant="info">Editing</Tag>}
-                      {!q.builder && <Tag>Not from builder</Tag>}
-                    </Flex>
-                  </Flex>
-                </TableCell>
-                <TableCell>
-                  <Flex direction="column" gap="extra-small">
-                    <Text>{STATUS_LABEL[q.progressionStatus] || q.progressionStatus}</Text>
-                    <Tag variant={q.lock === 'open' ? 'warning' : 'default'}>{q.lock === 'open' ? 'Reads current deal values' : 'Values locked'}</Tag>
-                  </Flex>
-                </TableCell>
-                <TableCell align="right">{q.amount == null ? '—' : formatMoney(q.amount)}</TableCell>
-                <TableCell>
-                  <Flex direction="column" gap="extra-small">
-                  <Flex gap="extra-small" wrap>
-                    {quoteEditability(q).editable && q.id !== editingId && (
-                      <Button size="xs" variant="primary" onClick={() => onEdit(q)}>
-                        Edit quote
-                      </Button>
-                    )}
-                    {q.state && (
-                      <Button size="xs" variant="secondary" onClick={() => onStartFrom(q)}>
-                        New option from this
-                      </Button>
-                    )}
-                    {q.builder && q.state && !q.primary && (
-                      <Button size="xs" variant="secondary" disabled={!!busyId} onClick={() => onMakePrimary(q)}>
-                        {busyId === q.id ? 'Updating…' : 'Make primary'}
-                      </Button>
-                    )}
-                  </Flex>
-                  {q.builder && q.state && !quoteEditability(q).editable && <Text variant="microcopy">{quoteEditability(q).reason}</Text>}
-                  </Flex>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {/* One block per quote instead of a table, so it reads cleanly on a narrow (split-screen) card. */}
+        <Flex direction="column" gap="small">
+          {quotes.map((q, idx) => (
+            <Flex key={q.id} direction="column" gap="extra-small">
+              {idx > 0 && <Divider />}
+              <Flex justify="between" align="center" gap="small" wrap>
+                <Flex gap="extra-small" align="center" wrap>
+                  <Link href={{ url: quoteUrl(portalId, q.id, q.templateType, q.progressionStatus), external: true }}>{q.title || `Quote ${q.id}`}</Link>
+                  {q.primary && <Tag variant="success">Primary</Tag>}
+                  {q.id === editingId && <Tag variant="info">Editing</Tag>}
+                  {!q.builder && <Tag>Not from builder</Tag>}
+                </Flex>
+                <Text format={{ fontWeight: 'demibold' }}>{q.amount == null ? '—' : formatMoney(q.amount)}</Text>
+              </Flex>
+              <Flex gap="extra-small" align="center" wrap>
+                <Text variant="microcopy">{STATUS_LABEL[q.progressionStatus] || q.progressionStatus}</Text>
+                <Tag variant={q.lock === 'open' ? 'warning' : 'default'}>{q.lock === 'open' ? 'Reads current deal values' : 'Values locked'}</Tag>
+              </Flex>
+              <Flex gap="extra-small" wrap>
+                {quoteEditability(q).editable && q.id !== editingId && (
+                  <Button size="xs" variant="primary" onClick={() => onEdit(q)}>
+                    Edit quote
+                  </Button>
+                )}
+                {q.state && (
+                  <Button size="xs" variant="secondary" onClick={() => onStartFrom(q)}>
+                    New option from this
+                  </Button>
+                )}
+                {q.builder && q.state && !q.primary && (
+                  <Button size="xs" variant="secondary" disabled={!!busyId} onClick={() => onMakePrimary(q)}>
+                    {busyId === q.id ? 'Updating…' : 'Make primary'}
+                  </Button>
+                )}
+              </Flex>
+              {q.builder && q.state && !quoteEditability(q).editable && <Text variant="microcopy">{quoteEditability(q).reason}</Text>}
+            </Flex>
+          ))}
+        </Flex>
       </Flex>
     </Tile>
   );

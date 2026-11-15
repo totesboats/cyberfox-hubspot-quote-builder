@@ -65,7 +65,8 @@ export function ProductRamp({ row, quote, onStage, onAddStage, onRemoveStage }) 
         </Text>
       )}
       {stages.map((st, i) => (
-        <Row key={i} weights={[1, 1, 1, 0.6]}>
+        <Flex key={i} direction="column" gap="extra-small">
+        <Row>
           <Select
             label={stages.length > 1 ? `Stage ${i + 1} length` : 'Ramp length'}
             name={`rampMonths-${uid}-${i + 1}`}
@@ -95,12 +96,17 @@ export function ProductRamp({ row, quote, onStage, onAddStage, onRemoveStage }) 
             value={st.mode === 'percent' ? Number(st.percent) || 50 : 100}
             onChange={(v) => onStage(uid, i, { percent: v })}
           />
-          <Button variant="secondary" size="sm" disabled={stages.length < 2} onClick={() => onRemoveStage(uid, i)}>
-            Remove stage
-          </Button>
         </Row>
+        {stages.length > 1 && (
+          <Flex justify="end">
+            <Button variant="transparent" size="sm" onClick={() => onRemoveStage(uid, i)}>
+              {`Remove stage ${i + 1}`}
+            </Button>
+          </Flex>
+        )}
+        </Flex>
       ))}
-      <Flex justify="between" align="center" gap="medium">
+      <Flex justify="between" align="center" gap="small" wrap>
         <Text variant="microcopy">
           {`Ramp: ${total} month${total === 1 ? '' : 's'}${row.ramp.stages.length > 1 ? ` (${row.ramp.stages.map((s) => `${s.months} mo ${stageLabel(s).toLowerCase()}`).join(', then ')})` : ''}; ${planText}.`}
         </Text>
@@ -119,7 +125,7 @@ export function RampSection({ quote, onClear }) {
   return (
     <Tile>
       <Flex direction="column" gap="medium">
-        <Flex justify="between" align="start" gap="medium">
+        <Flex justify="between" align="start" gap="small" wrap>
           <Flex direction="column" gap="extra-small">
             <Heading>Ramp & schedule</Heading>
             <Text variant="microcopy">{`${length} · ramps of ${APPROVAL.rampMonthsThreshold}+ months need approval`}</Text>
@@ -134,22 +140,26 @@ export function RampSection({ quote, onClear }) {
             <TableHead>
               <TableRow>
                 <TableHeader>Period</TableHeader>
-                <TableHeader>Months</TableHeader>
                 <TableHeader>What bills</TableHeader>
                 <TableHeader align="right">Per month</TableHeader>
-                <TableHeader align="right">Period total</TableHeader>
               </TableRow>
             </TableHead>
             <TableBody>
               {schedule.map((r) => (
                 <TableRow key={r.key}>
                   <TableCell>
-                    <Tag variant={r.ramp ? 'warning' : 'info'}>{r.period}</Tag>
+                    <Flex direction="column" gap="flush">
+                      <Tag variant={r.ramp ? 'warning' : 'info'}>{r.period}</Tag>
+                      <Text variant="microcopy">{r.months}</Text>
+                    </Flex>
                   </TableCell>
-                  <TableCell>{r.months}</TableCell>
                   <TableCell>{r.what}</TableCell>
-                  <TableCell align="right">{formatMoney(r.perMonth)}</TableCell>
-                  <TableCell align="right">{r.total == null ? 'per month' : formatMoney(r.total)}</TableCell>
+                  <TableCell align="right">
+                    <Flex direction="column" gap="flush" align="end">
+                      <Text>{formatMoney(r.perMonth)}</Text>
+                      {r.total != null && <Text variant="microcopy">{`${formatMoney(r.total)} total`}</Text>}
+                    </Flex>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
