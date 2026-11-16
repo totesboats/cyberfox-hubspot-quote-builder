@@ -2,7 +2,7 @@ import React from 'react';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer } from '@hubspot/ui-extensions/testing';
-import { Accordion, Alert, AutoGrid, Button, Checkbox, DescriptionListItem, Dropdown, Input, NumberInput, Select, StatusTag, StepIndicator, Tag, StatisticsItem, Table, TableHeader, TableRow } from '@hubspot/ui-extensions';
+import { Accordion, Alert, AutoGrid, Button, Checkbox, DescriptionListItem, Dropdown, Input, NumberInput, Select, StatusTag, StepIndicator, Tag, StatisticsItem, Table, TableHeader, TableRow, Text } from '@hubspot/ui-extensions';
 import { QuoteBuilderApp, reducer, initialState } from '../../src/app/cards/QuoteBuilderApp.jsx';
 
 // The platform exposes hubspot.serverless via a worker global; route it to the renderer's mock.
@@ -157,6 +157,7 @@ test('mixed AE feature types block Continue; payment frequency hides One Time', 
   r.find(Select, { name: 'feature-2' }).trigger('onChange', 'Advanced');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: 'Fix before continuing' })));
   assert.equal(r.find(Button, (n) => /Continue/.test(text(n))).props.disabled, true);
+  assert.ok(r.findAll(Text).some((n) => n.props.format && n.props.format.fontWeight === 'demibold' && /AutoElevate/.test(n.text || '')));
 });
 
 test('quotes on the deal: start a new option from one; it defaults to not primary', async () => {
@@ -207,6 +208,9 @@ test('wrong billing for a product blocks Continue', async () => {
   addProduct(r, 'DNS Filtering');
   await r.waitFor(() => assert.ok(r.maybeFind(Alert, { title: "Can't price this product" })));
   assert.equal(r.find(Button, (n) => /Continue/.test(text(n))).props.disabled, true);
+  // The reason sits beside the disabled button, naming the product and the problem.
+  const reason = r.find(Text, (n) => n.props.variant === 'microcopy' && n.props.format && n.props.format.fontWeight === 'demibold');
+  assert.match(reason.text, /^No MSP annual \(billed yearly\) SKUs exist for DNS Filtering/);
 });
 
 test('SKU pricing offers Month-to-Month, Annual (billed monthly), Annual (billed yearly) and moves with Agreement Length', async () => {

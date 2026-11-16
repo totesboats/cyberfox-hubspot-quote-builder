@@ -271,6 +271,16 @@ test('month-to-month uses the Month-to-Month agreement length option', () => {
   assert.match(q.blocking[0].error, /month-to-month SKUs/); // fixture has no M2M SKUs
 });
 
+test('the commit line under a product shows only when it adds something (overage or packs)', () => {
+  // Exactly a tier: no line, the Plan field already says it.
+  assert.equal(P.priceProduct(ae({ quantity: 1000, ramp: false }), MSP, CATALOG).hint, '');
+  // Overage: the line explains the additional units.
+  assert.match(P.priceProduct(ae({ quantity: 1250, ramp: false }), MSP, CATALOG).hint, /1,000-agent commit \+ 250 additional agents for 1,250 agents/);
+  // One pack that exactly covers the count: no line; several packs: shown.
+  assert.equal(P.priceProduct({ uid: 2, family: 'password', edition: 'pack', quantity: 25, discountPct: 0 }, MSP, CATALOG).hint, '');
+  assert.match(P.priceProduct({ uid: 2, family: 'password', edition: 'pack', quantity: 300, discountPct: 0 }, MSP, CATALOG).hint, /covers 300 users/);
+});
+
 test('SKU pricing: Month-to-Month, Annual (billed monthly), Annual (billed yearly), in that order', async () => {
   const C = await import('../shared/config.mjs');
   assert.deepEqual(C.BILLING_ORDER.map((k) => C.BILLING[k].label), ['Month-to-Month', 'Annual (billed monthly)', 'Annual (billed yearly)']);

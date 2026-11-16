@@ -623,10 +623,10 @@ var require_pricing = __commonJS({
           result.hint = `${what} covers ${formatInt(quantity)} ${units.unit}, rounded up from the default ${formatInt(best.tier)} tier (${formatMoney(best.cost - chosen.cost)}${per} less).`;
         } else if (cheapest !== best) {
           result.hint = `${what} for ${formatInt(quantity)} ${units.unit}. The ${formatInt(cheapest.tier)} tier lists ${formatMoney(best.cost - cheapest.cost)}${per} less if you'd rather round up.`;
-        } else {
+        } else if (extra) {
           result.hint = `${what} for ${formatInt(quantity)} ${units.unit}.`;
         }
-      } else {
+      } else if (chosen.baseQty > 1 || chosen.tier !== quantity) {
         result.hint = `${formatInt(chosen.baseQty)} \xD7 ${formatInt(chosen.tier)}-${units.unitSingular.toLowerCase()} pack${chosen.baseQty > 1 ? "s" : ""} covers ${formatInt(quantity)} ${units.unit} at the lowest list price.`;
       }
       const tdrUsers = Math.max(0, Math.round(toNum(input.tdrUsers)));

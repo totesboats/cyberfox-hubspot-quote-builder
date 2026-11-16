@@ -356,19 +356,23 @@ export function QuoteBuilderApp() {
     else makePrimary(q.id);
   };
 
+  // Why Continue / Create quote is disabled, shown right beside the button: the actual problem, named.
+  const more = (n) => (n > 1 ? ` (+${n - 1} more)` : '');
+  const blockingName = (b) => (FAMILIES[b.family] ? FAMILIES[b.family].label : 'A product');
+  const blockingReason = (b) => (b.error && FAMILIES[b.family] && b.error.includes(FAMILIES[b.family].label) ? b.error : `${blockingName(b)}: ${b.error || "can't be priced"}`);
   const blocker =
     state.step === 0 && !state.setup.agreementLength
       ? 'Pick an Agreement Length.'
       : state.step === 1 && state.products.length === 0
       ? 'Add at least one product.'
       : state.step === 1 && quote.blocking.length
-        ? 'Fix the highlighted product before continuing.'
+        ? `${blockingReason(quote.blocking[0])}${more(quote.blocking.length)}`
         : state.step === 1 && quote.conflicts.length
-          ? 'Fix the issue above before continuing.'
+          ? `${quote.conflicts[0]}${more(quote.conflicts.length)}`
         : state.step === 2 && quote.conflicts.length
           ? quote.conflicts[0]
         : state.step === 2 && writes.errors.length
-          ? 'Fix the deal property issues below.'
+          ? `${writes.errors[0]}${more(writes.errors.length)}`
         : state.step === 2 && !template
           ? 'Pick a quote template on the Setup step.'
           : state.step === 2 && quote.lines.length === 0
@@ -529,12 +533,8 @@ export function QuoteBuilderApp() {
         />
       )}
 
-      {blocker && (
-        <Flex justify="end">
-          <Text variant="microcopy">{blocker}</Text>
-        </Flex>
-      )}
-      <Flex justify="end" align="center" gap="small">
+      <Flex justify="end" align="center" gap="small" wrap>
+        {blocker && <Text variant="microcopy" format={{ fontWeight: 'demibold' }}>{blocker}</Text>}
         {state.step > 0 && (
           <Button variant="secondary" disabled={submitting} onClick={() => go(state.step - 1)}>
             Back
