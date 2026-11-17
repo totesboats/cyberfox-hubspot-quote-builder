@@ -9,7 +9,7 @@
 // With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
 const { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
-const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, cotermRows, refreshCoterms, pipelineAllowsCoterm, isDowngradePipeline, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
+const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, cotermRows, refreshCoterms, cotermRemovalError, pipelineAllowsCoterm, isDowngradePipeline, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
 const { QUOTE_DEFAULTS, QUOTE_SESSION_PROPERTY, QUOTE_STATE_PROPERTY } = require('./lib/config.js');
 
 const ASSOC = {
@@ -67,7 +67,19 @@ exports.main = async (context) => {
     downgrade: isDowngradePipeline(deal.properties.pipeline),
   });
   // Co-term rows come from the company record (count, plan, minimum); only the rep's discount is kept.
-  payload.products = refreshCoterms(payload.products, cotermRows(deal.company, { dealFamily: setup.dealFamily, segment: payload.setup.segment, pipeline: deal.properties.pipeline }));
+  const cotermSeeds = cotermRows(deal.company, { dealFamily: setup.dealFamily, segment: payload.setup.segment, pipeline: deal.properties.pipeline });
+  payload.products = refreshCoterms(payload.products, cotermSeeds);
+  // Only the co-term removers (config COTERM_REMOVERS) may leave a co-term product off the quote, unless
+  // the quote being edited already had it removed.
+  const editingQuote = payload.editQuoteId ? deal.quotes.find((q) => q.id === String(payload.editQuoteId)) : null;
+  const cotermError = cotermRemovalError({
+    products: payload.products,
+    seeds: cotermSeeds,
+    setup: payload.setup,
+    email: context.userEmail || (payload.builder && payload.builder.email),
+    editingState: editingQuote && editingQuote.state,
+  });
+  if (cotermError) return { ok: false, errors: [cotermError] };
   // Priced in the deal's currency (CAD deals use each product's CAD price).
   const currency = quoteCurrency(deal.properties.deal_currency_code);
   const catalog = indexCatalog(products, currency);

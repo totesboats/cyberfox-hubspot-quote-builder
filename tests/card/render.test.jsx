@@ -713,6 +713,63 @@ test("co-term: not on the deal's own product (AutoElevate Upsell deal): AutoElev
   assert.equal(tags.filter((t) => /Upsell/.test(t)).length, 1);
 });
 
+test('co-term: only the co-term removers get Remove on a co-term row; Add back restores it and it is sent as removed', async () => {
+  const r = mk();
+  r.mocks.context.user.email = 'HLampert@cyberfox.com';
+  const calls = [];
+  const res = withCompany({ activeProducts: ['autoelevate', 'dns'], cotermProducts: ['autoelevate', 'dns'], commits: { ae_agent_commit: '1250', ae_sku_type: 'Standard', dns_device_commit: '600' } }, { pipeline: '917642399' });
+  r.mocks.runServerlessFunction.willCall(async (params) => {
+    calls.push(params);
+    return { status: 'SUCCESS', response: params.name === 'quote_builder_catalog' ? res : { ok: false, errors: ['stop'] } };
+  });
+  r.render(<QuoteBuilderApp />);
+  await toProducts(r);
+  const removes = () => r.findAll(Button).filter((b) => /^Remove$/.test((b.text || text(b)).trim()));
+  assert.equal(removes().length, 2);
+  // Remove the DNS co-term (second tile): the row goes, and an Add back line appears.
+  removes()[1].trigger('onClick');
+  await r.waitFor(() => assert.equal(r.maybeFind(NumberInput, { name: 'qty-2' }), null));
+  assert.match(text(r.getRootNode()), /DNS Filtering co-term removed\./);
+  r.find(Button, (n) => /Add back/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.findAll(Tag).filter((t) => /Co-term/.test(text(t))).length, 2));
+  assert.equal(r.maybeFind(Button, (n) => /Add back/.test(text(n))), null);
+  assert.equal(r.find(NumberInput, (n) => n.props.value === 600 && /^qty-/.test(n.props.name)).props.readOnly, true);
+  // Remove it again and submit: the quote goes without DNS and says so.
+  removes()[1].trigger('onClick');
+  await r.waitFor(() => assert.equal(r.findAll(Tag).filter((t) => /Co-term/.test(text(t))).length, 1));
+  r.find(Button, (n) => /Continue/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.equal(r.find(StepIndicator).props.currentStep, 2));
+  r.find(Button, (n) => /Create quote/.test(text(n))).trigger('onClick');
+  await r.waitFor(() => assert.ok(calls.some((c) => c.name === 'quote_builder_submit')));
+  const sent = calls.find((c) => c.name === 'quote_builder_submit').parameters;
+  assert.deepEqual(sent.products.map((p) => [p.family, !!p.coterm]), [['autoelevate', true]]);
+  assert.deepEqual(sent.setup.removedCoterms, ['dns']);
+});
+
+test('co-term: Remove from anyone else leaves co-term rows; removed co-terms carry into a new option only for a remover', () => {
+  const coterms = [{ family: 'autoelevate', coterm: true, edition: 'standard', featureType: 'Standard', quantity: 150, tier: '', discountPct: 0, ramp: false }, { family: 'dns', coterm: true, edition: 'standard', quantity: 600, tier: '', discountPct: 0, ramp: false }];
+  const fresh = reducer(initialState, { type: 'hydrate', setup: {}, coterms });
+  assert.deepEqual(fresh.products.map((p) => p.family), ['autoelevate', 'dns']);
+  assert.equal(reducer(fresh, { type: 'removeProduct', uid: 2 }).products.length, 2);
+  assert.equal(reducer(fresh, { type: 'removeProduct', uid: 2, canRemoveCoterms: false }).products.length, 2);
+  const removed = reducer(fresh, { type: 'removeProduct', uid: 2, canRemoveCoterms: true });
+  assert.deepEqual([removed.products.map((p) => p.family), removed.setup.removedCoterms], [['autoelevate'], ['dns']]);
+  // Leaving Month-to-Month and coming back doesn't bring it back.
+  const m2m = reducer(removed, { type: 'setup', patch: { billing: 'm2m' }, coterms });
+  assert.deepEqual(reducer(m2m, { type: 'setup', patch: { billing: 'monthly' }, coterms }).products.map((p) => p.family), ['autoelevate']);
+  // Editing the saved quote keeps it off; a new option from it keeps it off only for a remover.
+  const saved = { setup: { removedCoterms: ['dns'] }, products: removed.products };
+  assert.deepEqual(reducer(initialState, { type: 'editQuote', quote: { id: 'Q1', state: saved }, coterms }).products.map((p) => p.family), ['autoelevate']);
+  assert.deepEqual(reducer(initialState, { type: 'loadState', state: saved, coterms, canRemoveCoterms: true }).products.map((p) => p.family), ['autoelevate']);
+  const copied = reducer(initialState, { type: 'loadState', state: saved, coterms });
+  assert.deepEqual([copied.products.map((p) => p.family), copied.setup.removedCoterms], [['autoelevate', 'dns'], []]);
+  // Stop editing starts a fresh quote with every co-term.
+  assert.deepEqual(reducer(removed, { type: 'stopEditing', coterms }).products.map((p) => p.family), ['autoelevate', 'dns']);
+  // Add back puts the company's row back with a new uid.
+  const back = reducer(removed, { type: 'restoreCoterm', family: 'dns', coterms });
+  assert.deepEqual([back.products.map((p) => [p.family, p.uid, !!p.coterm]), back.setup.removedCoterms], [[['autoelevate', 1, true], ['dns', 3, true]], []]);
+});
+
 test('co-term: editing or copying an older quote adds the missing co-terms; Stop editing starts from them; co-term rows ignore Remove', () => {
   const coterms = [{ family: 'autoelevate', coterm: true, edition: 'advanced', featureType: 'Advanced', quantity: 150, tier: '', discountPct: 0, ramp: false }];
   const old = { setup: { segment: 'MSP' }, products: [{ uid: 1, family: 'optimize365', edition: 'standard', quantity: 40, discountPct: 0, ramp: false }] };

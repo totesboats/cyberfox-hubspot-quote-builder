@@ -19,6 +19,7 @@ import {
   AE_FEATURE_TYPES,
   AGREEMENT_LENGTH_M2M,
   AGREEMENT_LENGTH_DEFAULT,
+  COTERM_REMOVERS,
   PAYMENT_FREQUENCY_DEFAULT,
   WRITE_CONTRACT_TERM,
   QUOTE_OPEN_STATUSES,
@@ -594,6 +595,39 @@ export function refreshCoterms(products, seeds) {
     if (!seed) return Object.assign({}, p, { coterm: false });
     return Object.assign({}, seed, { uid: p.uid, discountPct: p.discountPct });
   });
+}
+
+// Who may take a co-term line off a quote (COTERM_REMOVERS, matched case-insensitively).
+/** @param {string | null | undefined} email */
+export function canRemoveCoterms(email) {
+  return !!email && Object.prototype.hasOwnProperty.call(COTERM_REMOVERS, String(email).trim().toLowerCase());
+}
+
+export function cotermRemoverNames() {
+  return Object.values(COTERM_REMOVERS);
+}
+
+// Co-term products (families from `seeds`) the quote doesn't carry: no row for that product at all
+// (a co-term row, a normal row or a one-off SKU of it all count as carrying it).
+/** @param {any[]} products @param {any[]} seeds @returns {string[]} */
+export function missingCoterms(products, seeds) {
+  const have = new Set((products || []).filter(Boolean).map((p) => (p.family === 'oneoff' ? p.baseFamily : p.family)));
+  return (seeds || []).map((s) => s.family).filter((f) => !have.has(f));
+}
+
+// Server check: co-term products missing from a submitted quote. Allowed when the user is a co-term
+// remover, or when the quote being edited already had them removed (saved builder state). Returns the
+// error to show, or null. Month-to-Month quotes never carry co-terms.
+/** @param {{ products: any[], seeds: any[], setup: any, email?: string | null, editingState?: any }} args */
+export function cotermRemovalError({ products, seeds, setup, email, editingState }) {
+  if (effectiveBilling(setup || {}) === 'm2m') return null;
+  const missing = missingCoterms(products, seeds);
+  if (!missing.length || canRemoveCoterms(email)) return null;
+  const before = (editingState && editingState.setup && editingState.setup.removedCoterms) || [];
+  const blocked = missing.filter((f) => !before.includes(f));
+  if (!blocked.length) return null;
+  const names = blocked.map((f) => (FAMILIES[f] ? FAMILIES[f].label : f)).join(', ');
+  return `Co-term lines can only be removed by ${cotermRemoverNames().join(', ')}. Add the ${names} co-term back (Products step), or reload the card if the company record just changed.`;
 }
 
 export function lineTypeLabel(value) {
@@ -1182,6 +1216,7 @@ export function validateSubmission(payload) {
   if (!setup.expirationDate || !/^\d{4}-\d{2}-\d{2}$/.test(setup.expirationDate)) errors.push('expirationDate must be YYYY-MM-DD');
   if (!Array.isArray(products) || products.length === 0) errors.push('at least one product is required');
   if (products.length > 12) errors.push('at most 12 product rows');
+  if (setup.removedCoterms != null && !(Array.isArray(setup.removedCoterms) && setup.removedCoterms.every((f) => FAMILIES[f]))) errors.push('removedCoterms must be a list of products');
   for (const p of products) {
     if (!FAMILIES[p.family]) errors.push(`unknown family ${p.family}`);
     const d = toNum(p.discountPct, NaN);

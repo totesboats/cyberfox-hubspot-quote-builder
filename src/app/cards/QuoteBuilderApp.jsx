@@ -16,7 +16,7 @@ import { ProductsStep } from './components/ProductsStep.jsx';
 import { ReviewStep } from './components/ReviewStep.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
 import { QuotesPanel } from './components/QuotesPanel.jsx';
-import { buildQuote, cotermRows, dealWrites, isDowngradePipeline, pipelineAllowsCoterm, refreshCoterms, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate, syncBillingPatch, effectiveBilling } from './lib/pricing.js';
+import { buildQuote, cotermRows, dealWrites, isDowngradePipeline, pipelineAllowsCoterm, refreshCoterms, canRemoveCoterms, defaultRampMonths, indexCatalog, openQuoteConflicts, optimizeRampRule, pipelineFamily, quoteCurrency, rampStages, suggestTemplate, syncBillingPatch, effectiveBilling } from './lib/pricing.js';
 import { AE_FEATURE_TYPES, AGREEMENT_LENGTH_DEFAULT, FAMILIES, INVOICE_TERMS_DEFAULT, MAX_RAMP_STAGES, QUOTE_DEFAULTS } from './lib/config.js';
 
 export const STEPS = ['Setup', 'Products & ramp', 'Review & create'];
@@ -92,9 +92,11 @@ function withOwnRamps(products, savedRamp) {
 // that can no longer co-term becomes a normal row.
 // A Month-to-Month quote (AutoElevate only) has no co-term rows: they're dropped, and added back from the
 // company record when SKU pricing leaves Month-to-Month.
+// Products in setup.removedCoterms were taken off by a co-term remover (COTERM_REMOVERS) and stay off.
 export function cotermsForSetup(setup, products, coterms, nextUid) {
   if (effectiveBilling(setup || {}) === 'm2m') return { products: (products || []).filter((p) => !p.coterm), nextUid };
-  return withCoterms(products, coterms, nextUid);
+  const removed = (setup && setup.removedCoterms) || [];
+  return withCoterms(products, (coterms || []).filter((c) => !removed.includes(c.family)), nextUid);
 }
 
 export function withCoterms(products, coterms, nextUid) {
@@ -182,9 +184,21 @@ export function reducer(state, action) {
       });
       return Object.assign({}, state, { products });
     }
-    case 'removeProduct':
-      // Co-term rows stay: every product the company is Active on is co-termed.
-      return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid || p.coterm) });
+    case 'removeProduct': {
+      // Co-term rows stay (every product the company is Active on is co-termed), unless a co-term remover
+      // takes one off: it's then listed in setup.removedCoterms so it isn't added back.
+      const row = state.products.find((p) => p.uid === action.uid);
+      if (!row) return state;
+      if (!row.coterm) return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid) });
+      if (!action.canRemoveCoterms) return state;
+      const removed = (state.setup.removedCoterms || []).filter((f) => f !== row.family).concat([row.family]);
+      return Object.assign({}, state, { products: state.products.filter((p) => p.uid !== action.uid), setup: Object.assign({}, state.setup, { removedCoterms: removed }) });
+    }
+    case 'restoreCoterm': {
+      // Anyone can put a removed co-term back (from the company record).
+      const setup = Object.assign({}, state.setup, { removedCoterms: (state.setup.removedCoterms || []).filter((f) => f !== action.family) });
+      return Object.assign({}, state, { setup }, cotermsForSetup(setup, state.products, action.coterms, state.nextUid));
+    }
     case 'clearRamp':
       return Object.assign({}, state, {
         products: state.products.map((p) => {
@@ -211,12 +225,15 @@ export function reducer(state, action) {
       return Object.assign({}, state, { primary: action.value });
     case 'loadState': {
       // Start a new option from a saved builder quote: same inputs, fresh dates, not primary.
+      // Removed co-terms carry over only for a co-term remover; anyone else gets them back.
       const saved = action.state;
       const own = withOwnRamps((saved.products || []).map((p, i) => Object.assign({}, p, { uid: i + 1 })), saved.ramp);
-      const { products, nextUid } = cotermsForSetup(Object.assign({}, state.setup, saved.setup), own, action.coterms, own.length + 1);
+      const removedCoterms = action.canRemoveCoterms ? (saved.setup && saved.setup.removedCoterms) || [] : [];
+      const setup = Object.assign({}, state.setup, saved.setup, { expirationDate: state.setup.expirationDate, quoteName: '', removedCoterms });
+      const { products, nextUid } = cotermsForSetup(setup, own, action.coterms, own.length + 1);
       return Object.assign({}, state, {
         step: 1,
-        setup: Object.assign({}, state.setup, saved.setup, { expirationDate: state.setup.expirationDate, quoteName: '' }),
+        setup,
         products,
         nextUid,
         primary: false,
@@ -238,8 +255,11 @@ export function reducer(state, action) {
         editing: { id: q.id, title: q.title, primary: !!q.primary },
       });
     }
-    case 'stopEditing':
-      return Object.assign({}, initialState, { setup: state.setup, editing: null }, cotermsForSetup(state.setup, [], action.coterms, 1));
+    case 'stopEditing': {
+      // A fresh quote starts with all of the company's co-terms again.
+      const setup = Object.assign({}, state.setup, { removedCoterms: [] });
+      return Object.assign({}, initialState, { setup, editing: null }, cotermsForSetup(setup, [], action.coterms, 1));
+    }
     case 'nextOption':
       return Object.assign({}, state, { step: 1, primary: false, editing: null, setup: Object.assign({}, state.setup, { quoteName: '' }) });
     default:
@@ -253,6 +273,8 @@ export function QuoteBuilderApp() {
   /** @type {any} */
   const actions = useExtensionActions();
   const dealId = context && context.crm ? String(context.crm.objectId) : '';
+  // Co-term lines can be removed only by the users in COTERM_REMOVERS (the submit function checks again).
+  const canRemove = canRemoveCoterms(context && context.user ? context.user.email : '');
 
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -453,7 +475,7 @@ export function QuoteBuilderApp() {
           pendingPrimary={pendingPrimary}
           onStartFrom={(q) => {
             setResult(null);
-            dispatch({ type: 'loadState', state: q.state, coterms: data.coterms });
+            dispatch({ type: 'loadState', state: q.state, coterms: data.coterms, canRemoveCoterms: canRemove });
           }}
           editingId={state.editing ? state.editing.id : ''}
           onEdit={(q) => {
@@ -500,7 +522,10 @@ export function QuoteBuilderApp() {
             })
           }
           onUpdate={(uid, patch) => dispatch({ type: 'updateProduct', uid, patch })}
-          onRemove={(uid) => dispatch({ type: 'removeProduct', uid })}
+          onRemove={(uid) => dispatch({ type: 'removeProduct', uid, canRemoveCoterms: canRemove })}
+          canRemoveCoterms={canRemove}
+          removedCoterms={effectiveBilling(state.setup) === 'm2m' ? [] : (data.coterms || []).filter((c) => (state.setup.removedCoterms || []).includes(c.family)).map((c) => c.family)}
+          onRestoreCoterm={(family) => dispatch({ type: 'restoreCoterm', family, coterms: data.coterms })}
           ramp={rampFor(state)}
           onStage={(uid, index, patch) => dispatch({ type: 'rampStage', uid, index, patch })}
           onAddStage={(uid) => dispatch({ type: 'addRampStage', uid })}

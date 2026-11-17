@@ -167,7 +167,7 @@ function TimusFields({ input, priced, onUpdate }) {
   );
 }
 
-function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRemoveStage }) {
+function ProductTile({ row, quote, canRemoveCoterms, onUpdate, onRemove, onStage, onAddStage, onRemoveStage }) {
   const optimizeRamp = quote.optimizeRamp;
   const { input, priced } = row;
   const family = FAMILIES[input.family];
@@ -194,8 +194,9 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
           </Flex>
           <Flex gap="small" align="center">
             <Text format={{ fontWeight: 'demibold' }}>{mrr}</Text>
-            {/* Co-term rows can't be removed: every product the company is Active on is co-termed. */}
-            {!input.coterm && (
+            {/* Co-term rows stay (every product the company is Active on is co-termed); only the co-term
+                removers (config COTERM_REMOVERS) get Remove on them. */}
+            {(!input.coterm || canRemoveCoterms) && (
               <Button variant="secondary" size="sm" onClick={() => onRemove(input.uid)}>
                 Remove
               </Button>
@@ -252,8 +253,11 @@ function ProductTile({ row, quote, onUpdate, onRemove, onStage, onAddStage, onRe
   );
 }
 
-export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSetup, onAdd, onUpdate, onRemove, onStage, onAddStage, onRemoveStage, onClearRamp }) {
+export function ProductsStep({ quote, setup, ramp, writes, dealOptions, canRemoveCoterms = false, removedCoterms = [], onRestoreCoterm, onEditSetup, onAdd, onUpdate, onRemove, onStage, onAddStage, onRemoveStage, onClearRamp }) {
   const segment = (SEGMENTS.find((s) => s.value === setup.segment) || SEGMENTS[0]).label;
+  // Removed co-terms the quote doesn't carry some other way (a product added back by hand counts).
+  const carried = new Set(quote.rows.map((r) => (r.input.family === 'oneoff' ? r.input.baseFamily || r.priced.baseFamily : r.input.family)));
+  const removed = removedCoterms.filter((f) => !carried.has(f));
   return (
     <Flex direction="column" gap="medium">
       <Flex direction="column" gap="extra-small">
@@ -270,7 +274,18 @@ export function ProductsStep({ quote, setup, ramp, writes, dealOptions, onEditSe
       ))}
 
       {quote.rows.map((row) => (
-        <ProductTile key={row.input.uid} row={row} quote={quote} onUpdate={onUpdate} onRemove={onRemove} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />
+        <ProductTile key={row.input.uid} row={row} quote={quote} canRemoveCoterms={canRemoveCoterms} onUpdate={onUpdate} onRemove={onRemove} onStage={onStage} onAddStage={onAddStage} onRemoveStage={onRemoveStage} />
+      ))}
+
+      {removed.map((f) => (
+        <Flex key={f} gap="small" align="center" wrap>
+          <Text variant="microcopy">{`${FAMILIES[f] ? FAMILIES[f].label : f} co-term removed.`}</Text>
+          {onRestoreCoterm && (
+            <Button variant="transparent" size="sm" onClick={() => onRestoreCoterm(f)}>
+              Add back
+            </Button>
+          )}
+        </Flex>
       ))}
 
       <Flex>

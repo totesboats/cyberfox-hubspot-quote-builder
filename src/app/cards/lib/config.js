@@ -250,6 +250,14 @@ export const NO_COTERM_PIPELINES = {
 export const DOWNGRADE_PIPELINES = {
   '30582866': 'Downgrade Pipeline',
 };
+// Who can remove a co-term line from a quote (HubSpot user emails, lower case). Everyone else gets the
+// company's co-term lines and can only change their discount. Checked again by the submit function.
+export const COTERM_REMOVERS = {
+  'tbrown@cyberfox.com': 'Trevor Brown',
+  'abellini@cyberfox.com': 'Anthony Bellini',
+  'hlampert@cyberfox.com': 'Harry Lampert',
+  'amunson@cyberfox.com': 'Alex Munson',
+};
 // The company's AE Feature Type → the feature type the AutoElevate co-term is priced on.
 // Advanced (GrandFathered) partners co-term on Standard SKUs (Nov 2026; was Advanced).
 export const COTERM_AE_FEATURE = { Standard: 'Standard', Advanced: 'Advanced', 'Advanced (GrandFathered)': 'Standard' };

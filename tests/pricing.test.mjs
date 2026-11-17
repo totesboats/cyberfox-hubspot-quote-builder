@@ -964,3 +964,37 @@ test('line type: every line on a Downgrade Pipeline deal is Downgrade', () => {
   assert.ok(q.lines.every((l) => l.lineType === 'Downgrade'));
   assert.equal(P.lineItemProperties(q.lines[0], { billing: 'monthly', sessionId: 'qb-1', currency: 'USD' }).qb_line_type, 'Downgrade');
 });
+
+test('co-term removal: only the co-term removers may leave a co-term product off', () => {
+  assert.equal(P.canRemoveCoterms('tbrown@cyberfox.com'), true);
+  assert.equal(P.canRemoveCoterms(' ABellini@CyberFOX.com '), true);
+  assert.equal(P.canRemoveCoterms('hlampert@cyberfox.com'), true);
+  assert.equal(P.canRemoveCoterms('amunson@cyberfox.com'), true);
+  assert.equal(P.canRemoveCoterms('rep@cyberfox.com'), false);
+  assert.equal(P.canRemoveCoterms(''), false);
+  assert.equal(P.canRemoveCoterms(null), false);
+
+  const seeds = [{ family: 'autoelevate' }, { family: 'dns' }];
+  const setup = { billing: 'monthly', agreementLength: '12 Months' };
+  const opt = { family: 'optimize365' };
+  // A product counts as carried as a co-term, a normal row or a one-off SKU of it.
+  assert.deepEqual(P.missingCoterms([opt, { family: 'autoelevate', coterm: true }], seeds), ['dns']);
+  assert.deepEqual(P.missingCoterms([opt, { family: 'oneoff', baseFamily: 'dns' }, { family: 'autoelevate' }], seeds), []);
+
+  const products = [opt, { family: 'autoelevate', coterm: true }];
+  assert.equal(P.cotermRemovalError({ products, seeds, setup, email: 'tbrown@cyberfox.com' }), null);
+  assert.match(P.cotermRemovalError({ products, seeds, setup, email: 'rep@cyberfox.com' }), /only be removed by Trevor Brown, Anthony Bellini, Harry Lampert, Alex Munson\. Add the DNS Filtering co-term back/);
+  assert.match(P.cotermRemovalError({ products, seeds, setup, email: '' }), /DNS Filtering/);
+  // Editing a quote a remover already took DNS off is fine for anyone; a newly missing product isn't.
+  const editingState = { setup: { removedCoterms: ['dns'] } };
+  assert.equal(P.cotermRemovalError({ products, seeds, setup, email: 'rep@cyberfox.com', editingState }), null);
+  assert.match(P.cotermRemovalError({ products: [opt], seeds, setup, email: 'rep@cyberfox.com', editingState }), /AutoElevate co-term/);
+  // Month-to-Month quotes never carry co-terms; nothing missing, nothing to check.
+  assert.equal(P.cotermRemovalError({ products: [{ family: 'autoelevate' }], seeds, setup: { billing: 'm2m', agreementLength: '12 Months - Month-to-Month' }, email: 'rep@cyberfox.com' }), null);
+  assert.equal(P.cotermRemovalError({ products: [opt, { family: 'autoelevate', coterm: true }, { family: 'dns', coterm: true }], seeds, setup, email: 'rep@cyberfox.com' }), null);
+
+  const base = { setup: { segment: 'MSP', billing: 'monthly', agreementLength: '12 Months', templateId: '1', expirationDate: '2026-12-31' }, products: [{ family: 'dns', quantity: 600, discountPct: 0 }] };
+  assert.deepEqual(P.validateSubmission(Object.assign({}, base, { setup: Object.assign({}, base.setup, { removedCoterms: ['dns'] }) })), []);
+  assert.ok(P.validateSubmission(Object.assign({}, base, { setup: Object.assign({}, base.setup, { removedCoterms: ['nope'] }) })).some((e) => /removedCoterms/.test(e)));
+  assert.ok(P.validateSubmission(Object.assign({}, base, { setup: Object.assign({}, base.setup, { removedCoterms: 'dns' }) })).some((e) => /removedCoterms/.test(e)));
+});
