@@ -33,8 +33,11 @@ export function ReviewStep({ quote, setup, template, deal, products, primary, ed
   return (
     <Flex direction="column" gap="medium">
       {result && result.ok && (
-        <Alert title={result.edited ? 'Quote updated' : 'Draft quote created'} variant="success">
+        <Alert title={result.replacedQuoteId ? 'Quote replaced' : result.edited ? 'Quote updated' : 'Draft quote created'} variant="success">
           <Flex direction="column" gap="extra-small">
+            {result.replacedQuoteId && (
+              <Text>{`HubSpot can't change a quote's template, so this is a new quote with the ${result.templateName} template. The old draft was deleted.`}</Text>
+            )}
             <Text>
               {`${result.title} · ${result.lineCount} line items${result.primary ? ' · primary option' : ''}. `}
               {result.approval.required

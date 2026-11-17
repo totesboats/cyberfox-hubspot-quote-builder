@@ -1622,20 +1622,35 @@ exports.main = async (context) => {
   const isCpq = template.templateType === "CPQ_QUOTE";
   if (isCpq && payload.setup.acceptance === "esignature" && !signerId) return { ok: false, errors: ["E-signature quotes need a signer contact associated with the deal."] };
   let editing = null;
+  let replacing = null;
   if (payload.editQuoteId) {
     editing = deal.quotes.find((q) => q.id === String(payload.editQuoteId));
     if (!editing) return { ok: false, errors: ["That quote is not on this deal."] };
     const can = quoteEditability(editing);
     if (!can.editable) return { ok: false, errors: [`This quote can't be edited: ${can.reason}`] };
-    if (editing.templateType && editing.templateType !== template.templateType) {
+    let currentTemplates;
+    try {
+      currentTemplates = await associatedIds("quotes", editing.id, "quote_template");
+    } catch (err) {
+      return { ok: false, errors: [err.message] };
+    }
+    if (currentTemplates.length && !currentTemplates.includes(String(template.id))) {
+      if (editing.progressionStatus !== "DRAFT") {
+        const was = templates.find((t) => currentTemplates.includes(t.id));
+        return { ok: false, errors: [`HubSpot can't change the template of a quote that has been sent for approval. Keep ${was ? `"${was.name}"` : "its template"}, or start a new option with "${template.name}".`] };
+      }
+      replacing = editing;
+      editing = null;
+    } else if (editing.templateType && editing.templateType !== template.templateType) {
       return { ok: false, errors: ["An existing quote can't switch between a CPQ and a legacy template. Pick a template of the same kind, or start a new option."] };
     }
   }
   const sessionId = editing ? editing.session : `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const lineProps = quote.lines.map((l) => lineItemProperties(l, { billing: setup.billing, rampMonths: quote.ramp.months, sessionId, currency }));
   const created = { dealLines: [], quoteLines: [], quoteId: null };
-  const primary = editing ? editing.primary : payload.primary !== false || !deal.quotes.some((q) => q.builder);
-  const affected = openQuoteConflicts(deal.quotes.filter((q) => !editing || q.id !== editing.id), deal.properties, writes.properties).quotes;
+  const kept = editing || replacing;
+  const primary = kept ? kept.primary : payload.primary !== false || !deal.quotes.some((q) => q.builder);
+  const affected = openQuoteConflicts(deal.quotes.filter((q) => !kept || q.id !== kept.id), deal.properties, writes.properties).quotes;
   const title = (payload.setup.quoteName || "").trim() || autoQuoteName(deal.company && deal.company.name, payload.products, quote.anyRamp ? quote.ramp.months : 0, catalog);
   const quoteProps = {
     hs_title: title.slice(0, 250),
@@ -1688,7 +1703,21 @@ exports.main = async (context) => {
       if (old.length) await batchArchive("line_items", old);
       replaced = old.length;
     }
-    return Object.assign(result(created.quoteId), { replaced });
+    const out = Object.assign(result(created.quoteId), { replaced });
+    if (replacing) {
+      out.edited = true;
+      out.replacedQuoteId = replacing.id;
+      out.templateName = template.name;
+      try {
+        const oldLines = await associatedIds("quotes", replacing.id, "line_items");
+        await hs(`${OBJ}/quotes/${encodeURIComponent(replacing.id)}`, { method: "DELETE" });
+        if (oldLines.length) await batchArchive("line_items", oldLines);
+      } catch (err) {
+        console.error("quote-builder-submit: replaced quote not deleted", replacing.id, err.message);
+        out.warnings = (out.warnings || []).concat([`The new quote was created, but the old one (${replacing.title}) couldn't be deleted: ${err.message}. Delete it from the Quotes card.`]);
+      }
+    }
+    return out;
   } catch (err) {
     console.error("quote-builder-submit failed; rolling back", err.message, err.details || "");
     const rollbackErrors = [];

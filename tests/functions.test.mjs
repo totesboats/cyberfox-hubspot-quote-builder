@@ -128,6 +128,11 @@ function fakeHubSpot({ failQuote = false, quotes = [], ownerId = '77', currency 
       return ok({});
     }
     const qq = p.match(/^\/crm\/objects\/2026-09\/quotes\/(\w+)$/);
+    if (qq && method === 'DELETE') {
+      if (store.failQuoteDelete) return { ok: false, status: 500, headers: new Map(), text: async () => JSON.stringify({ message: 'Server error' }) };
+      store.deletedQuotes.push(qq[1]);
+      return ok(null, 204);
+    }
     if (qq && method === 'GET') return ok({ id: qq[1], properties: store.quotes.find((x) => x.id === qq[1]).properties });
     if (qq && method === 'PATCH') {
       store.quotePatches.push({ id: qq[1], properties: body.properties });
@@ -537,12 +542,39 @@ test('edit in place: same quote, new lines replace old ones, primary deal lines 
   assert.equal(store.dealPatch.agreement_length, '15 Months');
 });
 
-test('edit in place: template swap within CPQ, refused for published or pending approval', async () => {
+test('edit with another template: HubSpot cannot change it, so a Draft quote is replaced; refused for published or pending approval', async () => {
+  // Q5 uses template 12; the edit picks 10. A new quote is created with 10 and Q5 is deleted afterwards.
   const q = draftBuilderQuote({ templateIds: ['12'] });
-  const { store } = fakeHubSpot({ quotes: [q] });
-  const res = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5' }), accountId: 1 });
+  const { log, store } = fakeHubSpot({ quotes: [q] });
+  const res = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5', setup: Object.assign(payload().setup, { quoteName: 'Example MSP - AutoElevate' }) }), accountId: 1 });
   assert.equal(res.ok, true, (res.errors || []).join('; '));
-  assert.deepEqual(store.assocCalls.slice(0, 2), ['DELETE quote_template 12', 'PUT quote_template 10 286']);
+  assert.deepEqual([res.quoteId, res.replacedQuoteId, res.edited, res.primary, res.templateName], ['Q1', 'Q5', true, true, 'AutoElevate']);
+  assert.equal(store.quote.properties.hs_title, 'Example MSP - AutoElevate');
+  assert.ok(store.quote.associations.some((a) => a.to.id === '10' && a.types[0].associationTypeId === 286));
+  assert.notEqual(store.quote.properties.qb_session_id, 'qb-old'); // a new run: the old primary lines get replaced
+  assert.deepEqual(store.assocCalls.filter((c) => /quote_template/.test(c)), []); // never tries to swap the template
+  assert.deepEqual(store.deletedQuotes, ['Q5']);
+  assert.ok(['QL5a', 'QL5b', 'L-old-builder'].every((id) => store.archived.includes(id)));
+  assert.ok(!store.archived.includes('L-manual'));
+  const order = log.map((l) => `${l.method} ${l.path}`);
+  assert.ok(order.indexOf('POST /crm/objects/2026-09/quotes') < order.indexOf('DELETE /crm/objects/2026-09/quotes/Q5')); // new quote first
+
+  // If the old quote can't be deleted, the new one stands and the rep is told.
+  const env = fakeHubSpot({ quotes: [draftBuilderQuote({ templateIds: ['12'] })] });
+  env.store.failQuoteDelete = true;
+  const kept = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5' }), accountId: 1 });
+  assert.equal(kept.ok, true);
+  assert.match(kept.warnings.join(' '), /couldn't be deleted/);
+
+  // Changes requested: the template can't change and nothing is written.
+  const cr = draftBuilderQuote({ templateIds: ['12'] });
+  cr.properties = Object.assign({}, cr.properties, { hs_quote_progression_status: 'CHANGES_REQUESTED' });
+  const env2 = fakeHubSpot({ quotes: [cr] });
+  const r2 = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5' }), accountId: 1 });
+  assert.equal(r2.ok, false);
+  assert.match(r2.errors[0], /can't change the template of a quote that has been sent for approval/);
+  assert.equal(env2.store.quote, null);
+  assert.deepEqual([env2.store.quotePatches, env2.store.deletedQuotes, env2.store.archived], [[], [], []]);
 
   for (const [status, msg] of [['PUBLISHED', /locked/], ['PENDING_APPROVAL', /Recall the approval/]]) {
     const locked = draftBuilderQuote();
@@ -555,11 +587,12 @@ test('edit in place: template swap within CPQ, refused for published or pending 
   }
 });
 
-test('edit in place: CPQ quote cannot switch to a legacy template; failures roll back', async () => {
-  fakeHubSpot({ quotes: [draftBuilderQuote()] });
+test('edit in place: a CPQ draft moved to a legacy template is replaced too; failures roll back', async () => {
+  const env = fakeHubSpot({ quotes: [draftBuilderQuote()] });
   const legacy = await submitFn().main({ parameters: payload({ editQuoteId: 'Q5', setup: Object.assign(payload().setup, { templateId: '11' }) }), accountId: 1 });
-  assert.equal(legacy.ok, false);
-  assert.match(legacy.errors[0], /CPQ and a legacy template/);
+  assert.equal(legacy.ok, true, (legacy.errors || []).join('; '));
+  assert.deepEqual([legacy.replacedQuoteId, legacy.templateType, env.store.quote.properties.hs_status], ['Q5', 'CUSTOMIZABLE_QUOTE_TEMPLATE', 'DRAFT']);
+  assert.deepEqual(env.store.deletedQuotes, ['Q5']);
 
   const { store } = fakeHubSpot({ quotes: [draftBuilderQuote()] });
   store.failQuotePatch = true;

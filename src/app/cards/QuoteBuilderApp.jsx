@@ -255,6 +255,10 @@ export function reducer(state, action) {
         editing: { id: q.id, title: q.title, primary: !!q.primary },
       });
     }
+    case 'quoteReplaced':
+      // HubSpot can't change a quote's template, so the submit function replaced the quote: keep editing
+      // the new one.
+      return state.editing ? Object.assign({}, state, { editing: Object.assign({}, state.editing, { id: action.quoteId, title: action.title }) }) : state;
     case 'stopEditing': {
       // A fresh quote starts with all of the company's co-terms again.
       const setup = Object.assign({}, state.setup, { removedCoterms: [] });
@@ -418,10 +422,15 @@ export function QuoteBuilderApp() {
       const res = await callFunction('quote_builder_submit', payload);
       setResult(res);
       if (res.ok) {
+        if (res.replacedQuoteId) dispatch({ type: 'quoteReplaced', quoteId: res.quoteId, title: res.title });
         actions.addAlert({
           type: 'success',
-          title: res.edited ? 'Quote updated' : 'Quote created',
-          message: res.edited ? `${res.title} now has ${res.lineCount} line items.` : `${res.title} was created as a draft with ${res.lineCount} line items.`,
+          title: res.replacedQuoteId ? 'Quote replaced' : res.edited ? 'Quote updated' : 'Quote created',
+          message: res.replacedQuoteId
+            ? `HubSpot can't change a quote's template, so ${res.title} was recreated with the ${res.templateName} template (${res.lineCount} line items) and the old draft was deleted.`
+            : res.edited
+              ? `${res.title} now has ${res.lineCount} line items.`
+              : `${res.title} was created as a draft with ${res.lineCount} line items.`,
         });
         if (actions.refreshObjectProperties) actions.refreshObjectProperties();
         load(true); // refresh the quotes list

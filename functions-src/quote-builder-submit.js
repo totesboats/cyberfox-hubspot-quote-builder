@@ -6,7 +6,10 @@
 // A deal can hold several builder quotes ("options", e.g. 100 vs 250 agents). Only the
 // primary option's lines sit on the deal, so the deal amount reflects one option.
 // Anything created before a failure is archived again so a failed run leaves no debris.
-// With editQuoteId it edits a builder quote in place instead (draft / changes requested only):
+// With editQuoteId it edits a builder quote in place instead (draft / changes requested only). HubSpot never
+// lets a quote change template, so an edit that picks another template replaces a Draft quote (new quote,
+// then the old one is deleted) and is refused for Changes requested.
+// Otherwise:
 // new line items replace the quote's old ones, the quote keeps its id, link and option status.
 const { hs, OBJ, batchCreate, batchArchive, loadProducts, loadTemplates, loadDealOptions, loadDeal, findOwnerByEmail, findBuilderLineItems, associatedIds, associate, unassociate } = require('./lib/hubspot.js');
 const { quoteUrl, quoteCurrency, pipelineFamily, indexCatalog, buildQuote, cotermRows, refreshCoterms, cotermRemovalError, pipelineAllowsCoterm, isDowngradePipeline, lineItemProperties, validateSubmission, autoQuoteName, dealWrites, builderState, openQuoteConflicts, quoteEditability } = require('./lib/pricing.js');
@@ -95,12 +98,29 @@ exports.main = async (context) => {
   if (isCpq && payload.setup.acceptance === 'esignature' && !signerId) return { ok: false, errors: ['E-signature quotes need a signer contact associated with the deal.'] };
 
   let editing = null;
+  // HubSpot never lets a quote's template change. When an edit needs another template, a Draft quote is
+  // replaced: a new quote is created with that template (same name, same option status) and the old one
+  // is deleted once the new one exists. Other editable statuses keep their template.
+  let replacing = null;
   if (payload.editQuoteId) {
     editing = deal.quotes.find((q) => q.id === String(payload.editQuoteId));
     if (!editing) return { ok: false, errors: ['That quote is not on this deal.'] };
     const can = quoteEditability(editing);
     if (!can.editable) return { ok: false, errors: [`This quote can't be edited: ${can.reason}`] };
-    if (editing.templateType && editing.templateType !== template.templateType) {
+    let currentTemplates;
+    try {
+      currentTemplates = await associatedIds('quotes', editing.id, 'quote_template');
+    } catch (err) {
+      return { ok: false, errors: [err.message] };
+    }
+    if (currentTemplates.length && !currentTemplates.includes(String(template.id))) {
+      if (editing.progressionStatus !== 'DRAFT') {
+        const was = templates.find((t) => currentTemplates.includes(t.id));
+        return { ok: false, errors: [`HubSpot can't change the template of a quote that has been sent for approval. Keep ${was ? `"${was.name}"` : 'its template'}, or start a new option with "${template.name}".`] };
+      }
+      replacing = editing;
+      editing = null;
+    } else if (editing.templateType && editing.templateType !== template.templateType) {
       return { ok: false, errors: ["An existing quote can't switch between a CPQ and a legacy template. Pick a template of the same kind, or start a new option."] };
     }
   }
@@ -110,8 +130,9 @@ exports.main = async (context) => {
   const created = { dealLines: [], quoteLines: [], quoteId: null };
   // Primary unless the rep says otherwise; the first builder quote on a deal is always primary.
   // An edited quote keeps whatever option status it had.
-  const primary = editing ? editing.primary : payload.primary !== false || !deal.quotes.some((q) => q.builder);
-  const affected = openQuoteConflicts(deal.quotes.filter((q) => !editing || q.id !== editing.id), deal.properties, writes.properties).quotes;
+  const kept = editing || replacing;
+  const primary = kept ? kept.primary : payload.primary !== false || !deal.quotes.some((q) => q.builder);
+  const affected = openQuoteConflicts(deal.quotes.filter((q) => !kept || q.id !== kept.id), deal.properties, writes.properties).quotes;
   const title = (payload.setup.quoteName || '').trim() || autoQuoteName(deal.company && deal.company.name, payload.products, quote.anyRamp ? quote.ramp.months : 0, catalog);
   const quoteProps = {
     hs_title: title.slice(0, 250),
@@ -171,7 +192,22 @@ exports.main = async (context) => {
       replaced = old.length;
     }
 
-    return Object.assign(result(created.quoteId), { replaced });
+    const out = Object.assign(result(created.quoteId), { replaced });
+    if (replacing) {
+      // The new quote is in place; now delete the one it replaces (and that quote's own line items).
+      out.edited = true;
+      out.replacedQuoteId = replacing.id;
+      out.templateName = template.name;
+      try {
+        const oldLines = await associatedIds('quotes', replacing.id, 'line_items');
+        await hs(`${OBJ}/quotes/${encodeURIComponent(replacing.id)}`, { method: 'DELETE' });
+        if (oldLines.length) await batchArchive('line_items', oldLines);
+      } catch (err) {
+        console.error('quote-builder-submit: replaced quote not deleted', replacing.id, err.message);
+        out.warnings = (out.warnings || []).concat([`The new quote was created, but the old one (${replacing.title}) couldn't be deleted: ${err.message}. Delete it from the Quotes card.`]);
+      }
+    }
+    return out;
   } catch (err) {
     console.error('quote-builder-submit failed; rolling back', err.message, err.details || '');
     const rollbackErrors = [];

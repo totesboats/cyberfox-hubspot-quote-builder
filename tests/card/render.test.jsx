@@ -770,6 +770,13 @@ test('co-term: Remove from anyone else leaves co-term rows; removed co-terms car
   assert.deepEqual([back.products.map((p) => [p.family, p.uid, !!p.coterm]), back.setup.removedCoterms], [[['autoelevate', 1, true], ['dns', 3, true]], []]);
 });
 
+test('quote replaced (new template): the card keeps editing the new quote', () => {
+  const editing = Object.assign({}, initialState, { editing: { id: 'Q5', title: 'Old', primary: true } });
+  const next = reducer(editing, { type: 'quoteReplaced', quoteId: 'Q9', title: 'New' });
+  assert.deepEqual(next.editing, { id: 'Q9', title: 'New', primary: true });
+  assert.equal(reducer(initialState, { type: 'quoteReplaced', quoteId: 'Q9', title: 'New' }), initialState);
+});
+
 test('co-term: editing or copying an older quote adds the missing co-terms; Stop editing starts from them; co-term rows ignore Remove', () => {
   const coterms = [{ family: 'autoelevate', coterm: true, edition: 'advanced', featureType: 'Advanced', quantity: 150, tier: '', discountPct: 0, ramp: false }];
   const old = { setup: { segment: 'MSP' }, products: [{ uid: 1, family: 'optimize365', edition: 'standard', quantity: 40, discountPct: 0, ramp: false }] };
