@@ -28,10 +28,14 @@ function fakeApis({ salesTeam = 'MSP', ownerId = '77', lines } = {}) {
   const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
     const body = init.body ? JSON.parse(init.body) : null;
-    calls.push({ method: init.method || 'GET', path: u.pathname, host: u.host, body, auth: init.headers && init.headers.Authorization });
+    calls.push({ method: init.method || 'GET', path: u.pathname, host: u.host, body, auth: init.headers && init.headers.Authorization, headers: init.headers || {} });
     const ok = (data) => ({ ok: true, status: 200, text: async () => JSON.stringify(data) });
     const p = u.pathname;
-    if (u.host === 'flow.example.com') return { ok: true, status: 202, text: async () => '' };
+    if (u.host === 'flow.example.com') {
+      const key = init.headers['x-cfx-flow-key'];
+      if (key !== undefined && key !== 'test-flow-key') return { ok: false, status: 401, text: async () => '' };
+      return { ok: true, status: 202, text: async () => '' };
+    }
     if (/\/v[34]\//.test(p)) throw new Error(`legacy path ${p}`);
     if (p === '/crm/objects/2026-09/quotes/Q9') return ok({ id: 'Q9', properties: { hs_title: 'Example MSP - AutoElevate', hs_status: 'PENDING_APPROVAL', hs_quote_amount: '682.5', hs_currency: 'USD', hs_expiration_date: '2026-12-19T00:00:00Z', hubspot_owner_id: ownerId, hs_template_type: 'CPQ_QUOTE' } });
     const ab = p.match(/^\/crm\/associations\/2026-09\/quotes\/(\w+)\/batch\/read$/);
@@ -48,13 +52,17 @@ function fakeApis({ salesTeam = 'MSP', ownerId = '77', lines } = {}) {
   };
   return { fetchImpl, calls };
 }
-const ENV = { QUOTE_APPROVALS_HUBSPOT_TOKEN: 'test-token', QUOTE_APPROVALS_FLOW_URL: 'https://flow.example.com/trigger' };
+const ENV = { QUOTE_APPROVALS_HUBSPOT_TOKEN: 'test-token', QUOTE_APPROVALS_FLOW_URL: 'https://flow.example.com/trigger', QUOTE_APPROVALS_FLOW_KEY: 'test-flow-key' };
 
 test('teams approvals: posts the quote overview, line items and Approved button to the flow', async () => {
   const { fetchImpl, calls } = fakeApis();
   const payload = await T.run('Q9', ENV, fetchImpl);
   const sent = calls.find((c) => c.host === 'flow.example.com');
   assert.ok(sent, 'posted to the flow');
+  assert.equal(sent.headers['x-cfx-flow-key'], 'test-flow-key', 'sends the shared key header');
+  assert.equal(T.FLOW_KEY_HEADER, 'x-cfx-flow-key');
+  // The HubSpot token never goes to the flow.
+  assert.ok(!JSON.stringify(sent).includes('test-token'));
   assert.deepEqual(sent.body, JSON.parse(JSON.stringify(payload)));
   assert.equal(payload.quoteTitle, 'Example MSP - AutoElevate');
   assert.equal(payload.quoteUrl, 'https://app.hubspot.com/quote/2585282/editor/Q9/content');
@@ -78,6 +86,28 @@ test('teams approvals: posts the quote overview, line items and Approved button 
   const rows = card.body.filter((b) => b.type === 'ColumnSet');
   assert.equal(rows.length, 3); // header + 2 lines
   assert.match(rows[1].columns[0].items[0].text, /^RAMP/);
+});
+
+test('teams approvals: done and note cards for updating the same tile after a click', async () => {
+  const { fetchImpl } = fakeApis();
+  const payload = await T.run('Q9', ENV, fetchImpl);
+  // Done card: same content, status line instead of the Approved button.
+  const done = JSON.parse(payload.doneCardJson);
+  assert.deepEqual(done.actions.map((a) => a.title), ['Open in HubSpot']);
+  assert.equal(done.body[0].text, 'Quote approval');
+  assert.equal(done.body[2].text, '{{STATUS}}');
+  assert.equal(done.body[2].color, '{{STATUS_COLOR}}');
+  assert.ok(payload.doneCardJson.includes('RAMP AutoElevate') && payload.doneCardJson.includes('$682.50/mo'));
+  // What the flow does: replace() the placeholders; the result must still be valid JSON.
+  const filled = payload.doneCardJson.replace('{{STATUS}}', '✅ Approved by Alex Munson on Nov 19, 2026 1:47 PM ET').replace('{{STATUS_COLOR}}', 'Good');
+  assert.equal(JSON.parse(filled).body[2].text, '✅ Approved by Alex Munson on Nov 19, 2026 1:47 PM ET');
+  // Note card: small, title + status + Open in HubSpot.
+  const note = JSON.parse(payload.noteCardJson);
+  assert.equal(note.body.length, 2);
+  assert.deepEqual(note.actions.map((a) => a.type), ['Action.OpenUrl']);
+  // The open card is unchanged: Approved first, no placeholders.
+  assert.ok(!payload.cardJson.includes('{{STATUS}}'));
+  assert.ok(payload.doneCardJson.length < 28000);
 });
 
 test('teams approvals: routes ENT to Adam and AM to Julie; the quote owner can never approve their own quote', async () => {
@@ -116,6 +146,23 @@ test('teams approvals: long quotes are trimmed on the card; foreign currency sho
 test('teams approvals: missing secrets fail with a clear message', async () => {
   await assert.rejects(T.run('Q9', {}, fakeApis().fetchImpl), /QUOTE_APPROVALS_HUBSPOT_TOKEN/);
   await assert.rejects(T.run('Q9', { QUOTE_APPROVALS_HUBSPOT_TOKEN: 'x' }, fakeApis().fetchImpl), /QUOTE_APPROVALS_FLOW_URL/);
+});
+
+test('teams approvals: the flow key header is optional, sent when set, and a wrong key gives a clear error', async () => {
+  const noKey = { QUOTE_APPROVALS_HUBSPOT_TOKEN: 'x', QUOTE_APPROVALS_FLOW_URL: 'https://flow.example.com/trigger' };
+  const { fetchImpl, calls } = fakeApis();
+  await T.run('Q9', noKey, fetchImpl);
+  const sent = calls.find((c) => c.host === 'flow.example.com');
+  assert.ok(sent && !('x-cfx-flow-key' in sent.headers), 'no header without the secret');
+  await assert.rejects(T.run('Q9', { ...noKey, QUOTE_APPROVALS_FLOW_KEY: 'wrong' }, fakeApis().fetchImpl), /rejected the request/);
+  // A rejected call shows Power Automate's reason.
+  const off = async (url, init) => (new URL(url).host === 'flow.example.com'
+    ? { ok: false, status: 400, text: async () => '{"error":{"code":"WorkflowNotEnabled","message":"The flow is turned off."}}' }
+    : fakeApis().fetchImpl(url, init));
+  await assert.rejects(T.run('Q9', noKey, off), /returned 400: .*WorkflowNotEnabled/);
+  // Dry run doesn't need the key.
+  const dry = await T.run('Q9', { ...noKey, QUOTE_APPROVALS_FLOW_URL: 'dry-run' }, fakeApis().fetchImpl);
+  assert.equal(dry.dryRun, true);
 });
 
 test('teams approvals: dry-run builds the card without sending it', async () => {

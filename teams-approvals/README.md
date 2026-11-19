@@ -43,14 +43,18 @@ Create the channel (e.g. **Quote Approvals**) in the team Julie, Adam, Tina and 
 Settings → Integrations → Private apps → **Quote Approvals (Microsoft Teams)**. Scopes:
 `crm.objects.quotes.read`, `crm.objects.quotes.write`, `crm.objects.deals.read`, `crm.objects.companies.read`,
 `crm.objects.line_items.read`, `crm.objects.owners.read`.
-Copy the token straight into the two places below (the flow's **HubSpot token** step and the HubSpot
-workflow secret). Never paste it in chat, email, Teams or a file.
+The token goes in two places only: Key Vault secret `hubspot-quote-approval-token` (for the flow) and the
+HubSpot workflow secret `QUOTE_APPROVALS_HUBSPOT_TOKEN`. Never paste it in chat, email, Teams or a file.
 
-### 3. Where the token lives
-In the flow's **HubSpot token** step, with Secure inputs on, so it never shows in run history.
-Only the flow's owner should be able to edit the flow, since editors can read that step. CyberFOX policy prefers
-Azure Key Vault for production secrets; no vault was available (Nov 2026), so InfoSec should know the token is
-kept here. Rotate it in HubSpot (private app → Rotate) if anyone else ever gets edit access to the flow.
+### 3. Where the secrets live
+Azure Key Vault **cfx-integrations-kv** (set up by Owen, Nov 2026): `hubspot-quote-approval-token` holds the
+private app token, and the flow reads it each run. HubSpot workflows can't read Key Vault, so the token is also the
+HubSpot workflow secret `QUOTE_APPROVALS_HUBSPOT_TOKEN`. Secure inputs and outputs are on for the Key Vault and
+HTTP actions. To rotate: rotate in HubSpot, then update Key Vault (Cloud Shell, PowerShell:
+`Set-AzKeyVaultSecret -VaultName cfx-integrations-kv -Name hubspot-quote-approval-token -SecretValue (Read-Host "Paste token" -AsSecureString)`)
+and the HubSpot secret.
+
+Secret header: built but off at launch (Owen's call). See "Later: secret header" in POWER-AUTOMATE-FLOW.md.
 
 ### 4. Power Automate flow
 Needs Power Automate Premium (the HTTP trigger and HTTP actions are premium). Import `QuoteApprovalsTeams-flow.zip`
@@ -63,9 +67,9 @@ Automation → Workflows → **Create workflow → From scratch → Quote-based*
 1. **Trigger:** Internal quote status (`hs_status`) is any of **Pending approval**. Turn **re-enrollment** on
    for that trigger, so a quote sent back for changes and re-submitted posts again.
 2. **Action: Custom code** (Node.js 24.x). Paste all of `quote-approval-to-teams.cjs`.
-   Secrets: `QUOTE_APPROVALS_HUBSPOT_TOKEN` (the private app token) and `QUOTE_APPROVALS_FLOW_URL`
+   Secrets: `QUOTE_APPROVALS_HUBSPOT_TOKEN` (the private app token), `QUOTE_APPROVALS_FLOW_URL`
    (the flow URL, or `dry-run` until the flow exists: the step then reads the quote and builds the card but
-   sends nothing). Output fields (optional): `posted`, `approver`, `reasons` (strings), `lines`, `cardBytes` (numbers).
+   sends nothing). Later: `QUOTE_APPROVALS_FLOW_KEY` (when the header check is turned on). Output fields (optional): `posted`, `approver`, `reasons` (strings), `lines`, `cardBytes` (numbers).
 3. Turn the workflow on. It runs alongside the existing Quote Approval Workflow, which still decides
    whether a quote needs approval.
 
@@ -74,16 +78,17 @@ On a test deal, build a quote that needs approval (e.g. 35% discount) and click 
 The card should appear in the channel within a minute. Check:
 - Someone who isn't an approver clicks Approved: they get the "can't approve" reply.
 - The routed approver clicks Approved: the quote shows as approved and published in HubSpot, Approval feedback
-  says who approved it in Teams, and the channel says so too.
+  says who approved it in Teams and when, and the channel says so too.
 
 `test-api-approval.ps1 -QuoteId <id>` re-runs the API approval on its own (test quotes only).
 
-## Status (19 Nov 2026)
+## Status (Nov 2026)
 
-- Done: private app and token, Teams channel, flow imported and configured, HubSpot workflow
-  **Quote Approval to Teams** built with both secrets, dry-run test passed. Workflow is OFF.
-- Waiting on Power Automate Premium. Then: save the flow, set `QUOTE_APPROVALS_FLOW_URL` to the flow's
-  HTTP POST URL, run the end-to-end test in step 6, and turn the workflow on.
+- Done: Teams channel, flow imported, HubSpot workflow **Quote Approval to Teams** built, dry-run test passed.
+- Premium approved by Owen. Go-live conditions: approver-only approvals with who/when written to the quote,
+  Secure inputs/outputs on Key Vault and HTTP actions, Owen as co-owner, and a fresh HubSpot token stored in
+  Key Vault (the old one lived in the flow). Launching with the token in Key Vault only; secret header later.
+- Workflow stays OFF until the end-to-end test in step 6 passes and Owen has reviewed the flow.
 
 ## Files
 

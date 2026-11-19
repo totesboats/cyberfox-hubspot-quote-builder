@@ -1,14 +1,16 @@
-// HubSpot workflow custom code action: "Quote approval → Teams".
+// HubSpot workflow custom code action: "Quote Approval to Teams".
 // Runs when a quote's Internal quote status becomes Pending approval. Reads the quote, its deal, company,
 // owner and line items, builds a Teams Adaptive Card (overview + line items + an Approved button), and sends
 // it to the Power Automate flow that posts it in the approvals channel and handles the click.
 //
-// Paste this whole file into the workflow's custom code action (Node.js 20 or 24).
+// Paste this whole file into the workflow's custom code action (Node.js 24.x).
 // Secrets (Settings → workflow custom code secrets; never in this file):
 //   QUOTE_APPROVALS_HUBSPOT_TOKEN  "Quote Approvals (Microsoft Teams)" private app token, read scopes: crm.objects.quotes.read, crm.objects.deals.read,
 //                                  crm.objects.companies.read, crm.objects.line_items.read, crm.objects.owners.read
 //   QUOTE_APPROVALS_FLOW_URL       the Power Automate "When a HTTP request is received" URL (it contains a key).
 //                                  Set it to dry-run to read the quote and build the card without sending it.
+//   QUOTE_APPROVALS_FLOW_KEY       optional for now: shared key sent in the x-cfx-flow-key header. Add it when the flow's
+//                                  header check is turned on (same value as quote-approval-flow-key in Key Vault).
 // Output fields: posted ("yes", or "dry-run"), approver (routed approver's name), reasons (why approval is
 // needed), lines (line items on the card), cardBytes (card size; Teams allows about 28,000).
 
@@ -152,8 +154,15 @@ function quoteLink(quoteId, templateType) {
 
 const cell = (text, opts = {}) => Object.assign({ type: 'TextBlock', text: String(text), wrap: true, size: 'Small' }, opts);
 
+// Placeholders the flow fills in (replace()) when it updates the same Teams card after a click.
+const STATUS = '{{STATUS}}';
+const STATUS_COLOR = '{{STATUS_COLOR}}'; // Good, Warning or Attention
+
 // The Adaptive Card posted in Teams. Version 1.4 (what Teams renders for Power Automate cards).
-function buildCard(d) {
+// mode 'open': the card with the Approved button. mode 'done': the same card after a click, with a status line
+// (who approved and when, or why not) in place of the Approved button; the flow swaps it into the same tile.
+function buildCard(d, mode = 'open') {
+  const done = mode === 'done';
   const currency = d.currency;
   const sorted = d.lines.slice().sort((a, b) => num(a.hs_position_on_quote) - num(b.hs_position_on_quote));
   const shown = sorted.slice(0, CONFIG.maxLinesOnCard);
@@ -183,8 +192,9 @@ function buildCard(d) {
   ].filter(([, v]) => v);
 
   const body = [
-    { type: 'TextBlock', text: 'Quote approval needed', weight: 'Bolder', size: 'Large', color: 'Accent' },
+    { type: 'TextBlock', text: done ? 'Quote approval' : 'Quote approval needed', weight: 'Bolder', size: 'Large', color: 'Accent' },
     { type: 'TextBlock', text: d.title || `Quote ${d.quoteId}`, weight: 'Bolder', wrap: true, spacing: 'None' },
+    done ? { type: 'TextBlock', text: STATUS, wrap: true, weight: 'Bolder', color: STATUS_COLOR, spacing: 'Small' } : null,
     d.reasons.length ? { type: 'TextBlock', text: `Needs approval for: ${d.reasons.join('; ')}`, wrap: true, color: 'Warning' } : null,
     { type: 'FactSet', facts: facts.map(([title, value]) => ({ title, value: String(value) })) },
     { type: 'TextBlock', text: 'Line items', weight: 'Bolder', spacing: 'Large' },
@@ -200,9 +210,23 @@ function buildCard(d) {
     msteams: { width: 'Full' },
     body,
     actions: [
-      { type: 'Action.Submit', title: 'Approved', style: 'positive', data: { action: 'approve', quoteId: d.quoteId } },
+      done ? null : { type: 'Action.Submit', title: 'Approved', style: 'positive', data: { action: 'approve', quoteId: d.quoteId } },
       { type: 'Action.OpenUrl', title: 'Open in HubSpot', url: d.quoteUrl },
+    ].filter(Boolean),
+  };
+}
+
+// A small card for a tile whose click didn't approve (e.g. the quote owner clicked); the full card is reposted below it.
+function buildNoteCard(d) {
+  return {
+    type: 'AdaptiveCard',
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    version: '1.4',
+    body: [
+      { type: 'TextBlock', text: d.title || `Quote ${d.quoteId}`, weight: 'Bolder', wrap: true },
+      { type: 'TextBlock', text: STATUS, wrap: true, color: STATUS_COLOR, spacing: 'Small' },
     ],
+    actions: [{ type: 'Action.OpenUrl', title: 'Open in HubSpot', url: d.quoteUrl }],
   };
 }
 
@@ -217,7 +241,7 @@ function buildPayload({ quote, deal, company, lines }, people) {
   const salesTeam = dp.sales_team || '';
   const routed = people.routed;
   const allowed = [routed].concat(people.ops).filter((p) => p && p.email);
-  const card = buildCard({
+  const cardData = {
     quoteId,
     title: qp.hs_title,
     companyName: company && company.properties ? company.properties.name : '',
@@ -235,7 +259,8 @@ function buildPayload({ quote, deal, company, lines }, people) {
     reasons,
     lines,
     quoteUrl,
-  });
+  };
+  const card = buildCard(cardData);
   return {
     quoteId,
     quoteTitle: qp.hs_title || `Quote ${quoteId}`,
@@ -251,11 +276,17 @@ function buildPayload({ quote, deal, company, lines }, people) {
     ownerName: people.owner ? people.owner.name : '',
     card,
     cardJson: JSON.stringify(card),
+    // After a click the flow updates the same tile with one of these, replacing {{STATUS}} and {{STATUS_COLOR}}.
+    doneCardJson: JSON.stringify(buildCard(cardData, 'done')),
+    noteCardJson: JSON.stringify(buildNoteCard(cardData)),
   };
 }
 
 // ---------------------------------------------------------------------------
 // Workflow entry point
+
+// Header the flow can check before doing anything (planned: secret header on the HTTP trigger).
+const FLOW_KEY_HEADER = 'x-cfx-flow-key';
 
 async function run(quoteId, env, fetchImpl) {
   if (!env.QUOTE_APPROVALS_HUBSPOT_TOKEN) throw new Error('Secret QUOTE_APPROVALS_HUBSPOT_TOKEN is not set on this custom code action.');
@@ -272,8 +303,21 @@ async function run(quoteId, env, fetchImpl) {
   payload.lineCount = data.lines.length;
   // Dry run: everything except sending to Teams (for testing before the flow exists).
   if (String(env.QUOTE_APPROVALS_FLOW_URL).trim().toLowerCase() === 'dry-run') return Object.assign(payload, { dryRun: true });
-  const res = await (fetchImpl || fetch)(env.QUOTE_APPROVALS_FLOW_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if (!res.ok) throw new Error(`Power Automate flow returned ${res.status}`);
+  // The header is sent only when the secret exists (launch is token-in-Key-Vault only; the header check comes later).
+  const headers = { 'Content-Type': 'application/json' };
+  if (env.QUOTE_APPROVALS_FLOW_KEY) headers[FLOW_KEY_HEADER] = env.QUOTE_APPROVALS_FLOW_KEY;
+  const res = await (fetchImpl || fetch)(env.QUOTE_APPROVALS_FLOW_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 401 || res.status === 403) throw new Error('Power Automate flow rejected the request: QUOTE_APPROVALS_FLOW_KEY does not match the flow-key secret in Key Vault.');
+  if (!res.ok) {
+    // Power Automate explains a rejected trigger call in the response body (e.g. flow turned off, bad request).
+    let detail = '';
+    try { detail = String(await res.text()).replace(/\s+/g, ' ').slice(0, 400); } catch (e) { /* no body */ }
+    throw new Error(`Power Automate flow returned ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
   return payload;
 }
 
@@ -296,4 +340,4 @@ exports.main = async (event, callback) => {
 };
 
 // For the repo's tests only (HubSpot ignores these).
-exports._test = { CONFIG, approvalReasons, buildCard, buildPayload, run, termMonths, money };
+exports._test = { CONFIG, FLOW_KEY_HEADER, STATUS, STATUS_COLOR, approvalReasons, buildCard, buildNoteCard, buildPayload, run, termMonths, money };

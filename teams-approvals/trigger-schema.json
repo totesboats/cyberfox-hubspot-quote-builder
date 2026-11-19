@@ -1,22 +1,77 @@
 {
   "type": "object",
   "properties": {
-    "quoteId": { "type": "string" },
-    "quoteTitle": { "type": "string" },
-    "quoteUrl": { "type": "string" },
-    "dealId": { "type": "string" },
-    "salesTeam": { "type": "string" },
-    "reasons": { "type": "array", "items": { "type": "string" } },
-    "routedApprover": {
-      "type": ["object", "null"],
-      "properties": { "name": { "type": "string" }, "email": { "type": "string" } }
+    "quoteId": {
+      "type": "string"
     },
-    "allowedApprovers": { "type": "array", "items": { "type": "string" } },
-    "allowedApproverNames": { "type": "array", "items": { "type": "string" } },
-    "ownerEmail": { "type": "string" },
-    "ownerName": { "type": "string" },
-    "card": { "type": "object" },
-    "cardJson": { "type": "string" }
+    "quoteTitle": {
+      "type": "string"
+    },
+    "quoteUrl": {
+      "type": "string"
+    },
+    "dealId": {
+      "type": "string"
+    },
+    "salesTeam": {
+      "type": "string"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "routedApprover": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        }
+      }
+    },
+    "allowedApprovers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowedApproverNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ownerEmail": {
+      "type": "string"
+    },
+    "ownerName": {
+      "type": "string"
+    },
+    "card": {
+      "type": "object"
+    },
+    "cardJson": {
+      "type": "string"
+    },
+    "doneCardJson": {
+      "type": "string"
+    },
+    "noteCardJson": {
+      "type": "string"
+    }
   },
-  "required": ["quoteId", "quoteTitle", "quoteUrl", "allowedApprovers", "cardJson"]
+  "required": [
+    "quoteId",
+    "quoteTitle",
+    "quoteUrl",
+    "allowedApprovers",
+    "cardJson"
+  ]
 }
