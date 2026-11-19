@@ -110,6 +110,13 @@ test('teams approvals: done and note cards for updating the same tile after a cl
   assert.ok(payload.doneCardJson.length < 28000);
 });
 
+test('teams approvals: the code step file is plain ASCII (safe to copy through Windows PowerShell)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../teams-approvals/quote-approval-to-teams.cjs', import.meta.url), 'utf8');
+  const bad = [...src].filter((c) => c.charCodeAt(0) > 127);
+  assert.deepEqual(bad, [], 'non-ASCII characters in quote-approval-to-teams.cjs');
+});
+
 test('teams approvals: routes ENT to Adam and AM to Julie; the quote owner can never approve their own quote', async () => {
   const ent = await T.run('Q9', ENV, fakeApis({ salesTeam: 'ENT' }).fetchImpl);
   assert.equal(ent.routedApprover.name, 'Adam Friedman');

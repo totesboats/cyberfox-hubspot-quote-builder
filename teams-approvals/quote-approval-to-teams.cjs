@@ -4,7 +4,9 @@
 // it to the Power Automate flow that posts it in the approvals channel and handles the click.
 //
 // Paste this whole file into the workflow's custom code action (Node.js 24.x).
-// Secrets (Settings → workflow custom code secrets; never in this file):
+// This file is plain ASCII on purpose (non-ASCII characters are \u escapes), so copying it through Windows
+// PowerShell or Notepad can't garble characters like the em dash or middle dot.
+// Secrets (Settings -> workflow custom code secrets; never in this file):
 //   QUOTE_APPROVALS_HUBSPOT_TOKEN  "Quote Approvals (Microsoft Teams)" private app token, read scopes: crm.objects.quotes.read, crm.objects.deals.read,
 //                                  crm.objects.companies.read, crm.objects.line_items.read, crm.objects.owners.read
 //   QUOTE_APPROVALS_FLOW_URL       the Power Automate "When a HTTP request is received" URL (it contains a key).
@@ -174,9 +176,9 @@ function buildCard(d, mode = 'open') {
     columns: cells.map((c, i) => ({ type: 'Column', width: widths[i], items: [cell(c, Object.assign(header ? { weight: 'Bolder' } : {}, i > 0 ? { horizontalAlignment: 'Right' } : {}))] })),
   });
   const lineRows = shown.map((l) => {
-    const disc = num(l.hs_discount_percentage) > 0 ? `${num(l.hs_discount_percentage)}%` : num(l.discount) > 0 ? money(l.discount, currency) : '—';
+    const disc = num(l.hs_discount_percentage) > 0 ? `${num(l.hs_discount_percentage)}%` : num(l.discount) > 0 ? money(l.discount, currency) : '\u2014';
     const term = termMonths(l);
-    return row([l.name || l.hs_sku || 'Line item', num(l.quantity).toLocaleString('en-US'), money(l.price, currency), disc, term ? `${term} mo` : '—', `${money(l.amount, currency)}${per(l)}`]);
+    return row([l.name || l.hs_sku || 'Line item', num(l.quantity).toLocaleString('en-US'), money(l.price, currency), disc, term ? `${term} mo` : '\u2014', `${money(l.amount, currency)}${per(l)}`]);
   });
   const facts = [
     ['Company', d.companyName],
@@ -186,7 +188,7 @@ function buildCard(d, mode = 'open') {
     ['Approver', d.approverName ? `${d.approverName} or Ops` : 'Ops'],
     ['Quote amount', money(d.amount, currency) + (currency && currency !== 'USD' ? ` (${currency})` : '')],
     ['Agreement length', d.agreementLength],
-    ['Payment', [d.paymentTerms, d.paymentMethod].filter(Boolean).join(' · ')],
+    ['Payment', [d.paymentTerms, d.paymentMethod].filter(Boolean).join(' \u00b7 ')],
     ['Invoice terms', d.invoiceTerms],
     ['Expires', d.expires],
   ].filter(([, v]) => v);
