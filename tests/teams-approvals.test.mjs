@@ -85,13 +85,16 @@ test('teams approvals: posts the quote overview, line items and Approved button 
   assert.equal(reason.id, 'reason');
   assert.equal(reason.isMultiline, true);
   const text = JSON.stringify(card);
-  for (const s of ['Quote approval needed', 'Example MSP', 'Riley Rep', 'Tina Harvey or Ops', '$682.50', '16 Months', 'Month-to-Month · Credit Card', 'Due Upon Receipt', '2026-12-19', 'Needs approval for: 35% discount', 'RAMP AutoElevate', '$1,050.00', '35%', '4 mo', '$682.50/mo']) {
+  for (const s of ['Quote approval needed', 'Example MSP', 'Riley Rep', 'Tina Harvey or Ops', '$682.50', '16 Months', 'Month-to-Month · Credit Card', 'Due Upon Receipt', '2026-12-19', 'Needs approval for: 35% discount', 'RAMP AutoElevate', 'Qty 1 · $1,050.00 each · 35% off · 12 mo', 'Qty 1 · $1,050.00 each · 100% off · 4 mo', '$682.50/mo']) {
     assert.ok(text.includes(s), `card shows ${s}`);
   }
-  // Line items in quote order: the ramp line (position 1) first.
-  const rows = card.body.filter((b) => b.type === 'ColumnSet');
-  assert.equal(rows.length, 3); // header + 2 lines
-  assert.match(rows[1].columns[0].items[0].text, /^RAMP/);
+  // Line items in quote order (the ramp line, position 1, first), stacked so they fit a phone: no fixed-width
+  // columns anywhere on the card; the name stretches and Net sizes to fit.
+  const lines = card.body.filter((b) => b.type === 'Container');
+  assert.equal(lines.length, 2);
+  assert.match(lines[0].items[0].columns[0].items[0].text, /^RAMP/);
+  assert.deepEqual(lines[0].items[0].columns.map((c) => c.width), ['stretch', 'auto']);
+  assert.ok(!/"width":"\d+px"/.test(JSON.stringify(card)), 'no fixed pixel widths');
 });
 
 test('teams approvals: done and note cards for updating the same tile after a click', async () => {

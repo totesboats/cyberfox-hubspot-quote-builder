@@ -170,17 +170,26 @@ function buildCard(d, mode = 'open') {
   const currency = d.currency;
   const sorted = d.lines.slice().sort((a, b) => num(a.hs_position_on_quote) - num(b.hs_position_on_quote));
   const shown = sorted.slice(0, CONFIG.maxLinesOnCard);
-  const widths = ['stretch', '40px', '80px', '50px', '55px', '90px'];
-  const row = (cells, header) => ({
-    type: 'ColumnSet',
-    spacing: header ? 'Medium' : 'Small',
-    separator: !header,
-    columns: cells.map((c, i) => ({ type: 'Column', width: widths[i], items: [cell(c, Object.assign(header ? { weight: 'Bolder' } : {}, i > 0 ? { horizontalAlignment: 'Right' } : {}))] })),
-  });
-  const lineRows = shown.map((l) => {
-    const disc = num(l.hs_discount_percentage) > 0 ? `${num(l.hs_discount_percentage)}%` : num(l.discount) > 0 ? money(l.discount, currency) : '\u2014';
+  // Line items are stacked, not a 6-column table: fixed-width columns squeeze the product name to nothing on a
+  // phone. Each line: product name and Net on one row (Net sized to fit), then qty, unit price, discount and term
+  // underneath. Works the same on desktop and mobile.
+  const lineRows = shown.map((l, i) => {
+    const pct = num(l.hs_discount_percentage);
+    const disc = pct > 0 ? `${pct}% off` : num(l.discount) > 0 ? `${money(l.discount, currency)} off` : '';
     const term = termMonths(l);
-    return row([l.name || l.hs_sku || 'Line item', num(l.quantity).toLocaleString('en-US'), money(l.price, currency), disc, term ? `${term} mo` : '\u2014', `${money(l.amount, currency)}${per(l)}`]);
+    const details = [`Qty ${num(l.quantity).toLocaleString('en-US')}`, `${money(l.price, currency)} each`, disc, term ? `${term} mo` : ''].filter(Boolean).join(' \u00b7 ');
+    return {
+      type: 'Container',
+      separator: i > 0,
+      spacing: i > 0 ? 'Small' : 'Default',
+      items: [
+        { type: 'ColumnSet', columns: [
+          { type: 'Column', width: 'stretch', items: [cell(l.name || l.hs_sku || 'Line item', { weight: 'Bolder' })] },
+          { type: 'Column', width: 'auto', items: [cell(`${money(l.amount, currency)}${per(l)}`, { weight: 'Bolder', horizontalAlignment: 'Right' })] },
+        ] },
+        cell(details, { isSubtle: true, spacing: 'None' }),
+      ],
+    };
   });
   const facts = [
     ['Company', d.companyName],
@@ -202,7 +211,6 @@ function buildCard(d, mode = 'open') {
     d.reasons.length ? { type: 'TextBlock', text: `Needs approval for: ${d.reasons.join('; ')}`, wrap: true, color: 'Warning' } : null,
     { type: 'FactSet', facts: facts.map(([title, value]) => ({ title, value: String(value) })) },
     { type: 'TextBlock', text: 'Line items', weight: 'Bolder', spacing: 'Large' },
-    row(['Product', 'Qty', 'Unit price', 'Disc.', 'Term', 'Net'], true),
     ...lineRows,
     sorted.length > shown.length ? cell(`+ ${sorted.length - shown.length} more line items in HubSpot`, { isSubtle: true, spacing: 'Small' }) : null,
     // Reject needs a reason: it is saved to the quote's Approval feedback and sent to the rep.
