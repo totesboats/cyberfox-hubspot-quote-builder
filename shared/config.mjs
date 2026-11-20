@@ -241,6 +241,12 @@ export const COTERM_COMMITS = {
 };
 // The only company Payment Terms value that co-terms.
 export const COTERM_PAYMENT_TERMS = ['Month-to-Month'];
+// Products that never co-term when the company buys through certain distributors (Nov 2026): AutoElevate
+// billed through Pax8 or BeMSP isn't co-termed onto a direct quote (e.g. selling Password Manager direct to an
+// AE Active partner whose Distributor is Pax8). The company's Distributor property; values as stored in HubSpot.
+export const COTERM_EXCLUDED_DISTRIBUTORS = {
+  autoelevate: { property: 'distributor', values: ['Pax8', 'BeMSP'] },
+};
 // Deal pipelines that never co-term: a downgrade always puts the partner on a new 12-month commit.
 export const NO_COTERM_PIPELINES = {
   '30582866': 'Downgrade Pipeline',
@@ -271,6 +277,7 @@ export const COTERM_PROPERTY_LABELS = {
   optimize_user_commit: 'Optimize User Commit',
   optimize_tenant_commit: 'Optimize Tenant Commit',
   ae_payment_terms: 'AE Payment Terms',
+  distributor: 'Distributor',
   pb_payment_terms: 'PM Payment Terms',
   dns_payment_terms: 'DNS Payment Terms',
   timus_payment_terms: 'Timus Payment Terms',

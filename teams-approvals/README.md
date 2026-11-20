@@ -2,8 +2,9 @@
 
 When a quote goes to **Pending approval**, a card is posted in the Teams approvals channel with the quote
 overview and line items. The quote's approver (Tina for MSP, Adam for ENT, Julie for AM) or anyone in Ops
-clicks **Approved** in Teams, and the quote is approved in HubSpot. **Open in HubSpot** is always on the card
-for reviewing or requesting changes there.
+clicks **Approved** in Teams, and the quote is approved in HubSpot. Or they type what needs to change and click
+**Reject**: the quote is set to Rejected with the reason in Approval feedback, and the rep gets a Teams message.
+The card updates in place to show who approved or rejected it and when. **Open in HubSpot** is always on the card.
 
 Approving from Teams does what approving in HubSpot does: the quote's Internal quote status becomes Approved
 and HubSpot publishes it (the quote link goes live, e-sign quotes move to Pending signature). Tested on

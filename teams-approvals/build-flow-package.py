@@ -33,7 +33,10 @@ FLOW_KEY_HEADER = "x-cfx-flow-key"  # must match FLOW_KEY_HEADER in quote-approv
 QUOTE_URI = "https://api.hubapi.com/crm/objects/2026-09/quotes/@{triggerBody()?['quoteId']}"
 BEARER = "Bearer @{body('Get_HubSpot_token')?['value']}"
 RESPONDER = "body('Post_card_and_wait')?['responder']"
-CHANNEL = {"body/recipient/groupId": "", "body/recipient/channelId": ""}  # picked after import
+# Sales team -> HubSpot Quote Approvals channel (IDs from the live flow, Nov 2026). Not secrets.
+TEAM_ID = "a1f270b0-b7ca-4aeb-9fbe-ef9d515a1e30"
+CHANNEL_ID = "19:4261c5f918f246afb619100eeb719ed0@thread.tacv2"
+CHANNEL = {"body/recipient/groupId": TEAM_ID, "body/recipient/channelId": CHANNEL_ID}
 
 
 def update_card(card_field, status_expr, color, run_after):
@@ -41,11 +44,12 @@ def update_card(card_field, status_expr, color, run_after):
 
     card_field: doneCardJson or noteCardJson from the trigger. status_expr: an expression (no leading @) for the status
     line. The wait action's output carries the clicked card's message ID.
-    Parameter keys for "Update an adaptive card in a chat or channel" are not in Microsoft's public reference; if the
-    import rejects them, add the action by hand (POWER-AUTOMATE-FLOW.md) and copy its keys here from Peek code.
+    Parameter keys (body/messageId, body/messageBody) confirmed from the live flow's Code view, Nov 2026.
     """
-    card = ("@replace(replace(triggerBody()?['" + card_field + "'], '{{STATUS}}', " + status_expr + "), "
-            "'{{STATUS_COLOR}}', '" + color + "')")
+    # slice(string(createArray(x)), 2, -2) is x JSON-escaped (quotes, backslashes, line breaks), so typed reasons
+    # can't break the card's JSON.
+    card = ("@replace(replace(triggerBody()?['" + card_field + "'], '{{STATUS}}', slice(string(createArray(" + status_expr
+            + ")), 2, -2)), '{{STATUS_COLOR}}', '" + color + "')")
     return {
         "type": "OpenApiConnection",
         "inputs": {
@@ -96,25 +100,89 @@ NOW_ET = "convertFromUtc(utcNow(), 'Eastern Standard Time', 'MMM d, yyyy h:mm tt
 APPROVED_AT = "@{" + NOW_ET + "}"
 WHO = RESPONDER + "?['displayName']"
 
+ACTION = "outputs('Clicked_action')"
+REASON = "outputs('Reject_reason')"
+
+approve_actions = {
+    "Approve_quote": http("PATCH", QUOTE_URI, {}, {"properties": {"hs_status": "APPROVED"}}),
+    "Record_approver": dict(
+        http("PATCH", QUOTE_URI, {"Approve_quote": ["Succeeded"]},
+             {"properties": {"hs_feedback": "Approved in Microsoft Teams by @{" + RESPONDER + "?['displayName']} "
+                                            "(@{outputs('Responder_email')}) on " + APPROVED_AT + " ET"}})),
+    "Approved_message": update_card(
+        "doneCardJson", "concat('✅ Approved by ', " + WHO + ", ' on ', " + NOW_ET + ", ' ET')", "Good",
+        {"Record_approver": ["Succeeded", "Failed"]}),
+    "Set_done_approved": set_done({"Approved_message": ["Succeeded", "Failed"]}),
+    "Card_approve_failed": update_card(
+        "doneCardJson", "concat('Not approved: ', " + WHO + ", ' clicked Approved, but HubSpot refused it (', "
+        "string(outputs('Approve_quote')?['statusCode']), '). Please approve it in HubSpot.')", "Attention",
+        {"Approve_quote": ["Failed", "TimedOut"]}),
+    "Set_done_failed": set_done({"Card_approve_failed": ["Succeeded", "Failed"]}),
+}
+
+# Reject = HubSpot's "Request changes": status Rejected, reason in Approval feedback, rep told in a 1:1 Teams chat.
+tell_rep_html = (
+    "Your quote <b>@{triggerBody()?['quoteTitle']}</b> needs changes before it can be approved.<br><br>"
+    "<b>@{" + WHO + "}</b> asked for: @{replace(replace(" + REASON + ", '<', '&lt;'), decodeUriComponent('%0A'), '<br>')}"
+    "<br><br><a href=\"@{triggerBody()?['quoteUrl']}\">Open in HubSpot</a> to make the changes, then click Request approval again."
+)
+reject_actions = {
+    "Has_reason": {
+        "type": "If",
+        "expression": {"and": [{"greater": ["@length(" + REASON + ")", 0]}]},
+        "runAfter": {},
+        "actions": {
+            "Reject_quote": http("PATCH", QUOTE_URI, {}, {"properties": {
+                "hs_status": "REJECTED",
+                "hs_feedback": "Changes requested in Microsoft Teams by @{" + WHO + "} (@{outputs('Responder_email')}) on "
+                               + APPROVED_AT + " ET: @{" + REASON + "}"}}),
+            "Card_rejected": update_card(
+                "doneCardJson", "concat('Changes requested by ', " + WHO + ", ' on ', " + NOW_ET + ", ' ET: ', "
+                + REASON + ")", "Warning", {"Reject_quote": ["Succeeded"]}),
+            "Tell_rep": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                    "host": dict(TEAMS_HOST, operationId="PostMessageToConversation"),
+                    "parameters": {
+                        "poster": "Flow bot",
+                        "location": "Chat with Flow bot",
+                        "body/recipient": "@triggerBody()?['ownerEmail']",
+                        "body/messageBody": tell_rep_html,
+                    },
+                    "authentication": AUTH,
+                },
+                "runAfter": {"Card_rejected": ["Succeeded", "Failed"]},
+            },
+            "Set_done_rejected": set_done({"Tell_rep": ["Succeeded", "Failed", "Skipped"]}),
+            "Card_reject_failed": update_card(
+                "doneCardJson", "concat('Not rejected: ', " + WHO + ", ' clicked Reject, but HubSpot refused it (', "
+                "string(outputs('Reject_quote')?['statusCode']), '). Please request changes in HubSpot.')", "Attention",
+                {"Reject_quote": ["Failed", "TimedOut"]}),
+            "Set_done_reject_failed": set_done({"Card_reject_failed": ["Succeeded", "Failed"]}),
+        },
+        "else": {
+            "actions": {
+                # No reason: shrink this tile to a note; the loop posts the card again.
+                "Card_needs_reason": update_card(
+                    "noteCardJson", "concat(" + WHO + ", ' clicked Reject without saying what needs to change. "
+                    "Type it in the box on the card below and click Reject again.')", "Warning", {}),
+            }
+        },
+    },
+}
+
 still_pending = {
     "type": "If",
     "expression": {"and": [{"equals": ["@body('Get_quote_status')?['properties']?['hs_status']", "PENDING_APPROVAL"]}]},
     "runAfter": {"Get_quote_status": ["Succeeded"]},
     "actions": {
-        "Approve_quote": http("PATCH", QUOTE_URI, {}, {"properties": {"hs_status": "APPROVED"}}),
-        "Record_approver": dict(
-            http("PATCH", QUOTE_URI, {"Approve_quote": ["Succeeded"]},
-                 {"properties": {"hs_feedback": "Approved in Microsoft Teams by @{" + RESPONDER + "?['displayName']} "
-                                                "(@{outputs('Responder_email')}) on " + APPROVED_AT + " ET"}})),
-        "Approved_message": update_card(
-            "doneCardJson", "concat('✅ Approved by ', " + WHO + ", ' on ', " + NOW_ET + ", ' ET')", "Good",
-            {"Record_approver": ["Succeeded", "Failed"]}),
-        "Set_done_approved": set_done({"Approved_message": ["Succeeded", "Failed"]}),
-        "Card_approve_failed": update_card(
-            "doneCardJson", "concat('Not approved: ', " + WHO + ", ' clicked Approved, but HubSpot refused it (', "
-            "string(outputs('Approve_quote')?['statusCode']), '). Please approve it in HubSpot.')", "Attention",
-            {"Approve_quote": ["Failed", "TimedOut"]}),
-        "Set_done_failed": set_done({"Card_approve_failed": ["Succeeded", "Failed"]}),
+        "Is_reject": {
+            "type": "If",
+            "expression": {"and": [{"equals": ["@" + ACTION, "reject"]}]},
+            "runAfter": {},
+            "actions": reject_actions,
+            "else": {"actions": approve_actions},
+        },
     },
     "else": {
         "actions": {
@@ -130,7 +198,7 @@ still_pending = {
 can_approve = {
     "type": "If",
     "expression": {"and": [{"equals": ["@contains(triggerBody()?['allowedApprovers'], outputs('Responder_email'))", True]}]},
-    "runAfter": {"Responder_email": ["Succeeded"]},
+    "runAfter": {"Reject_reason": ["Succeeded"]},
     "actions": {
         "Get_quote_status": http("GET", QUOTE_URI + "?properties=hs_status", {}),
         "Still_pending": still_pending,
@@ -138,9 +206,9 @@ can_approve = {
     "else": {
         "actions": {
             "Not_an_approver": update_card(
-                "noteCardJson", "concat(" + WHO + ", ' can''t approve this quote. It needs ', "
+                "noteCardJson", "concat(" + WHO + ", ' can''t approve or reject this quote. It needs ', "
                 "coalesce(triggerBody()?['routedApprover']?['name'], 'its sales team approver'), "
-                "' or Ops, and nobody can approve their own quote. Approve on the card below.')", "Warning",
+                "' or Ops, and nobody can approve their own quote. Use the card below.')", "Warning",
                 {}),
         }
     },
@@ -154,10 +222,10 @@ loop_actions = {
             "parameters": {
                 "poster": "Flow bot",
                 "location": "Channel",
-                "body/body/recipient/groupId": "",
-                "body/body/recipient/channelId": "",
+                "body/body/recipient/groupId": TEAM_ID,
+                "body/body/recipient/channelId": CHANNEL_ID,
                 "body/body/messageBody": "@triggerBody()?['cardJson']",
-                "body/body/updateMessage": "Checking approval…",
+                "body/body/updateMessage": "Checking…",
             },
             "authentication": AUTH,
         },
@@ -167,6 +235,17 @@ loop_actions = {
         "type": "Compose",
         "inputs": "@toLower(coalesce(" + RESPONDER + "?['email'], " + RESPONDER + "?['userPrincipalName'], ''))",
         "runAfter": {"Post_card_and_wait": ["Succeeded"]},
+    },
+    # Which button was clicked (cards posted before Reject existed have no action: treat as approve) and the reason.
+    "Clicked_action": {
+        "type": "Compose",
+        "inputs": "@toLower(coalesce(body('Post_card_and_wait')?['data']?['action'], 'approve'))",
+        "runAfter": {"Responder_email": ["Succeeded"]},
+    },
+    "Reject_reason": {
+        "type": "Compose",
+        "inputs": "@trim(coalesce(body('Post_card_and_wait')?['data']?['reason'], ''))",
+        "runAfter": {"Clicked_action": ["Succeeded"]},
     },
     "Can_approve": can_approve,
 }

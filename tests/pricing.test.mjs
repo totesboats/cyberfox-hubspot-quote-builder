@@ -998,3 +998,27 @@ test('co-term removal: only the co-term removers may leave a co-term product off
   assert.ok(P.validateSubmission(Object.assign({}, base, { setup: Object.assign({}, base.setup, { removedCoterms: ['nope'] }) })).some((e) => /removedCoterms/.test(e)));
   assert.ok(P.validateSubmission(Object.assign({}, base, { setup: Object.assign({}, base.setup, { removedCoterms: 'dns' }) })).some((e) => /removedCoterms/.test(e)));
 });
+
+test('co-term: no AutoElevate co-term when the company buys through Pax8 or BeMSP (Distributor)', () => {
+  const props = (distributor) => ({ ae_product: 'AE Active', ae_payment_terms: 'Month-to-Month', pb_product: 'PB Active', pb_payment_terms: 'Month-to-Month', distributor });
+  // Pax8 / BeMSP: AutoElevate drops out, other products still co-term.
+  assert.deepEqual(P.cotermProducts(props('Pax8')), ['password']);
+  assert.deepEqual(P.cotermProducts(props('BeMSP')), ['password']);
+  assert.deepEqual(P.cotermProducts(props('pax8')), ['password'], 'case-insensitive');
+  assert.deepEqual(P.cotermProducts(props('SHI;Pax8')), ['password'], 'multi-select value');
+  // Any other distributor, or direct (blank): AutoElevate co-terms as before.
+  for (const d of ['TD Synnex', 'D&H Distribution', '', null, undefined]) assert.deepEqual(P.cotermProducts(props(d)), ['autoelevate', 'password'], `distributor ${d}`);
+  assert.equal(P.cotermExcludedByDistributor('password', { distributor: 'Pax8' }), false, 'only AutoElevate is excluded');
+  // The card's fallback (rows worked out from the commits) reads Distributor too, so it's loaded with the company.
+  assert.ok(P.cotermCompanyProperties().includes('distributor'));
+  const rows = P.cotermRows({ activeProducts: ['autoelevate', 'password'], commits: Object.assign({}, M2M, { distributor: 'Pax8', ae_agent_commit: '150', pb_user_commit: '200' }) }, { dealFamily: 'password' });
+  assert.deepEqual(rows.map((r) => r.family), []);
+  const onDns = P.cotermRows({ activeProducts: ['autoelevate', 'password'], commits: Object.assign({}, M2M, { distributor: 'BeMSP', ae_agent_commit: '150', pb_user_commit: '200' }) }, { dealFamily: 'dns' });
+  assert.deepEqual(onDns.map((r) => r.family), ['password']);
+  const direct = P.cotermRows({ activeProducts: ['autoelevate', 'password'], commits: Object.assign({}, M2M, { distributor: '', ae_agent_commit: '150', pb_user_commit: '200' }) }, { dealFamily: 'password' });
+  assert.deepEqual(direct.map((r) => r.family), ['autoelevate']);
+  // AutoElevate added by hand on a Pax8 partner is an Upsell, never a Co-term.
+  const setup = Object.assign({}, MSP, { activeProducts: ['autoelevate', 'password'], cotermProducts: P.cotermProducts(props('Pax8')), dealFamily: 'password' });
+  const q = P.buildQuote(setup, [ae({ coterm: true, ramp: false })], {}, CATALOG);
+  assert.ok(q.lines.every((l) => l.lineType === 'Upsell'));
+});

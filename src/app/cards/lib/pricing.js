@@ -39,6 +39,7 @@ import {
   COMPANY_PRODUCT_STATUS,
   PIPELINE_FAMILY,
   COTERM_COMMITS,
+  COTERM_EXCLUDED_DISTRIBUTORS,
   COTERM_AE_FEATURE,
   COTERM_PROPERTY_LABELS,
   COTERM_PAYMENT_TERMS,
@@ -494,7 +495,19 @@ export function isDowngradePipeline(pipelineId) {
 /** @param {Record<string, any> | null | undefined} companyProps @returns {string[]} */
 export function cotermProducts(companyProps) {
   const props = companyProps || {};
-  return activeProducts(props).filter((f) => COTERM_COMMITS[f] && COTERM_PAYMENT_TERMS.includes(props[COTERM_COMMITS[f].paymentTerms]));
+  return activeProducts(props).filter((f) => COTERM_COMMITS[f] && COTERM_PAYMENT_TERMS.includes(props[COTERM_COMMITS[f].paymentTerms]) && !cotermExcludedByDistributor(f, props));
+}
+
+// True when the company buys this product through a distributor that rules out co-term
+// (COTERM_EXCLUDED_DISTRIBUTORS: AutoElevate via Pax8 or BeMSP). Handles a multi-select value ("Pax8;SHI").
+/** @param {string} family @param {Record<string, any> | null | undefined} companyProps */
+export function cotermExcludedByDistributor(family, companyProps) {
+  const rule = COTERM_EXCLUDED_DISTRIBUTORS[family];
+  if (!rule) return false;
+  const raw = (companyProps || {})[rule.property];
+  if (raw === null || raw === undefined) return false;
+  const picked = String(raw).split(';').map((v) => v.trim().toLowerCase()).filter(Boolean);
+  return rule.values.some((v) => picked.includes(v.toLowerCase()));
 }
 
 // Co-term is offered on a product the company is Active on and pays Month-to-Month (`active` = that list),
@@ -519,6 +532,7 @@ export function lineTypeFor(family, coterm, active, dealFamily = null, cotermabl
 export function cotermCompanyProperties() {
   const names = [];
   for (const src of Object.values(COTERM_COMMITS)) for (const [k, v] of Object.entries(src)) if (k !== 'edition' && !names.includes(v)) names.push(v);
+  for (const rule of Object.values(COTERM_EXCLUDED_DISTRIBUTORS)) if (!names.includes(rule.property)) names.push(rule.property);
   return names;
 }
 

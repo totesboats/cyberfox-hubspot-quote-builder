@@ -76,8 +76,14 @@ test('teams approvals: posts the quote overview, line items and Approved button 
   const card = payload.card;
   assert.equal(card.version, '1.4');
   assert.equal(JSON.parse(payload.cardJson).type, 'AdaptiveCard');
-  assert.deepEqual(card.actions.map((a) => [a.type, a.title]), [['Action.Submit', 'Approved'], ['Action.OpenUrl', 'Open in HubSpot']]);
+  assert.deepEqual(card.actions.map((a) => [a.type, a.title]), [['Action.Submit', 'Approved'], ['Action.Submit', 'Reject'], ['Action.OpenUrl', 'Open in HubSpot']]);
   assert.deepEqual(card.actions[0].data, { action: 'approve', quoteId: 'Q9' });
+  assert.deepEqual(card.actions[1].data, { action: 'reject', quoteId: 'Q9' });
+  assert.equal(card.actions[1].style, 'destructive');
+  // The reason box the flow reads for Reject.
+  const reason = card.body.find((b) => b.type === 'Input.Text');
+  assert.equal(reason.id, 'reason');
+  assert.equal(reason.isMultiline, true);
   const text = JSON.stringify(card);
   for (const s of ['Quote approval needed', 'Example MSP', 'Riley Rep', 'Tina Harvey or Ops', '$682.50', '16 Months', 'Month-to-Month · Credit Card', 'Due Upon Receipt', '2026-12-19', 'Needs approval for: 35% discount', 'RAMP AutoElevate', '$1,050.00', '35%', '4 mo', '$682.50/mo']) {
     assert.ok(text.includes(s), `card shows ${s}`);
@@ -94,6 +100,7 @@ test('teams approvals: done and note cards for updating the same tile after a cl
   // Done card: same content, status line instead of the Approved button.
   const done = JSON.parse(payload.doneCardJson);
   assert.deepEqual(done.actions.map((a) => a.title), ['Open in HubSpot']);
+  assert.ok(!done.body.some((b) => b.type === 'Input.Text'), 'no reason box once handled');
   assert.equal(done.body[0].text, 'Quote approval');
   assert.equal(done.body[2].text, '{{STATUS}}');
   assert.equal(done.body[2].color, '{{STATUS_COLOR}}');

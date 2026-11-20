@@ -174,6 +174,29 @@ Lessons from doing this in the new designer (Nov 2026): give the new steps **new
 name of a step you just deleted makes the designer reuse the old step's type. Inserting a step between two others
 copies the next step's run-after onto it, so check every run-after afterwards (Code view shows it).
 
+## Reject (changes requested), Nov 2026
+
+The card has a **Reject** button and a "To reject, say what needs to change" box. Reject does what "Request changes"
+does in HubSpot: Internal quote status becomes **Rejected** and the reason goes into **Approval feedback**
+("Changes requested in Microsoft Teams by <name> (<email>) on <date time> ET: <reason>").
+
+- Only the routed approver or Ops can reject (same rule as approving).
+- A reason is required. Reject with an empty box shrinks the tile to a note and posts the card again.
+- The tile updates to "Changes requested by <name> on <date time> ET: <reason>".
+- The rep gets a 1:1 Teams message from the Workflows bot with the reason and an Open in HubSpot link
+  (HubSpot may not send its own notice when the status is set through the API).
+- The rep fixes the quote and clicks Request approval again; the HubSpot workflow re-enrolls and posts a new card.
+
+Flow steps (all in the import package): **Clicked action** and **Reject reason** (Compose, after Responder email),
+then inside Still pending: **Is reject** -> **Has reason** -> **Reject quote** (HTTP PATCH, secure in/out),
+**Card rejected**, **Tell rep** (Post message, Flow bot, Chat with Flow bot, recipient `ownerEmail`),
+**Card reject failed**, **Card needs reason**. The approve steps moved under Is reject's "no" branch unchanged.
+The status text is JSON-escaped with `slice(string(createArray(<text>)), 2, -2)` so a reason with quotes or line
+breaks can't break the card.
+
+The package now has the Sales team / HubSpot Quote Approvals channel IDs filled in, so an **Update** import needs
+only the Teams and Key Vault connections picked.
+
 ## Later: secret header
 When Owen creates `quote-approval-flow-key` in Key Vault:
 1. Generate a value (PowerShell on your PC):

@@ -159,6 +159,8 @@ const cell = (text, opts = {}) => Object.assign({ type: 'TextBlock', text: Strin
 // Placeholders the flow fills in (replace()) when it updates the same Teams card after a click.
 const STATUS = '{{STATUS}}';
 const STATUS_COLOR = '{{STATUS_COLOR}}'; // Good, Warning or Attention
+// The card's reason box; the flow reads it as body('Post_card_and_wait')?['data']?['reason'].
+const REASON_INPUT = 'reason';
 
 // The Adaptive Card posted in Teams. Version 1.4 (what Teams renders for Power Automate cards).
 // mode 'open': the card with the Approved button. mode 'done': the same card after a click, with a status line
@@ -203,6 +205,9 @@ function buildCard(d, mode = 'open') {
     row(['Product', 'Qty', 'Unit price', 'Disc.', 'Term', 'Net'], true),
     ...lineRows,
     sorted.length > shown.length ? cell(`+ ${sorted.length - shown.length} more line items in HubSpot`, { isSubtle: true, spacing: 'Small' }) : null,
+    // Reject needs a reason: it is saved to the quote's Approval feedback and sent to the rep.
+    done ? null : { type: 'Input.Text', id: REASON_INPUT, isMultiline: true, maxLength: 1000, spacing: 'Large',
+      label: 'To reject, say what needs to change', placeholder: 'Required for Reject (e.g. discount over 30% on AE needs a term of 24 months)' },
   ].filter(Boolean);
 
   return {
@@ -213,6 +218,7 @@ function buildCard(d, mode = 'open') {
     body,
     actions: [
       done ? null : { type: 'Action.Submit', title: 'Approved', style: 'positive', data: { action: 'approve', quoteId: d.quoteId } },
+      done ? null : { type: 'Action.Submit', title: 'Reject', style: 'destructive', data: { action: 'reject', quoteId: d.quoteId } },
       { type: 'Action.OpenUrl', title: 'Open in HubSpot', url: d.quoteUrl },
     ].filter(Boolean),
   };
@@ -342,4 +348,4 @@ exports.main = async (event, callback) => {
 };
 
 // For the repo's tests only (HubSpot ignores these).
-exports._test = { CONFIG, FLOW_KEY_HEADER, STATUS, STATUS_COLOR, approvalReasons, buildCard, buildNoteCard, buildPayload, run, termMonths, money };
+exports._test = { CONFIG, FLOW_KEY_HEADER, STATUS, STATUS_COLOR, REASON_INPUT, approvalReasons, buildCard, buildNoteCard, buildPayload, run, termMonths, money };

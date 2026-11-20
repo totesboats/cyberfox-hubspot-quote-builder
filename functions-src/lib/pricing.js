@@ -2,7 +2,7 @@
 'use strict';
 // Pure pricing, ramp and approval logic shared by the card (live preview) and the
 // submit function (authoritative rebuild). No HubSpot calls in here.
-const { FAMILIES, BILLING, M2M_FAMILIES, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, COTERM_REMOVERS, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY, COTERM_COMMITS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, FAMILY_ORDER } = require('./config.js');
+const { FAMILIES, BILLING, M2M_FAMILIES, MAX_RAMP_MONTHS, MAX_RAMP_STAGES, APPROVAL, TIMUS, RAMP_NAME_PREFIX, SET_BILLING_DELAY_AFTER_RAMP, LINE_SOURCE_PROPERTY, LINE_SOURCE_VALUE, LINE_SESSION_PROPERTY, TEMPLATE_HINTS, TEMPLATE_HIDE, AE_FEATURE_TYPES, AGREEMENT_LENGTH_M2M, AGREEMENT_LENGTH_DEFAULT, COTERM_REMOVERS, PAYMENT_FREQUENCY_DEFAULT, WRITE_CONTRACT_TERM, QUOTE_OPEN_STATUSES, QUOTE_IGNORED_STATUSES, PRINTED_DEAL_PROPERTIES, QUOTE_EDITABLE_STATUSES, OPTIMIZE_RAMP, ONE_OFF_FOLDER, ONE_OFF_FAMILY_PATTERNS, OPTIMIZE_TDR, CURRENCIES, QUOTE_DEFAULTS, LINE_FAMILY_PROPERTY, LINE_TYPE_PROPERTY, LINE_TYPES, LINE_TYPE_LABELS, COMPANY_PRODUCT_STATUS, PIPELINE_FAMILY, COTERM_COMMITS, COTERM_EXCLUDED_DISTRIBUTORS, COTERM_AE_FEATURE, COTERM_PROPERTY_LABELS, COTERM_PAYMENT_TERMS, NO_COTERM_PIPELINES, DOWNGRADE_PIPELINES, FAMILY_ORDER } = require('./config.js');
 
 function toNum(v, fallback = 0) {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -451,7 +451,19 @@ function isDowngradePipeline(pipelineId) {
 /** @param {Record<string, any> | null | undefined} companyProps @returns {string[]} */
 function cotermProducts(companyProps) {
   const props = companyProps || {};
-  return activeProducts(props).filter((f) => COTERM_COMMITS[f] && COTERM_PAYMENT_TERMS.includes(props[COTERM_COMMITS[f].paymentTerms]));
+  return activeProducts(props).filter((f) => COTERM_COMMITS[f] && COTERM_PAYMENT_TERMS.includes(props[COTERM_COMMITS[f].paymentTerms]) && !cotermExcludedByDistributor(f, props));
+}
+
+// True when the company buys this product through a distributor that rules out co-term
+// (COTERM_EXCLUDED_DISTRIBUTORS: AutoElevate via Pax8 or BeMSP). Handles a multi-select value ("Pax8;SHI").
+/** @param {string} family @param {Record<string, any> | null | undefined} companyProps */
+function cotermExcludedByDistributor(family, companyProps) {
+  const rule = COTERM_EXCLUDED_DISTRIBUTORS[family];
+  if (!rule) return false;
+  const raw = (companyProps || {})[rule.property];
+  if (raw === null || raw === undefined) return false;
+  const picked = String(raw).split(';').map((v) => v.trim().toLowerCase()).filter(Boolean);
+  return rule.values.some((v) => picked.includes(v.toLowerCase()));
 }
 
 // Co-term is offered on a product the company is Active on and pays Month-to-Month (`active` = that list),
@@ -476,6 +488,7 @@ function lineTypeFor(family, coterm, active, dealFamily = null, cotermable = act
 function cotermCompanyProperties() {
   const names = [];
   for (const src of Object.values(COTERM_COMMITS)) for (const [k, v] of Object.entries(src)) if (k !== 'edition' && !names.includes(v)) names.push(v);
+  for (const rule of Object.values(COTERM_EXCLUDED_DISTRIBUTORS)) if (!names.includes(rule.property)) names.push(rule.property);
   return names;
 }
 
@@ -1205,4 +1218,4 @@ function validateSubmission(payload) {
   return errors;
 }
 
-module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, pipelineAllowsCoterm, isDowngradePipeline, cotermProducts, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, canRemoveCoterms, cotermRemoverNames, missingCoterms, cotermRemovalError, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, syncBillingPatch, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
+module.exports = { toNum, round2, clamp, formatMoney, formatInt, productPrices, quoteCurrency, normalizeProduct, oneOffFamily, catalogKey, indexCatalog, normalizeTemplates, suggestTemplate, unitsFor, editionsFor, tdrTier, tierOptionsFor, priceProduct, rowFamily, activeProducts, pipelineFamily, pipelineAllowsCoterm, isDowngradePipeline, cotermProducts, cotermExcludedByDistributor, canCoterm, lineTypeFor, cotermCompanyProperties, cotermRows, refreshCoterms, canRemoveCoterms, cotermRemoverNames, missingCoterms, cotermRemovalError, lineTypeLabel, rowLabel, aeFeatureTypeFor, effectiveEdition, resolveAeFeature, normalizeStage, rampStages, normalizeRamp, defaultRampMonths, stageLabel, agreementMonths, effectiveBilling, syncBillingPatch, optimizeRampRule, productRamp, buildQuote, evaluateApproval, lineItemProperties, dealWrites, quoteEditability, quoteUrl, quoteLockState, openQuoteConflicts, builderState, parseBuilderState, autoQuoteName, validateSubmission };
