@@ -197,6 +197,16 @@ breaks can't break the card.
 The package now has the Sales team / HubSpot Quote Approvals channel IDs filled in, so an **Update** import needs
 only the Teams and Key Vault connections picked.
 
+## Approver @mention and rep "approved" message, Nov 2026
+
+- The open card @mentions the routed approver (Tina / Adam / Julie) so they get a Teams notification, not just a
+  channel post. Built by the HubSpot code step (`msteams.entities`, mention id = the approver's sign-in email);
+  cards after a click don't mention anyone. No routed approver (unknown sales team) = no mention.
+- After a successful approval, **Tell rep approved** sends the rep a 1:1 Teams message from the Workflows bot:
+  "Your quote <title> was approved by <name> on <date time> ET. It's published and ready to send." with an
+  Open in HubSpot link. It runs after **Approved message**; **Set done approved** now runs after it (succeeded or
+  failed). It only runs when HubSpot accepted the approval.
+
 ## Later: secret header
 When Owen creates `quote-approval-flow-key` in Key Vault:
 1. Generate a value (PowerShell on your PC):

@@ -127,6 +127,20 @@ test('teams approvals: the code step file is plain ASCII (safe to copy through W
   assert.deepEqual(bad, [], 'non-ASCII characters in quote-approval-to-teams.cjs');
 });
 
+test('teams approvals: the routed approver is @mentioned on the open card only', async () => {
+  const payload = await T.run('Q9', ENV, fakeApis().fetchImpl);
+  const card = payload.card;
+  assert.deepEqual(card.msteams.entities, [{ type: 'mention', text: '<at>Tina Harvey</at>', mentioned: { id: 'tina@example.com', name: 'Tina Harvey' } }]);
+  const line = card.body.find((b) => b.type === 'TextBlock' && b.text.includes('<at>'));
+  assert.equal(line.text, '<at>Tina Harvey</at>, this quote needs your approval (or anyone in Ops).');
+  // Updates after a click don't ping again.
+  assert.ok(!payload.doneCardJson.includes('<at>') && !payload.noteCardJson.includes('<at>'));
+  assert.equal(JSON.parse(payload.doneCardJson).msteams.entities, undefined);
+  // No routed approver (unknown sales team): no mention.
+  const none = await T.run('Q9', ENV, fakeApis({ salesTeam: '' }).fetchImpl);
+  assert.ok(!none.cardJson.includes('<at>') && !none.card.msteams.entities);
+});
+
 test('teams approvals: routes ENT to Adam and AM to Julie; the quote owner can never approve their own quote', async () => {
   const ent = await T.run('Q9', ENV, fakeApis({ salesTeam: 'ENT' }).fetchImpl);
   assert.equal(ent.routedApprover.name, 'Adam Friedman');

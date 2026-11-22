@@ -167,6 +167,7 @@ const REASON_INPUT = 'reason';
 // (who approved and when, or why not) in place of the Approved button; the flow swaps it into the same tile.
 function buildCard(d, mode = 'open') {
   const done = mode === 'done';
+  const mention = approverMention(d.approverName, d.approverEmail);
   const currency = d.currency;
   const sorted = d.lines.slice().sort((a, b) => num(a.hs_position_on_quote) - num(b.hs_position_on_quote));
   const shown = sorted.slice(0, CONFIG.maxLinesOnCard);
@@ -208,6 +209,9 @@ function buildCard(d, mode = 'open') {
     { type: 'TextBlock', text: done ? 'Quote approval' : 'Quote approval needed', weight: 'Bolder', size: 'Large', color: 'Accent' },
     { type: 'TextBlock', text: d.title || `Quote ${d.quoteId}`, weight: 'Bolder', wrap: true, spacing: 'None' },
     done ? { type: 'TextBlock', text: STATUS, wrap: true, weight: 'Bolder', color: STATUS_COLOR, spacing: 'Small' } : null,
+    // Tag the routed approver so they get a Teams notification, not just a channel post (open card only, so an
+    // update after a click doesn't ping them again).
+    !done && mention ? { type: 'TextBlock', text: `${mention.text}, this quote needs your approval (or anyone in Ops).`, wrap: true, spacing: 'Small' } : null,
     d.reasons.length ? { type: 'TextBlock', text: `Needs approval for: ${d.reasons.join('; ')}`, wrap: true, color: 'Warning' } : null,
     { type: 'FactSet', facts: facts.map(([title, value]) => ({ title, value: String(value) })) },
     { type: 'TextBlock', text: 'Line items', weight: 'Bolder', spacing: 'Large' },
@@ -222,7 +226,7 @@ function buildCard(d, mode = 'open') {
     type: 'AdaptiveCard',
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
     version: '1.4',
-    msteams: { width: 'Full' },
+    msteams: Object.assign({ width: 'Full' }, !done && mention ? { entities: [mention.entity] } : {}),
     body,
     actions: [
       done ? null : { type: 'Action.Submit', title: 'Approved', style: 'positive', data: { action: 'approve', quoteId: d.quoteId } },
@@ -230,6 +234,13 @@ function buildCard(d, mode = 'open') {
       { type: 'Action.OpenUrl', title: 'Open in HubSpot', url: d.quoteUrl },
     ].filter(Boolean),
   };
+}
+
+// Teams @mention of the routed approver (by their sign-in email). Null when there's no routed approver.
+function approverMention(name, email) {
+  if (!name || !email) return null;
+  const text = `<at>${name}</at>`;
+  return { text, entity: { type: 'mention', text, mentioned: { id: email, name } } };
 }
 
 // A small card for a tile whose click didn't approve (e.g. the quote owner clicked); the full card is reposted below it.
@@ -265,6 +276,7 @@ function buildPayload({ quote, deal, company, lines }, people) {
     ownerName: people.owner ? people.owner.name : '',
     salesTeam,
     approverName: routed ? routed.name : '',
+    approverEmail: routed ? routed.email : '',
     amount: qp.hs_quote_amount,
     currency,
     agreementLength: dp.agreement_length,
@@ -356,4 +368,4 @@ exports.main = async (event, callback) => {
 };
 
 // For the repo's tests only (HubSpot ignores these).
-exports._test = { CONFIG, FLOW_KEY_HEADER, STATUS, STATUS_COLOR, REASON_INPUT, approvalReasons, buildCard, buildNoteCard, buildPayload, run, termMonths, money };
+exports._test = { CONFIG, FLOW_KEY_HEADER, approverMention, STATUS, STATUS_COLOR, REASON_INPUT, approvalReasons, buildCard, buildNoteCard, buildPayload, run, termMonths, money };

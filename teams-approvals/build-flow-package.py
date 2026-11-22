@@ -103,6 +103,29 @@ WHO = RESPONDER + "?['displayName']"
 ACTION = "outputs('Clicked_action')"
 REASON = "outputs('Reject_reason')"
 
+def tell_rep(html, run_after):
+    """1:1 Teams message from the Workflows bot to the rep (quote owner). Keys confirmed by the Nov 2026 import."""
+    return {
+        "type": "OpenApiConnection",
+        "inputs": {
+            "host": dict(TEAMS_HOST, operationId="PostMessageToConversation"),
+            "parameters": {
+                "poster": "Flow bot",
+                "location": "Chat with Flow bot",
+                "body/recipient": "@triggerBody()?['ownerEmail']",
+                "body/messageBody": html,
+            },
+            "authentication": AUTH,
+        },
+        "runAfter": run_after,
+    }
+
+
+approved_rep_html = (
+    "✅ Your quote <b>@{triggerBody()?['quoteTitle']}</b> was approved by <b>@{" + WHO + "}</b> on " + APPROVED_AT
+    + " ET. It's published and ready to send.<br><br><a href=\"@{triggerBody()?['quoteUrl']}\">Open in HubSpot</a>"
+)
+
 approve_actions = {
     "Approve_quote": http("PATCH", QUOTE_URI, {}, {"properties": {"hs_status": "APPROVED"}}),
     "Record_approver": dict(
@@ -112,7 +135,9 @@ approve_actions = {
     "Approved_message": update_card(
         "doneCardJson", "concat('✅ Approved by ', " + WHO + ", ' on ', " + NOW_ET + ", ' ET')", "Good",
         {"Record_approver": ["Succeeded", "Failed"]}),
-    "Set_done_approved": set_done({"Approved_message": ["Succeeded", "Failed"]}),
+    # Tell the rep it's approved (only reached when HubSpot accepted the approval).
+    "Tell_rep_approved": tell_rep(approved_rep_html, {"Approved_message": ["Succeeded", "Failed"]}),
+    "Set_done_approved": set_done({"Tell_rep_approved": ["Succeeded", "Failed"]}),
     "Card_approve_failed": update_card(
         "doneCardJson", "concat('Not approved: ', " + WHO + ", ' clicked Approved, but HubSpot refused it (', "
         "string(outputs('Approve_quote')?['statusCode']), '). Please approve it in HubSpot.')", "Attention",
@@ -139,20 +164,7 @@ reject_actions = {
             "Card_rejected": update_card(
                 "doneCardJson", "concat('Changes requested by ', " + WHO + ", ' on ', " + NOW_ET + ", ' ET: ', "
                 + REASON + ")", "Warning", {"Reject_quote": ["Succeeded"]}),
-            "Tell_rep": {
-                "type": "OpenApiConnection",
-                "inputs": {
-                    "host": dict(TEAMS_HOST, operationId="PostMessageToConversation"),
-                    "parameters": {
-                        "poster": "Flow bot",
-                        "location": "Chat with Flow bot",
-                        "body/recipient": "@triggerBody()?['ownerEmail']",
-                        "body/messageBody": tell_rep_html,
-                    },
-                    "authentication": AUTH,
-                },
-                "runAfter": {"Card_rejected": ["Succeeded", "Failed"]},
-            },
+            "Tell_rep": tell_rep(tell_rep_html, {"Card_rejected": ["Succeeded", "Failed"]}),
             "Set_done_rejected": set_done({"Tell_rep": ["Succeeded", "Failed", "Skipped"]}),
             "Card_reject_failed": update_card(
                 "doneCardJson", "concat('Not rejected: ', " + WHO + ", ' clicked Reject, but HubSpot refused it (', "
