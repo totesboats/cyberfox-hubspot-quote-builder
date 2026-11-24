@@ -17,16 +17,28 @@ Prints one line item table per product, in this order:
 There is no Bundle table: CyberFOX Bundles aren't quoted.
 
 A product's table only appears when the quote has lines for it, so an AutoElevate-only quote
-shows one table. Ramp lines (RAMP 1, RAMP 2 …) stay in their product's table. Each table looks
-like HubSpot's own line items table: Product name, Quantity, Term, Unit discount, Net Price, with
-no subtotals or totals.
+shows one table. Ramp lines (RAMP 1, RAMP 2 …) stay in their product's table. Each table has Product name, Quantity, Term and Net Price, with no subtotals or totals. Like the
+legacy quote, a discounted line's Net Price shows the price before discount struck out, then
+"after N% discount" in green and the net price (with / month, / year ...).
 
 ### How lines are matched to a product
 
-HubSpot only gives quote templates the standard line item properties, not custom ones like
-`qb_family`, so the module reads the product from the line's **name and SKU**. All 369 tagged
+The module reads the product from the line's **name and SKU** (not the custom `qb_family`), so
+lines added by hand without Quote Builder tags still group correctly. All 369 tagged
 products were checked against the rules (Oct 2026), and every one lands in the right table.
 Lines added by hand in HubSpot are grouped the same way.
+
+### Co-term quotes
+
+When any line on the quote has `qb_line_type` = `coterm` (set by the Quote Builder), the layout
+changes: the new products print first under **Your new subscriptions**, then the co-term lines print
+under **Your current subscriptions** at the same level. Both parts are still one table per product. Quotes with no
+co-term lines look exactly as before. The two headings can be edited in the module's settings in the
+template, and there's an optional note under the second heading (blank by default).
+
+This relies on custom line item properties reaching the template (HubSpot's `quoteTemplateContext`
+includes them). Check it once on a real co-term quote preview; if the co-term lines still print with
+the new ones, the property isn't coming through.
 
 To add a product or change a heading: edit `PRODUCT_GROUPS` in
 `src/cms-assets/cyberfox-quote-modules/components/modules/ProductLineItems/productGroups.js`

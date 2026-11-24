@@ -9,6 +9,10 @@ import {
   termText,
   discountText,
   SAMPLE_LINE_ITEMS,
+  isCotermLine,
+  quoteLayout,
+  COTERM_TEXT,
+  priceCell,
 } from '../quote-modules/src/cms-assets/cyberfox-quote-modules/components/modules/ProductLineItems/productGroups.js';
 
 const line = (name, extra = {}) => ({ name, quantity: 1, price: 100, amount: 100, recurringbillingfrequency: 'monthly', hs_recurring_billing_period: 'P12M', ...extra });
@@ -66,6 +70,7 @@ test('cells are formatted like the standard table', () => {
   assert.equal(c.term, '12 months');
   assert.equal(c.amount, '$945.00');
   assert.equal(c.ramp, false);
+  assert.equal(c.netPrice, '$945.00 / month');
   assert.equal(rowCells(line('RAMP 1 AutoElevate Plan')).ramp, true);
 });
 
@@ -81,4 +86,67 @@ test('term and discount text', () => {
 
 test('template editor sample shows AutoElevate and DNS tables', () => {
   assert.deepEqual(groupLineItems(SAMPLE_LINE_ITEMS).map((g) => g.key), ['autoelevate', 'dns']);
+});
+
+test('co-term lines are recognised from qb_line_type, any case', () => {
+  assert.equal(isCotermLine(line('DNS', { qb_line_type: 'coterm' })), true);
+  assert.equal(isCotermLine(line('DNS', { qb_line_type: 'Co-term' })), true);
+  assert.equal(isCotermLine(line('DNS', { qb_line_type: ' COTERM ' })), true);
+  for (const t of ['New', 'Upsell', 'Downgrade', '', undefined, null]) {
+    assert.equal(isCotermLine(line('DNS', { qb_line_type: t })), false, String(t));
+  }
+  assert.equal(isCotermLine(null), false);
+});
+
+test('a quote without co-term lines keeps the normal layout', () => {
+  const items = [line('DNS Filtering 500 Device Plan', { qb_line_type: 'New' }), line('AutoElevate 500 Agent Plan', { qb_line_type: 'Upsell' })];
+  const layout = quoteLayout(items);
+  assert.equal(layout.coterm, false);
+  assert.deepEqual(layout.newGroups, groupLineItems(items));
+  assert.deepEqual(layout.existingGroups, []);
+});
+
+test('a co-term quote puts new products first and existing ones in their own section', () => {
+  const items = [
+    line('AutoElevate 500 Agent Plan', { qb_line_type: 'coterm', hs_position_on_quote: 1 }),
+    line('DNS Filtering 500 Device Plan', { qb_line_type: 'New', hs_position_on_quote: 2 }),
+    line('Password Manager 50 User Plan', { qb_line_type: 'coterm', hs_position_on_quote: 3 }),
+    line('Timus SASE 25 User Plan', { qb_line_type: 'Upsell', hs_position_on_quote: 4 }),
+  ];
+  const layout = quoteLayout(items, { dns: 'DNS' });
+  assert.equal(layout.coterm, true);
+  assert.deepEqual(layout.newGroups.map((g) => g.key), ['dns', 'timus']);
+  assert.equal(layout.newGroups[0].label, 'DNS');
+  assert.deepEqual(layout.existingGroups.map((g) => g.key), ['autoelevate', 'password']);
+  const names = (gs) => gs.flatMap((g) => g.items.map((i) => i.name));
+  assert.deepEqual(names(layout.newGroups), ['DNS Filtering 500 Device Plan', 'Timus SASE 25 User Plan']);
+  assert.deepEqual(names(layout.existingGroups), ['AutoElevate 500 Agent Plan', 'Password Manager 50 User Plan']);
+});
+
+test('the same product can be both new (ramp or extra seats) and existing', () => {
+  const items = [line('AutoElevate 500 Agent Plan', { qb_line_type: 'coterm' }), line('AutoElevate 100 Agent Add-on', { qb_line_type: 'Upsell' })];
+  const layout = quoteLayout(items);
+  assert.deepEqual(layout.newGroups.map((g) => g.key), ['autoelevate']);
+  assert.deepEqual(layout.existingGroups.map((g) => g.key), ['autoelevate']);
+});
+
+test('co-term section headings, and no note by default', () => {
+  assert.equal(COTERM_TEXT.newHeading, 'Your new subscriptions');
+  assert.equal(COTERM_TEXT.existingHeading, 'Your current subscriptions');
+  assert.equal(COTERM_TEXT.existingNote, '');
+});
+
+test('Net Price shows the price before discount struck out, like the legacy quote', () => {
+  const c = priceCell(line('AutoElevate', { quantity: 1, price: 1040, hs_discount_percentage: 68, amount: 332.8 }), 'USD');
+  assert.deepEqual(c, { listPrice: '$1,040.00 / month', discountLabel: 'after 68% discount', netPrice: '$332.80 / month' });
+  // The struck-out price is for the whole quantity, so it compares with the net price.
+  const q = priceCell(line('DNS', { quantity: 3, price: 100, hs_discount_percentage: 10, amount: 270 }), 'USD');
+  assert.equal(q.listPrice, '$300.00 / month');
+  assert.equal(priceCell(line('DNS', { quantity: 3, price: 100, hs_pre_discount_amount: 300, discount: 25, amount: 225 })).discountLabel, 'after $25.00 discount');
+  assert.equal(priceCell(line('DNS', { recurringbillingfrequency: 'annually', price: 1200, amount: 1200 })).netPrice, '$1,200.00 / year');
+});
+
+test('no discount: just the net price', () => {
+  assert.deepEqual(priceCell(line('DNS')), { listPrice: '', discountLabel: '', netPrice: '$100.00 / month' });
+  assert.equal(priceCell(line('Onboarding', { recurringbillingfrequency: undefined, price: 500, amount: 500 })).netPrice, '$500.00');
 });

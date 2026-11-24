@@ -49,6 +49,46 @@ export function groupLineItems(lineItems, labels = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Co-term quotes (Nov 2026)
+//
+// The Quote Builder tags each line item with qb_line_type: New, Upsell, coterm or Downgrade (custom
+// properties are in quoteTemplateContext.lineItems). A co-term line is a product the customer already
+// has, added only so its term lines up with the new products. On a quote with co-term lines, the new
+// products print first under "Your new subscriptions", then the co-term lines under "Your current
+// subscriptions" (same level, no indent). Quotes without co-term lines are unchanged.
+
+/** True for a co-term line (qb_line_type = coterm, any case; "co-term" also accepted). */
+export function isCotermLine(item) {
+  return String((item && item.qb_line_type) || '').trim().toLowerCase().replace(/[^a-z]/g, '') === 'coterm';
+}
+
+/**
+ * The quote's layout: { coterm, newGroups, existingGroups }. coterm is true when any line is a co-term
+ * line; then newGroups holds the other lines and existingGroups the co-term lines. On a normal quote
+ * newGroups holds every line and existingGroups is empty. Each list is groupLineItems() output (one
+ * table per product, AutoElevate first).
+ * @param {Array<Record<string, any>>} lineItems
+ * @param {Record<string, string>} [labels]
+ */
+export function quoteLayout(lineItems, labels = {}) {
+  const items = lineItems || [];
+  const existing = items.filter(isCotermLine);
+  if (!existing.length) return { coterm: false, newGroups: groupLineItems(items, labels), existingGroups: [] };
+  return {
+    coterm: true,
+    newGroups: groupLineItems(items.filter((i) => !isCotermLine(i)), labels),
+    existingGroups: groupLineItems(existing, labels),
+  };
+}
+
+/** Default wording for the co-term sections (editable in the module's settings). No note by default. */
+export const COTERM_TEXT = {
+  newHeading: 'Your new subscriptions',
+  existingHeading: 'Your current subscriptions',
+  existingNote: '',
+};
+
+// ---------------------------------------------------------------------------
 // Cell formatting
 
 export function money(value, currency = 'USD') {
@@ -80,10 +120,40 @@ export function discountText(item, currency) {
   return amount > 0 ? money(amount, currency) : '';
 }
 
+const PER = { weekly: 'week', biweekly: '2 weeks', monthly: 'month', quarterly: 'quarter', per_six_months: '6 months', annually: 'year', per_two_years: '2 years', per_three_years: '3 years', per_four_years: '4 years', per_five_years: '5 years' };
+
+/** " / month", " / year" ... for a recurring line; blank for one-time. */
+export function perText(item) {
+  const per = PER[String(item.recurringbillingfrequency || '').toLowerCase()];
+  return per ? ` / ${per}` : '';
+}
+
+/**
+ * The stacked Net Price cell (like the legacy quote): the price before discount struck out, then
+ * "after 68% discount" (green) and the net price. listPrice and discountLabel are blank when the line
+ * has no discount, so only the net price shows.
+ *   ~~$1,040.00 / month~~
+ *   after 68% discount
+ *   $332.80 / month
+ */
+export function priceCell(item, currency) {
+  const per = perText(item);
+  const amount = Number(item.amount) || 0;
+  const pre = Number(item.hs_pre_discount_amount) || (Number(item.price) || 0) * (Number(item.quantity) || 0);
+  const discount = discountText(item, currency);
+  const discounted = Boolean(discount) && pre > amount + 0.004;
+  return {
+    listPrice: discounted ? `${money(pre, currency)}${per}` : '',
+    discountLabel: discounted ? `after ${discount} discount` : '',
+    netPrice: `${money(amount, currency)}${per}`,
+  };
+}
+
 /** One table row's cells, already formatted. */
 export function rowCells(item, currency) {
   const quantity = Number(item.quantity) || 0;
   return {
+    ...priceCell(item, currency),
     name: item.name || item.hs_sku || 'Line item',
     ramp: /^RAMP\b/i.test(item.name || ''),
     quantity: quantity.toLocaleString('en-US'),
