@@ -1,7 +1,9 @@
 # Quote approvals in Microsoft Teams
 
 When a quote goes to **Pending approval**, a card is posted in the Teams approvals channel with the quote
-overview and line items. The quote's approver (Tina for MSP, Adam for ENT, Julie for AM) or anyone in Ops
+overview and line items. Line items are split by product like the quote (AutoElevate first), and on a
+co-term quote the new products come first under "New subscriptions", then the co-termed ones under "Current
+subscriptions (co-term)". The quote's approver (Tina for MSP, Adam for ENT, Julie for AM) or anyone in Ops
 clicks **Approved** in Teams, and the quote is approved in HubSpot. Or they type what needs to change and click
 **Reject**: the quote is set to Rejected with the reason in Approval feedback, and the rep gets a Teams message.
 The card updates in place to show who approved or rejected it and when. The routed approver is @mentioned on the card so Teams notifies them, and the rep gets a Teams message when the quote is approved (or rejected). **Open in HubSpot** is always on the card.

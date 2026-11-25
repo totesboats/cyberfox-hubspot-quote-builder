@@ -41,6 +41,7 @@ const DEAL_PROPS = ['dealname', 'sales_team', 'agreement_length', 'payment_terms
 const LINE_PROPS = [
   'name', 'hs_sku', 'quantity', 'price', 'hs_discount_percentage', 'discount', 'amount', 'recurringbillingfrequency',
   'hs_recurring_billing_period', 'hs_term_in_months', 'hs_position_on_quote', 'ramp', 'approval_discount', 'approval_ramp_months',
+  'qb_line_type',
 ];
 
 // ---------------------------------------------------------------------------
@@ -149,6 +150,51 @@ function approvalReasons(lines) {
   return reasons;
 }
 
+// Line items by product, like the "Line items by product" quote module (quote-modules/.../productGroups.js;
+// keep the two in step, tests/teams-approvals.test.mjs checks they agree). Copied here because the workflow
+// code step is one pasted file.
+const PRODUCT_GROUPS = [
+  { key: 'autoelevate', label: 'AutoElevate', match: /autoelevate|(^|[^a-z])ae([^a-z]|$)/i },
+  { key: 'password', label: 'Password Manager', match: /password|(^|[^a-z])pb([^a-z0-9]|\d|$)/i },
+  { key: 'dns', label: 'DNS Filtering', match: /dns/i },
+  { key: 'timus', label: 'Timus SASE', match: /timus|satgat/i },
+  { key: 'optimize365', label: 'Optimize365', match: /optimi[sz]e\s*365|optimize|(^|[^a-z])tdr([^a-z]|$)/i },
+  { key: 'other', label: 'Other', match: /$^/ },
+];
+const MATCH_ORDER = ['timus', 'optimize365', 'dns', 'password', 'autoelevate'];
+
+function productKey(line) {
+  const text = `${line.name || ''} ${line.hs_sku || ''}`.replace(/\bRAMP\s*\d*\s+/gi, '');
+  for (const key of MATCH_ORDER) if (PRODUCT_GROUPS.find((g) => g.key === key).match.test(text)) return key;
+  return 'other';
+}
+
+// A co-term line: a product the customer already has, on the quote so its term lines up (qb_line_type = coterm).
+function isCoterm(line) {
+  return String(line.qb_line_type || '').toLowerCase().replace(/[^a-z]/g, '') === 'coterm';
+}
+
+// [{ label, lines }] per product in product order (AutoElevate first), lines in quote order within each.
+function groupByProduct(lines) {
+  const sorted = lines.slice().sort((a, b) => num(a.hs_position_on_quote) - num(b.hs_position_on_quote));
+  return PRODUCT_GROUPS.map((g) => ({ label: g.label, lines: sorted.filter((l) => productKey(l) === g.key) })).filter((g) => g.lines.length);
+}
+
+// How the card lists the line items: [{ heading, groups: [{ label, lines }] }]. A co-term quote gets two
+// sections, "New subscriptions" then "Current subscriptions (co-term)"; any other quote gets one section with
+// no heading. Product labels show when the quote has more than one product (or is a co-term quote); a
+// one-product quote is a plain list like before.
+function lineSections(lines) {
+  const coterm = lines.filter(isCoterm);
+  const sections = coterm.length
+    ? [{ heading: 'New subscriptions', groups: groupByProduct(lines.filter((l) => !isCoterm(l))) },
+       { heading: 'Current subscriptions (co-term)', groups: groupByProduct(coterm) }].filter((s) => s.groups.length)
+    : [{ heading: null, groups: groupByProduct(lines) }];
+  const labelled = coterm.length > 0 || sections[0].groups.length > 1;
+  for (const s of sections) for (const g of s.groups) if (!labelled) g.label = null;
+  return sections;
+}
+
 function quoteLink(quoteId, templateType) {
   if (templateType === 'CPQ_QUOTE') return `https://app.hubspot.com/quote/${CONFIG.portalId}/editor/${quoteId}/content`;
   return `https://app.hubspot.com/quotes/${CONFIG.portalId}/details/${quoteId}`;
@@ -169,12 +215,10 @@ function buildCard(d, mode = 'open') {
   const done = mode === 'done';
   const mention = approverMention(d.approverName, d.approverEmail);
   const currency = d.currency;
-  const sorted = d.lines.slice().sort((a, b) => num(a.hs_position_on_quote) - num(b.hs_position_on_quote));
-  const shown = sorted.slice(0, CONFIG.maxLinesOnCard);
   // Line items are stacked, not a 6-column table: fixed-width columns squeeze the product name to nothing on a
   // phone. Each line: product name and Net on one row (Net sized to fit), then qty, unit price, discount and term
-  // underneath. Works the same on desktop and mobile.
-  const lineRows = shown.map((l, i) => {
+  // underneath. Works the same on desktop and mobile. Split by product (and new vs co-term) like the quote.
+  const lineRow = (l, i) => {
     const pct = num(l.hs_discount_percentage);
     const disc = pct > 0 ? `${pct}% off` : num(l.discount) > 0 ? `${money(l.discount, currency)} off` : '';
     const term = termMonths(l);
@@ -191,7 +235,19 @@ function buildCard(d, mode = 'open') {
         cell(details, { isSubtle: true, spacing: 'None' }),
       ],
     };
-  });
+  };
+  const lineRows = [];
+  let shownCount = 0;
+  for (const s of lineSections(d.lines)) {
+    if (shownCount >= CONFIG.maxLinesOnCard) break;
+    if (s.heading) lineRows.push({ type: 'TextBlock', text: s.heading, weight: 'Bolder', color: 'Accent', spacing: 'Large', wrap: true });
+    for (const g of s.groups) {
+      if (shownCount >= CONFIG.maxLinesOnCard) break;
+      if (g.label) lineRows.push(cell(g.label, { weight: 'Bolder', isSubtle: true, spacing: 'Medium' }));
+      g.lines.slice(0, CONFIG.maxLinesOnCard - shownCount).forEach((l, i) => lineRows.push(lineRow(l, i)));
+      shownCount += Math.min(g.lines.length, CONFIG.maxLinesOnCard - shownCount);
+    }
+  }
   const facts = [
     ['Company', d.companyName],
     ['Deal', d.dealName],
@@ -216,7 +272,7 @@ function buildCard(d, mode = 'open') {
     { type: 'FactSet', facts: facts.map(([title, value]) => ({ title, value: String(value) })) },
     { type: 'TextBlock', text: 'Line items', weight: 'Bolder', spacing: 'Large' },
     ...lineRows,
-    sorted.length > shown.length ? cell(`+ ${sorted.length - shown.length} more line items in HubSpot`, { isSubtle: true, spacing: 'Small' }) : null,
+    d.lines.length > shownCount ? cell(`+ ${d.lines.length - shownCount} more line items in HubSpot`, { isSubtle: true, spacing: 'Small' }) : null,
     // Reject needs a reason: it is saved to the quote's Approval feedback and sent to the rep.
     done ? null : { type: 'Input.Text', id: REASON_INPUT, isMultiline: true, maxLength: 1000, spacing: 'Large',
       label: 'To reject, say what needs to change', placeholder: 'Required for Reject (e.g. discount over 30% on AE needs a term of 24 months)' },
@@ -368,4 +424,4 @@ exports.main = async (event, callback) => {
 };
 
 // For the repo's tests only (HubSpot ignores these).
-exports._test = { CONFIG, FLOW_KEY_HEADER, approverMention, STATUS, STATUS_COLOR, REASON_INPUT, approvalReasons, buildCard, buildNoteCard, buildPayload, run, termMonths, money };
+exports._test = { CONFIG, productKey, isCoterm, lineSections, FLOW_KEY_HEADER, approverMention, STATUS, STATUS_COLOR, REASON_INPUT, approvalReasons, buildCard, buildNoteCard, buildPayload, run, termMonths, money };

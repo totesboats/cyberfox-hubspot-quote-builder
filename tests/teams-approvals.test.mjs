@@ -226,3 +226,45 @@ test('teams approvals: main returns the outputs (Node 24 style) and also calls a
     process.env = env;
   }
 });
+
+test('teams approvals: product matching agrees with the quote module', async () => {
+  const qm = await import('../quote-modules/src/cms-assets/cyberfox-quote-modules/components/modules/ProductLineItems/productGroups.js');
+  const names = [
+    ['AutoElevate 2500 Agent Plan Advanced 2026', 'Standard-AE-2500'], ['Agent Plan', 'Standard-AE-500-Agent-Commit-2026'],
+    ['Password Boss 100 User Pack 2026', ''], ['Password Manager 50 User Plan', ''], ['CyberFOX DNS Filtering 1500 Device Plan 2026', ''],
+    ['Timus SASE 25 User Plan', ''], ['SATGAT Gateway', ''], ['Optimize365 2500 User Plan', ''], ['RAMP Optimize365 2500 User Plan', ''],
+    ['TDR - Additional User', ''], ['RAMP 1 DNS Filtering 500 Device Plan 2026', ''], ['Professional Services Onboarding', ''],
+    ['CyberFOX Bundle 500 MSP 2026', 'Bundle-500-Monthly-2026'],
+  ];
+  for (const [name, hs_sku] of names) assert.equal(T.productKey({ name, hs_sku }), qm.productKeyFor({ name, hs_sku }), name);
+  assert.deepEqual(qm.PRODUCT_GROUPS.map((g) => g.key).concat('other'), ['autoelevate', 'password', 'dns', 'timus', 'optimize365', 'other']);
+});
+
+test('teams approvals: a co-term quote lists new subscriptions, then current (co-term) ones, by product', () => {
+  const lines = [
+    line({ name: 'AutoElevate 2500 Agent Plan Advanced 2026', qb_line_type: 'coterm', hs_position_on_quote: '1' }),
+    line({ name: 'RAMP Optimize365 2500 User Plan', hs_sku: 'O365', qb_line_type: 'New', hs_position_on_quote: '2' }),
+    line({ name: 'Optimize365 2500 User Plan', hs_sku: 'O365', qb_line_type: 'New', hs_position_on_quote: '3' }),
+  ];
+  const sections = T.lineSections(lines);
+  assert.deepEqual(sections.map((s) => s.heading), ['New subscriptions', 'Current subscriptions (co-term)']);
+  assert.deepEqual(sections.map((s) => s.groups.map((g) => [g.label, g.lines.length])), [[['Optimize365', 2]], [['AutoElevate', 1]]]);
+  const card = T.buildCard({ quoteId: 'Q1', title: 'T', lines, reasons: [], currency: 'USD', amount: 1, quoteUrl: 'https://x' });
+  const texts = card.body.filter((b) => b.type === 'TextBlock').map((b) => b.text);
+  const at = (t) => texts.indexOf(t);
+  assert.ok(at('Line items') < at('New subscriptions') && at('New subscriptions') < at('Optimize365'));
+  assert.ok(at('Optimize365') < at('Current subscriptions (co-term)') && at('Current subscriptions (co-term)') < at('AutoElevate'));
+  assert.equal(card.body.filter((b) => b.type === 'Container').length, 3);
+});
+
+test('teams approvals: a multi-product quote is split by product; a one-product quote stays a plain list', () => {
+  const multi = T.lineSections([
+    line({ name: 'DNS Filtering 500 Device Plan', hs_sku: 'DNS', hs_position_on_quote: '1' }),
+    line({ name: 'AutoElevate 500 Agent Plan', hs_position_on_quote: '2' }),
+    line({ name: 'Password Manager 50 User Plan', hs_sku: 'PM', hs_position_on_quote: '3' }),
+  ]);
+  assert.deepEqual(multi.map((s) => s.heading), [null]);
+  assert.deepEqual(multi[0].groups.map((g) => g.label), ['AutoElevate', 'Password Manager', 'DNS Filtering']);
+  const single = T.lineSections([line({}), line({ name: 'RAMP AutoElevate 1000 Agent Plan 2026' })]);
+  assert.deepEqual(single[0].groups.map((g) => g.label), [null]);
+});
